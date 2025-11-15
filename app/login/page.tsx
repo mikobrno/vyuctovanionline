@@ -17,21 +17,30 @@ export default function LoginPage() {
     setError('')
 
     try {
+      console.log('Submitting login for:', email)
+      
       const result = await signIn('credentials', {
-        email,
+        email: email.trim(),
         password,
-        redirect: true,
-        callbackUrl: '/dashboard',
+        redirect: false,
       })
 
-      // When redirect=true, NextAuth navigates on success; we only catch error case
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((result as any)?.error) {
+      console.log('SignIn result:', result)
+
+      if (result?.error) {
+        console.error('Login error:', result.error)
         setError('Neplatné přihlašovací údaje')
+        setLoading(false)
+      } else if (result?.ok) {
+        console.log('Login successful, redirecting...')
+        window.location.href = '/dashboard'
+      } else {
+        setError('Došlo k neočekávané chybě')
+        setLoading(false)
       }
-    } catch {
+    } catch (err) {
+      console.error('Exception during login:', err)
       setError('Došlo k chybě při přihlášení')
-    } finally {
       setLoading(false)
     }
   }

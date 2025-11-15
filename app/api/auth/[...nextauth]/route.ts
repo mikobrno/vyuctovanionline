@@ -17,30 +17,40 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         try {
+          console.log('=== AUTH START ===')
+          console.log('Environment:', process.env.NODE_ENV)
+          console.log('NEXTAUTH_URL:', process.env.NEXTAUTH_URL)
+          console.log('NEXTAUTH_SECRET exists:', !!process.env.NEXTAUTH_SECRET)
+          console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL)
+          
           if (!credentials?.email || !credentials?.password) {
-            console.error('Missing credentials')
+            console.error('❌ Missing credentials')
             return null
           }
 
-          // Normalize user input (trim + lowercase email)
-          const email = String(credentials.email).trim().toLowerCase()
+          const email = credentials.email.trim().toLowerCase()
+          console.log('🔍 Looking for user:', email)
 
           const user = await prisma.user.findUnique({
             where: { email }
           })
 
           if (!user) {
-            console.error('User not found:', email)
+            console.error('❌ User not found:', email)
             return null
           }
 
-          const isValid = await bcrypt.compare(String(credentials.password), user.password)
+          console.log('✅ User found:', user.email, 'Role:', user.role)
+
+          const isValid = await bcrypt.compare(credentials.password, user.password)
+          console.log('🔑 Password valid:', isValid)
 
           if (!isValid) {
-            console.error('Invalid password for:', email)
+            console.error('❌ Invalid password')
             return null
           }
 
+          console.log('✅ Auth successful')
           return {
             id: user.id,
             email: user.email,
@@ -49,18 +59,33 @@ export const authOptions: NextAuthOptions = {
             image: user.image
           }
         } catch (error) {
-          console.error('Auth error:', error)
+          console.error('❌ Auth error:', error)
           return null
         }
       }
     })
   ],
   session: {
-    strategy: 'jwt'
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  // In serverless/proxied environments (Netlify) allow dynamic host
-  // @ts-expect-error - available in NextAuth runtime, not typed in our version
-  trustHost: true,
+  jwt: {
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+  useSecureCookies: process.env.NODE_ENV === 'production',
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === 'production' 
+        ? '__Secure-next-auth.session-token' 
+        : 'next-auth.session-token',
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
+  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
@@ -79,8 +104,10 @@ export const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: '/login',
+    error: '/login',
   },
   secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === 'development',
 }
 
 const handler = NextAuth(authOptions)
