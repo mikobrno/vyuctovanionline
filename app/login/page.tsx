@@ -29,7 +29,11 @@ export default function LoginPage() {
 
       if (result?.error) {
         console.error('Login error:', result.error)
-        setError('Neplatné přihlašovací údaje')
+        if (result.error === 'INTERNAL_AUTH_ERROR') {
+          setError('Server se nepodařilo připojit k databázi. Zkuste to prosím později.')
+        } else {
+          setError('Neplatné přihlašovací údaje')
+        }
         setLoading(false)
       } else if (result?.ok) {
         console.log('Login successful, redirecting...')
