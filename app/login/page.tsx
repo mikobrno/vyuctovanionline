@@ -2,10 +2,10 @@
 
 import { signIn } from 'next-auth/react'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+// no router needed when using redirect-based signIn
 
 export default function LoginPage() {
-  const router = useRouter()
+  // redirect flow handles navigation itself
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -20,14 +20,14 @@ export default function LoginPage() {
       const result = await signIn('credentials', {
         email,
         password,
-        redirect: false,
+        redirect: true,
+        callbackUrl: '/dashboard',
       })
 
-      if (result?.error) {
+      // When redirect=true, NextAuth navigates on success; we only catch error case
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((result as any)?.error) {
         setError('Neplatné přihlašovací údaje')
-      } else {
-        router.push('/dashboard')
-        router.refresh()
       }
     } catch {
       setError('Došlo k chybě při přihlášení')
