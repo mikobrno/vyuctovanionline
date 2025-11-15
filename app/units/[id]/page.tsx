@@ -189,7 +189,7 @@ export default async function UnitDetailPage({ params }: { params: Promise<{ id:
                       <div key={meter.id} className="border border-gray-200 rounded-lg p-4">
                         <div className="flex justify-between items-start mb-2">
                           <div>
-                            <h3 className="font-medium text-gray-900">{meter.service.name}</h3>
+                            <h3 className="font-medium text-gray-900">{meter.service?.name || 'Služba neuvedena'}</h3>
                             <p className="text-sm text-gray-500">Výrobní číslo: {meter.serialNumber}</p>
                           </div>
                           <span className={`px-2 py-1 text-xs rounded-full ${
@@ -204,7 +204,7 @@ export default async function UnitDetailPage({ params }: { params: Promise<{ id:
                           <div className="mt-3 pt-3 border-t border-gray-100">
                             <p className="text-sm text-gray-500 mb-2">Poslední odečet:</p>
                             <p className="text-lg font-semibold text-gray-900">
-                              {meter.readings[0].value} {meter.service.measurementUnit}
+                              {meter.readings[0].value} {meter.service?.measurementUnit || ''}
                               <span className="text-sm font-normal text-gray-500 ml-2">
                                 ({new Date(meter.readings[0].readingDate).toLocaleDateString('cs-CZ')})
                               </span>

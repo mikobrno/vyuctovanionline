@@ -14,28 +14,24 @@ export default async function EditUnitPage({ params }: { params: Promise<{ id: s
 
   const { id } = await params
 
-  const unit = await prisma.unit.findUnique({
-    where: {
-      id,
-    },
-    include: {
-      building: true,
-    },
-  })
+  const [unit, buildings] = await Promise.all([
+    prisma.unit.findUnique({
+      where: { id },
+    }),
+    prisma.building.findMany({
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    }),
+  ])
 
   if (!unit) {
     notFound()
   }
-
-  const buildings = await prisma.building.findMany({
-    select: {
-      id: true,
-      name: true,
-    },
-    orderBy: {
-      name: 'asc',
-    },
-  })
 
   return (
     <div className="min-h-screen bg-gray-50">
