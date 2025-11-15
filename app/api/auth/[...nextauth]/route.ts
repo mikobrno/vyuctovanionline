@@ -4,6 +4,9 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
+// Ensure this API route runs on Node.js runtime (not Edge) for bcrypt/Prisma
+export const runtime = 'nodejs'
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -19,19 +22,22 @@ export const authOptions: NextAuthOptions = {
             return null
           }
 
+          // Normalize user input (trim + lowercase email)
+          const email = String(credentials.email).trim().toLowerCase()
+
           const user = await prisma.user.findUnique({
-            where: { email: credentials.email }
+            where: { email }
           })
 
           if (!user) {
-            console.error('User not found:', credentials.email)
+            console.error('User not found:', email)
             return null
           }
 
-          const isValid = await bcrypt.compare(credentials.password, user.password)
+          const isValid = await bcrypt.compare(String(credentials.password), user.password)
 
           if (!isValid) {
-            console.error('Invalid password for:', credentials.email)
+            console.error('Invalid password for:', email)
             return null
           }
 
@@ -52,6 +58,9 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: 'jwt'
   },
+  // In serverless/proxied environments (Netlify) allow dynamic host
+  // @ts-expect-error - available in NextAuth runtime, not typed in our version
+  trustHost: true,
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
