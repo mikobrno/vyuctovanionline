@@ -32,7 +32,7 @@ async function main() {
   const adminPassword = await bcrypt.hash('admin123', 10)
   const managerPassword = await bcrypt.hash('spravce123', 10)
 
-  const admin = await prisma.user.create({
+  await prisma.user.create({
     data: {
       email: 'admin@vyuctovani.cz',
       password: adminPassword,
@@ -41,7 +41,7 @@ async function main() {
     },
   })
 
-  const manager = await prisma.user.create({
+  await prisma.user.create({
     data: {
       email: 'spravce@vyuctovani.cz',
       password: managerPassword,
@@ -58,7 +58,7 @@ async function main() {
       name: 'Společenství vlastníků pro dům Neptun',
       address: 'Neptunova 123',
       city: 'Praha',
-      zipCode: '11000',
+      zip: '11000',
       ico: '12345678',
       bankAccount: '1234567890/0100',
     },
@@ -71,30 +71,27 @@ async function main() {
     prisma.service.create({
       data: {
         buildingId: building.id,
-        name: 'Teplo',
-        code: 'TEPLO',
-        allocationMethod: 'COMBINED',
-        splitPercentage: 70,
-        splitMethod2: 'BY_AREA',
-        splitPercentage2: 30,
+        name: 'Fond oprav',
+        code: 'FO',
+        methodology: 'podíl',
         order: 1,
       },
     }),
     prisma.service.create({
       data: {
         buildingId: building.id,
-        name: 'Teplá užitková voda (TUV)',
-        code: 'TUV',
-        allocationMethod: 'BY_METER',
+        name: 'Fond společenství',
+        code: 'FS',
+        methodology: 'vlastnický podíl',
         order: 2,
       },
     }),
     prisma.service.create({
       data: {
         buildingId: building.id,
-        name: 'Studená voda',
-        code: 'SV',
-        allocationMethod: 'BY_METER',
+        name: 'Správa',
+        code: 'SPRAVA',
+        methodology: 'na byt',
         order: 3,
       },
     }),
@@ -103,61 +100,63 @@ async function main() {
         buildingId: building.id,
         name: 'Vodné a stočné',
         code: 'VODNE',
-        allocationMethod: 'BY_METER',
+        methodology: 'odečet SV',
+        measurementUnit: 'm³',
         order: 4,
       },
     }),
     prisma.service.create({
       data: {
         buildingId: building.id,
-        name: 'Správa domu',
-        code: 'SPRAVA',
-        allocationMethod: 'BY_SHARE',
+        name: 'Teplo',
+        code: 'TEPLO',
+        methodology: 'rovným dílem 1/22',
         order: 5,
       },
     }),
     prisma.service.create({
       data: {
         buildingId: building.id,
-        name: 'Fond oprav',
-        code: 'FOND',
-        allocationMethod: 'BY_SHARE',
+        name: 'Ohřev TUV',
+        code: 'TUV',
+        methodology: 'odečet TUV',
+        measurementUnit: 'm³',
         order: 6,
       },
     }),
     prisma.service.create({
       data: {
         buildingId: building.id,
-        name: 'Pojištění',
-        code: 'POJISTENI',
-        allocationMethod: 'BY_SHARE',
+        name: 'Elektřina',
+        code: 'ELEKTRO',
+        methodology: 'vlastnický podíl',
         order: 7,
       },
     }),
     prisma.service.create({
       data: {
         buildingId: building.id,
-        name: 'Výtah',
-        code: 'VYTAH',
-        allocationMethod: 'BY_PERSON',
+        name: 'Úklid venkovní',
+        code: 'UKLID_VENK',
+        methodology: 'vlastnický podíl',
         order: 8,
       },
     }),
     prisma.service.create({
       data: {
         buildingId: building.id,
-        name: 'Úklid',
-        code: 'UKLID',
-        allocationMethod: 'BY_PERSON',
+        name: 'Pojištění domu',
+        code: 'POJISTENI',
+        methodology: 'vlastnický podíl',
         order: 9,
       },
     }),
     prisma.service.create({
       data: {
         buildingId: building.id,
-        name: 'Elektřina společné prostory',
-        code: 'ELEKTRINA',
-        allocationMethod: 'BY_SHARE',
+        name: 'Úklid vnitřní',
+        code: 'UKLID_VNITR',
+        methodology: 'vlastnický podíl',
         order: 10,
       },
     }),
@@ -211,7 +210,8 @@ async function main() {
         shareNumerator: 764,
         shareDenominator: 14238,
         totalArea: 65.5,
-        chargeableArea: 65.5,
+        floorArea: 55.0,
+        residents: 2,
         variableSymbol: '31801',
       },
     }),
@@ -223,7 +223,8 @@ async function main() {
         shareNumerator: 820,
         shareDenominator: 14238,
         totalArea: 72.3,
-        chargeableArea: 72.3,
+        floorArea: 60.0,
+        residents: 3,
         variableSymbol: '31802',
       },
     }),
@@ -235,7 +236,8 @@ async function main() {
         shareNumerator: 650,
         shareDenominator: 14238,
         totalArea: 58.2,
-        chargeableArea: 58.2,
+        floorArea: 48.0,
+        residents: 1,
         variableSymbol: '31803',
       },
     }),
@@ -279,25 +281,37 @@ async function main() {
       prisma.meter.create({
         data: {
           unitId: unit.id,
-          meterNumber: `TUV-${unit.unitNumber}`,
+          serialNumber: `76884987-TUV`,
           type: 'HOT_WATER',
           initialReading: 0,
+          isActive: true,
         },
       }),
       prisma.meter.create({
         data: {
           unitId: unit.id,
-          meterNumber: `SV-${unit.unitNumber}`,
+          serialNumber: `76888144-SV`,
           type: 'COLD_WATER',
           initialReading: 0,
+          isActive: true,
         },
       }),
       prisma.meter.create({
         data: {
           unitId: unit.id,
-          meterNumber: `TEPLO-${unit.unitNumber}`,
+          serialNumber: `TEPLO-${unit.unitNumber}`,
           type: 'HEATING',
           initialReading: 0,
+          isActive: true,
+        },
+      }),
+      prisma.meter.create({
+        data: {
+          unitId: unit.id,
+          serialNumber: `ELEKTRO-${unit.unitNumber}`,
+          type: 'ELECTRICITY',
+          initialReading: 0,
+          isActive: true,
         },
       }),
     ])

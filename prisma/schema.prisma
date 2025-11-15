@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // Autentizace a uživatelé
@@ -24,7 +25,9 @@ model User {
 
   accounts      Account[]
   sessions      Session[]
-  owners        Owner[]   // Pokud je role OWNER, může mít vazbu na vlastníka
+  owners        Owner[]
+
+  @@map("users")
 }
 
 enum UserRole {
@@ -50,6 +53,7 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@map("accounts")
 }
 
 model Session {
@@ -58,6 +62,8 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
 }
 
 model VerificationToken {
@@ -66,6 +72,7 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+  @@map("verification_tokens")
 }
 
 // Hlavní entity aplikace
@@ -73,10 +80,10 @@ model VerificationToken {
 // Bytový dům
 model Building {
   id            String   @id @default(cuid())
-  name          String   // např. "Společenství vlastníků pro dům Neptun"
+  name          String
   address       String
   city          String
-  zipCode       String
+  zip           String
   ico           String?
   bankAccount   String?
   createdAt     DateTime @default(now())
@@ -86,19 +93,22 @@ model Building {
   services      Service[]
   costs         Cost[]
   billingPeriods BillingPeriod[]
+
+  @@map("buildings")
 }
 
 // Jednotka (byt, garáž, sklep)
 model Unit {
   id                    String   @id @default(cuid())
   buildingId            String
-  unitNumber            String   // např. "318/01"
+  unitNumber            String
   type                  UnitType @default(APARTMENT)
-  shareNumerator        Int      // např. 764
-  shareDenominator      Int      // např. 14238
-  totalArea             Float    // celková výměra
-  chargeableArea        Float    // započitatelná výměra
-  variableSymbol        String   @unique // pro párování plateb
+  shareNumerator        Int
+  shareDenominator      Int
+  totalArea             Float
+  floorArea             Float?
+  residents             Int?
+  variableSymbol        String   @unique
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -111,6 +121,7 @@ model Unit {
   personMonths          PersonMonth[]
 
   @@unique([buildingId, unitNumber])
+  @@map("units")
 }
 
 enum UnitType {
@@ -136,6 +147,8 @@ model Owner {
   ownerships    Ownership[]
   userId        String?  @unique
   user          User?    @relation(fields: [userId], references: [id])
+
+  @@map("owners")
 }
 
 // Vlastnictví - historie (vlastník může změnit v průběhu roku)
@@ -150,6 +163,8 @@ model Ownership {
 
   unit          Unit      @relation(fields: [unitId], references: [id], onDelete: Cascade)
   owner         Owner     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@map("ownerships")
 }
 
 // Služba (Teplo, Vodné, Správa, atd.)
@@ -158,31 +173,22 @@ model Service {
   buildingId          String
   name                String              // např. "Teplo", "TUV", "Správa"
   code                String              // zkratka
-  allocationMethod    AllocationMethod
-  splitPercentage     Float?              // pro kombinované metody (např. 70%)
-  splitMethod2        AllocationMethod?   // sekundární metoda pro kombinaci
-  splitPercentage2    Float?              // procento pro sekundární metodu (např. 30%)
-  unitPrice           Float?              // cena za jednotku (pro některé služby)
-  order               Int                 @default(0) // pořadí zobrazení
-  active              Boolean             @default(true)
+  methodology         String              // způsob rozúčtování (podíl, měřidla, osoby, atd.)
+  measurementUnit     String?             // jednotka měření (m³, kWh, osobo-měsíc)
+  unitPrice           Float?              // cena za jednotku
+  order               Int                 @default(0)
+  isActive            Boolean             @default(true)
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
   building            Building            @relation(fields: [buildingId], references: [id], onDelete: Cascade)
   costs               Cost[]
+  meters              Meter[]
   advancePayments     AdvancePayment[]
   billingServiceCosts BillingServiceCost[]
 
   @@unique([buildingId, code])
-}
-
-enum AllocationMethod {
-  BY_SHARE          // dle podílu na domě
-  BY_METER          // dle odečtu měřidla
-  BY_PERSON         // dle počtu osob (osobo-měsíců)
-  BY_UNIT           // fixní částka na jednotku
-  BY_AREA           // dle výměry
-  COMBINED          // kombinace dvou metod (např. 30% dle m2, 70% dle měřidel)
+  @@map("services")
 }
 
 // Náklad (faktura) na dům
@@ -201,28 +207,36 @@ model Cost {
 
   building        Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
   service         Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("costs")
 }
 
 // Měřidlo
 model Meter {
   id              String     @id @default(cuid())
   unitId          String
-  meterNumber     String
+  serialNumber    String     // výrobní číslo měřidla
   type            MeterType
   initialReading  Float      @default(0)
+  isActive        Boolean    @default(true)
+  installedAt     DateTime?  // datum instalace
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
   unit            Unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
   readings        MeterReading[]
+  service         Service?   @relation(fields: [serviceId], references: [id])
+  serviceId       String?
 
-  @@unique([unitId, meterNumber, type])
+  @@unique([unitId, serialNumber])
+  @@map("meters")
 }
 
 enum MeterType {
-  HOT_WATER   // TUV
-  COLD_WATER  // SV
-  HEATING     // Teplo
+  HEATING        // Teplo
+  COLD_WATER     // Vodoměry SV
+  HOT_WATER      // Vodoměry TUV
+  ELECTRICITY    // Elektroměry
 }
 
 // Odečet měřidla
@@ -230,14 +244,15 @@ model MeterReading {
   id              String   @id @default(cuid())
   meterId         String
   readingDate     DateTime
-  reading         Float
+  value           Float    // hodnota odečtu
   period          Int      // rok vyúčtování
   consumption     Float?   // vypočtená spotřeba
+  note            String?
   createdAt       DateTime @default(now())
 
   meter           Meter    @relation(fields: [meterId], references: [id], onDelete: Cascade)
 
-  @@unique([meterId, period])
+  @@map("meter_readings")
 }
 
 // Předpis záloh (na rok)
@@ -252,6 +267,7 @@ model AdvancePayment {
   records         AdvancePaymentRecord[]
 
   @@unique([serviceId, year])
+  @@map("advance_payments")
 }
 
 // Konkrétní předpis zálohy pro jednotku
@@ -266,6 +282,7 @@ model AdvancePaymentRecord {
   unit                Unit            @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
   @@unique([advancePaymentId, unitId])
+  @@map("advance_payment_records")
 }
 
 // Platba (úhrada zálohy)
@@ -280,6 +297,8 @@ model Payment {
   createdAt       DateTime @default(now())
 
   unit            Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
 }
 
 // Počet osob v jednotce (pro každý měsíc)
@@ -294,6 +313,7 @@ model PersonMonth {
   unit            Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
   @@unique([unitId, year, month])
+  @@map("person_months")
 }
 
 // Období vyúčtování
@@ -311,6 +331,7 @@ model BillingPeriod {
   serviceCosts    BillingServiceCost[]
 
   @@unique([buildingId, year])
+  @@map("billing_periods")
 }
 
 enum BillingStatus {
@@ -341,6 +362,7 @@ model BillingResult {
   serviceCosts          BillingServiceCost[]
 
   @@unique([billingPeriodId, unitId])
+  @@map("billing_results")
 }
 
 // Detail nákladu na službu pro jednotku v rámci vyúčtování
@@ -362,4 +384,5 @@ model BillingServiceCost {
   service               Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
 
   @@unique([billingResultId, serviceId])
+  @@map("billing_service_costs")
 }

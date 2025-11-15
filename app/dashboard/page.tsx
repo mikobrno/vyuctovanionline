@@ -71,7 +71,7 @@ export default async function DashboardPage() {
             </h2>
             <div className="space-y-4">
               <div className="flex items-start">
-                <div className="flex-shrink-0">
+                <div className="shrink-0">
                   <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
                     <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
