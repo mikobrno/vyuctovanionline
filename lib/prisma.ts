@@ -4,8 +4,21 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+const databaseUrl = process.env.SUPABASE_DB_POOLER_URL ?? process.env.DATABASE_URL
+
+if (!databaseUrl) {
+  throw new Error('Missing database connection string. Set SUPABASE_DB_POOLER_URL or DATABASE_URL.')
+}
+
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: ['error', 'warn']
+  log: ['error', 'warn'],
+  datasources: {
+    db: {
+      url: databaseUrl
+    }
+  }
 })
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma
+}

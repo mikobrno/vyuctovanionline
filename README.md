@@ -134,6 +134,8 @@ EMAIL_SERVER_PASSWORD="your-app-password"
 EMAIL_FROM="noreply@vyuctovani.cz"
 ```
 
+> **Poznámka:** V produkci na serverless platformách (Netlify, Vercel Functions, AWS Lambda…) používejte Supabase Connection Pooling URL. Nastavte proměnnou `SUPABASE_DB_POOLER_URL` na hodnotu z `Database → Connection pooling` v Supabase (obsahuje `pooler.supabase.com`, port 6543 a parametry `pgbouncer=true&connection_limit=1&sslmode=require&options=project%3D…`). `DIRECT_URL` může dál směřovat na původní `db.<ref>.supabase.co` host a používá se pouze pro migrace.
+
 ## 🚀 Deployment
 
 ### Vercel (Doporučeno)
