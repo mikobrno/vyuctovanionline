@@ -1,0 +1,365 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Autentizace a uživatelé
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String
+  role          UserRole  @default(OWNER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  owners        Owner[]   // Pokud je role OWNER, může mít vazbu na vlastníka
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER  // Správce SVJ
+  OWNER    // Vlastník
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Hlavní entity aplikace
+
+// Bytový dům
+model Building {
+  id            String   @id @default(cuid())
+  name          String   // např. "Společenství vlastníků pro dům Neptun"
+  address       String
+  city          String
+  zipCode       String
+  ico           String?
+  bankAccount   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  units         Unit[]
+  services      Service[]
+  costs         Cost[]
+  billingPeriods BillingPeriod[]
+}
+
+// Jednotka (byt, garáž, sklep)
+model Unit {
+  id                    String   @id @default(cuid())
+  buildingId            String
+  unitNumber            String   // např. "318/01"
+  type                  UnitType @default(APARTMENT)
+  shareNumerator        Int      // např. 764
+  shareDenominator      Int      // např. 14238
+  totalArea             Float    // celková výměra
+  chargeableArea        Float    // započitatelná výměra
+  variableSymbol        String   @unique // pro párování plateb
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  building              Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  ownerships            Ownership[]
+  meters                Meter[]
+  advancePaymentRecords AdvancePaymentRecord[]
+  payments              Payment[]
+  billingResults        BillingResult[]
+  personMonths          PersonMonth[]
+
+  @@unique([buildingId, unitNumber])
+}
+
+enum UnitType {
+  APARTMENT
+  GARAGE
+  CELLAR
+  NON_RESIDENTIAL
+}
+
+// Vlastník
+model Owner {
+  id            String   @id @default(cuid())
+  firstName     String
+  lastName      String
+  email         String?
+  phone         String?
+  address       String?
+  bankAccount   String?
+  salutation    String?  // oslovení pro e-maily
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  ownerships    Ownership[]
+  userId        String?  @unique
+  user          User?    @relation(fields: [userId], references: [id])
+}
+
+// Vlastnictví - historie (vlastník může změnit v průběhu roku)
+model Ownership {
+  id            String    @id @default(cuid())
+  unitId        String
+  ownerId       String
+  validFrom     DateTime
+  validTo       DateTime?
+  sharePercent  Float     @default(100) // pro spoluvlastnictví
+  createdAt     DateTime  @default(now())
+
+  unit          Unit      @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  owner         Owner     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+}
+
+// Služba (Teplo, Vodné, Správa, atd.)
+model Service {
+  id                  String              @id @default(cuid())
+  buildingId          String
+  name                String              // např. "Teplo", "TUV", "Správa"
+  code                String              // zkratka
+  allocationMethod    AllocationMethod
+  splitPercentage     Float?              // pro kombinované metody (např. 70%)
+  splitMethod2        AllocationMethod?   // sekundární metoda pro kombinaci
+  splitPercentage2    Float?              // procento pro sekundární metodu (např. 30%)
+  unitPrice           Float?              // cena za jednotku (pro některé služby)
+  order               Int                 @default(0) // pořadí zobrazení
+  active              Boolean             @default(true)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  building            Building            @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  costs               Cost[]
+  advancePayments     AdvancePayment[]
+  billingServiceCosts BillingServiceCost[]
+
+  @@unique([buildingId, code])
+}
+
+enum AllocationMethod {
+  BY_SHARE          // dle podílu na domě
+  BY_METER          // dle odečtu měřidla
+  BY_PERSON         // dle počtu osob (osobo-měsíců)
+  BY_UNIT           // fixní částka na jednotku
+  BY_AREA           // dle výměry
+  COMBINED          // kombinace dvou metod (např. 30% dle m2, 70% dle měřidel)
+}
+
+// Náklad (faktura) na dům
+model Cost {
+  id              String   @id @default(cuid())
+  buildingId      String
+  serviceId       String
+  amount          Float
+  description     String
+  invoiceNumber   String?
+  invoiceDate     DateTime
+  vatAmount       Float?
+  period          Int      // rok vyúčtování
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  building        Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  service         Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+}
+
+// Měřidlo
+model Meter {
+  id              String     @id @default(cuid())
+  unitId          String
+  meterNumber     String
+  type            MeterType
+  initialReading  Float      @default(0)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  unit            Unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  readings        MeterReading[]
+
+  @@unique([unitId, meterNumber, type])
+}
+
+enum MeterType {
+  HOT_WATER   // TUV
+  COLD_WATER  // SV
+  HEATING     // Teplo
+}
+
+// Odečet měřidla
+model MeterReading {
+  id              String   @id @default(cuid())
+  meterId         String
+  readingDate     DateTime
+  reading         Float
+  period          Int      // rok vyúčtování
+  consumption     Float?   // vypočtená spotřeba
+  createdAt       DateTime @default(now())
+
+  meter           Meter    @relation(fields: [meterId], references: [id], onDelete: Cascade)
+
+  @@unique([meterId, period])
+}
+
+// Předpis záloh (na rok)
+model AdvancePayment {
+  id              String   @id @default(cuid())
+  serviceId       String
+  year            Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  service         Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  records         AdvancePaymentRecord[]
+
+  @@unique([serviceId, year])
+}
+
+// Konkrétní předpis zálohy pro jednotku
+model AdvancePaymentRecord {
+  id                  String          @id @default(cuid())
+  advancePaymentId    String
+  unitId              String
+  monthlyAmount       Float
+  createdAt           DateTime        @default(now())
+
+  advancePayment      AdvancePayment  @relation(fields: [advancePaymentId], references: [id], onDelete: Cascade)
+  unit                Unit            @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([advancePaymentId, unitId])
+}
+
+// Platba (úhrada zálohy)
+model Payment {
+  id              String   @id @default(cuid())
+  unitId          String
+  amount          Float
+  paymentDate     DateTime
+  variableSymbol  String
+  period          Int      // rok
+  description     String?
+  createdAt       DateTime @default(now())
+
+  unit            Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+}
+
+// Počet osob v jednotce (pro každý měsíc)
+model PersonMonth {
+  id              String   @id @default(cuid())
+  unitId          String
+  year            Int
+  month           Int      // 1-12
+  personCount     Int
+  createdAt       DateTime @default(now())
+
+  unit            Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([unitId, year, month])
+}
+
+// Období vyúčtování
+model BillingPeriod {
+  id              String        @id @default(cuid())
+  buildingId      String
+  year            Int
+  status          BillingStatus @default(DRAFT)
+  calculatedAt    DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  building        Building      @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  results         BillingResult[]
+  serviceCosts    BillingServiceCost[]
+
+  @@unique([buildingId, year])
+}
+
+enum BillingStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  SENT
+}
+
+// Výsledek vyúčtování pro jednotku
+model BillingResult {
+  id                    String         @id @default(cuid())
+  billingPeriodId       String
+  unitId                String
+  totalCost             Float          // celkový náklad jednotky
+  totalAdvancePrescribed Float         // celkem předepsáno
+  totalAdvancePaid      Float          // celkem uhrazeno
+  result                Float          // přeplatek (kladné) / nedoplatek (záporné)
+  pdfGenerated          Boolean        @default(false)
+  pdfUrl                String?
+  emailSent             Boolean        @default(false)
+  emailSentAt           DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  billingPeriod         BillingPeriod  @relation(fields: [billingPeriodId], references: [id], onDelete: Cascade)
+  unit                  Unit           @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  serviceCosts          BillingServiceCost[]
+
+  @@unique([billingPeriodId, unitId])
+}
+
+// Detail nákladu na službu pro jednotku v rámci vyúčtování
+model BillingServiceCost {
+  id                    String         @id @default(cuid())
+  billingPeriodId       String
+  billingResultId       String
+  serviceId             String
+  unitId                String
+  buildingTotalCost     Float          // celkový náklad domu na službu
+  buildingConsumption   Float?         // celková spotřeba domu (pro měřené služby)
+  unitConsumption       Float?         // spotřeba jednotky
+  unitCost              Float          // náklad jednotky na službu
+  calculationBasis      String?        // popis výpočtu (pro kontrolu)
+  createdAt             DateTime       @default(now())
+
+  billingPeriod         BillingPeriod  @relation(fields: [billingPeriodId], references: [id], onDelete: Cascade)
+  billingResult         BillingResult  @relation(fields: [billingResultId], references: [id], onDelete: Cascade)
+  service               Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([billingResultId, serviceId])
+}
