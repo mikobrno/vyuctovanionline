@@ -81,21 +81,6 @@ export const authOptions: NextAuthOptions = {
     signIn: '/login',
   },
   secret: process.env.NEXTAUTH_SECRET,
-  // Set the NEXTAUTH_URL environment variable for production
-  ...(process.env.NODE_ENV === 'production' && {
-    basePath: '/api/auth',
-    // This is required for production environments
-    // It should be the canonical URL of your site
-    // See: https://next-auth.js.org/configuration/options#nextauth_url
-    // and https://next-auth.js.org/deployment#nextauth_url
-    // You must set the NEXTAUTH_URL environment variable
-    // on your hosting provider (e.g., Vercel, Netlify).
-    // Example: https://example.com
-    // If you're using a custom domain, it should be that domain.
-    // If you're not, it should be the URL provided by your host.
-    // For Netlify, it would be https://<your-site-name>.netlify.app
-    url: process.env.NEXTAUTH_URL,
-  }),
 }
 
 const handler = NextAuth(authOptions)
