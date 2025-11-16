@@ -38,12 +38,39 @@ export default async function BuildingDetailPage({
                 take: 1
               }
             }
+          },
+          personMonths: {
+            orderBy: [
+              { year: 'desc' },
+              { month: 'desc' }
+            ]
+          },
+          advancePaymentRecords: {
+            include: {
+              advancePayment: {
+                include: {
+                  service: true
+                }
+              }
+            }
           }
         },
         orderBy: { unitNumber: 'asc' },
       },
       services: {
         orderBy: { name: 'asc' },
+        include: {
+          advancePayments: {
+            include: {
+              records: {
+                include: {
+                  unit: true
+                }
+              }
+            },
+            orderBy: { year: 'desc' }
+          }
+        }
       },
       costs: {
         include: {
@@ -189,10 +216,10 @@ export default async function BuildingDetailPage({
         {/* Záložky */}
         <div className="bg-white rounded-lg shadow mb-6">
           <div className="border-b border-gray-200">
-            <nav className="flex -mb-px overflow-x-auto">
+            <nav className="flex flex-wrap -mb-px">
               <Link
                 href={`/buildings/${building.id}?tab=units`}
-                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'units'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
@@ -202,7 +229,7 @@ export default async function BuildingDetailPage({
               </Link>
               <Link
                 href={`/buildings/${building.id}?tab=owners`}
-                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'owners'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
@@ -212,7 +239,7 @@ export default async function BuildingDetailPage({
               </Link>
               <Link
                 href={`/buildings/${building.id}?tab=invoices`}
-                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'invoices'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
@@ -222,7 +249,7 @@ export default async function BuildingDetailPage({
               </Link>
               <Link
                 href={`/buildings/${building.id}?tab=hot_water`}
-                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'hot_water'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
@@ -232,7 +259,7 @@ export default async function BuildingDetailPage({
               </Link>
               <Link
                 href={`/buildings/${building.id}?tab=cold_water`}
-                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'cold_water'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
@@ -242,7 +269,7 @@ export default async function BuildingDetailPage({
               </Link>
               <Link
                 href={`/buildings/${building.id}?tab=heating`}
-                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'heating'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
@@ -252,7 +279,7 @@ export default async function BuildingDetailPage({
               </Link>
               <Link
                 href={`/buildings/${building.id}?tab=payments`}
-                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'payments'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
@@ -261,8 +288,18 @@ export default async function BuildingDetailPage({
                 💳 Platby
               </Link>
               <Link
+                href={`/buildings/${building.id}?tab=person_months`}
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
+                  tab === 'person_months'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
+                }`}
+              >
+                👨‍👩‍👧‍👦 Počet osob
+              </Link>
+              <Link
                 href={`/buildings/${building.id}?tab=advances`}
-                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'advances'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
@@ -272,7 +309,7 @@ export default async function BuildingDetailPage({
               </Link>
               <Link
                 href={`/buildings/${building.id}?tab=parameters`}
-                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'parameters'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
@@ -282,13 +319,33 @@ export default async function BuildingDetailPage({
               </Link>
               <Link
                 href={`/buildings/${building.id}?tab=billing`}
-                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'billing'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
                 }`}
               >
                 📊 Vyúčtování
+              </Link>
+              <Link
+                href={`/buildings/${building.id}?tab=results`}
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
+                  tab === 'results'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
+                }`}
+              >
+                📋 Výsledky
+              </Link>
+              <Link
+                href={`/buildings/${building.id}?tab=calc_test`}
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
+                  tab === 'calc_test'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
+                }`}
+              >
+                🧪 Test enginu
               </Link>
             </nav>
           </div>

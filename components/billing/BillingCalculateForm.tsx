@@ -80,7 +80,15 @@ export default function BillingCalculateForm({
     <div className="space-y-6">
       {/* Přehled dat */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">📊 Přehled dat pro výpočet</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-gray-900">📊 Přehled dat pro výpočet</h2>
+          <Link
+            href={`/buildings/${buildingId}?tab=parameters`}
+            className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1"
+          >
+            ⚙️ Zobrazit parametry jednotek
+          </Link>
+        </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

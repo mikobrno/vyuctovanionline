@@ -1,0 +1,18 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Trigger Public Full Import",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Invoke-RestMethod -Method Post -Uri \"http://localhost:3000/api/import/public/complete?file=vyuctovani2024%20(20).xlsx&buildingName=Kníničky%20318\" | ConvertTo-Json -Depth 6"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
+		}
+	]
+}

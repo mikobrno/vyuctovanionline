@@ -86,6 +86,7 @@ model Building {
   zip           String
   ico           String?
   bankAccount   String?
+  managerName   String?  // Správce budovy (z Excelu: Vstupni data B34)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -116,6 +117,7 @@ model Unit {
   ownerships            Ownership[]
   meters                Meter[]
   advancePaymentRecords AdvancePaymentRecord[]
+  advanceMonthlies      AdvanceMonthly[]
   payments              Payment[]
   billingResults        BillingResult[]
   personMonths          PersonMonth[]
@@ -174,6 +176,13 @@ model Service {
   name                String              // např. "Teplo", "TUV", "Správa"
   code                String              // zkratka
   methodology         CalculationMethod   @default(OWNERSHIP_SHARE) // způsob rozúčtování
+  
+  // NOVÁ POLE PRO DYNAMICKÝ ENGINE
+  dataSourceType      DataSourceType?     // typ datového zdroje (METER_DATA, UNIT_ATTRIBUTE, UNIT_COUNT, NONE)
+  dataSourceName      String?             // název záložky/zdroje (např. "Vodoměry SV", "Teplo")
+  dataSourceColumn    String?             // sloupec ze zdroje (např. "Spotřeba za období", "consumption")
+  unitAttributeName   String?             // název atributu jednotky (např. "Vlastnický podíl", "Celková výměra")
+  
   measurementUnit     String?             // jednotka měření (m³, kWh, osobo-měsíc)
   unitPrice           Float?              // cena za jednotku
   fixedAmountPerUnit  Float?              // fixní částka na jednotku (např. Kč/byt)
@@ -188,6 +197,7 @@ model Service {
   costs               Cost[]
   meters              Meter[]
   advancePayments     AdvancePayment[]
+  advanceMonthlies    AdvanceMonthly[]
   billingServiceCosts BillingServiceCost[]
 
   @@unique([buildingId, code])
@@ -201,9 +211,33 @@ enum CalculationMethod {
   PERSON_MONTHS    // Podle počtu osob (osobo-měsíců)
   METER_READING    // Podle odečtu měřidel
   FIXED_PER_UNIT   // Fixní částka na byt (dle počtu jednotek)
-  EQUAL_SPLIT      // Rovným dílem
+  EQUAL_SPLIT      // Rovním dílem
   NO_BILLING       // Nevyúčtovávat (např. Fond oprav)
   CUSTOM           // Vlastní vzorec
+}
+
+// NOVÉ ENUMY PRO DYNAMICKÝ ENGINE
+enum DataSourceType {
+  METER_DATA        // Data z měřidel (např. Vodoměry SV, TUV, Teplo, Elektřina)
+  UNIT_ATTRIBUTE    // Atribut jednotky (vlastnický podíl, výměra)
+  PERSON_MONTHS     // Počet osob za období
+  UNIT_COUNT        // Počet jednotek (rovným dílem)
+  FIXED_AMOUNT      // Fixní částka
+  NONE              // Nevyúčtovávat
+}
+
+enum MeterDataSource {
+  VODOMER_SV        // Studená voda
+  VODOMER_TUV       // Teplá užitková voda
+  TEPLO             // Teplo (ústřední vytápění)
+  ELEKTROMER        // Elektřina
+}
+
+enum UnitAttributeSource {
+  VLASTNICKY_PODIL  // Vlastnický podíl (shareNumerator/shareDenominator)
+  CELKOVA_VYMERA    // Celková výměra (totalArea)
+  PODLAHOVA_VYMERA  // Podlahová výměra (floorArea)
+  POCET_OBYVATEL    // Počet obyvatel (residents)
 }
 
 // Náklad (faktura) na dům
@@ -300,6 +334,24 @@ model AdvancePaymentRecord {
   @@map("advance_payment_records")
 }
 
+// Nový granularní měsíční předpis (preferovaný zdroj pro výpočty a UI)
+model AdvanceMonthly {
+  id         String   @id @default(cuid())
+  unitId     String
+  serviceId  String
+  year       Int
+  month      Int      // 1-12
+  amount     Float    // Kč
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  unit       Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([unitId, serviceId, year, month])
+  @@map("advance_monthly")
+}
+
 // Platba (úhrada zálohy)
 model Payment {
   id              String   @id @default(cuid())
@@ -364,11 +416,15 @@ model BillingResult {
   totalCost             Float          // celkový náklad jednotky
   totalAdvancePrescribed Float         // celkem předepsáno
   totalAdvancePaid      Float          // celkem uhrazeno
+  repairFund            Float          @default(0) // fond oprav
   result                Float          // přeplatek (kladné) / nedoplatek (záporné)
+  isPaid                Boolean        @default(false) // stav úhrady
   pdfGenerated          Boolean        @default(false)
   pdfUrl                String?
   emailSent             Boolean        @default(false)
   emailSentAt           DateTime?
+  smsSent               Boolean        @default(false)
+  smsSentAt             DateTime?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
@@ -391,6 +447,11 @@ model BillingServiceCost {
   buildingConsumption   Float?         // celková spotřeba domu (pro měřené služby)
   unitConsumption       Float?         // spotřeba jednotky
   unitCost              Float          // náklad jednotky na službu
+  unitAdvance           Float          @default(0) // záloha na službu
+  unitBalance           Float          @default(0) // přeplatek/nedoplatek na službu
+  unitPricePerUnit      Float?         // Kč/jednotku (cena)
+  unitAssignedUnits     Float?         // kolik jednotek připadá
+  distributionBase      String?        // základ pro rozúčtování (např. "vlastnický podíl 100")
   calculationBasis      String?        // popis výpočtu (pro kontrolu)
   createdAt             DateTime       @default(now())
 

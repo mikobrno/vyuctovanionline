@@ -31,6 +31,8 @@ interface ImportSummary {
     created: number
     total: number
   }
+  costsByService?: { name: string; amount: number }[]
+  advances?: { created: number; updated: number; total: number }
   errors: string[]
   warnings: string[]
 }
@@ -38,6 +40,7 @@ interface ImportSummary {
 interface ImportResult {
   message: string
   summary: ImportSummary
+  logs?: string[]
 }
 
 interface CompleteImportProps {
@@ -114,7 +117,7 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
         throw new Error(cleanMessage)
       }
 
-      // Zpracovat summary a zobrazit kroky
+      // Zpracovat summary a zobrazit kroky + serverové logy
       if (data.summary) {
         setProgress(prev => [...prev, `🏢 Budova: ${data.summary.building.name} ${data.summary.building.created ? '(nově vytvořena)' : '(existující)'}`])
         
@@ -136,6 +139,13 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
         
         if (data.summary.payments.total > 0) {
           setProgress(prev => [...prev, `💳 Platby: ${data.summary.payments.total} importováno`])
+        }
+      }
+
+      if (Array.isArray(data.logs) && data.logs.length) {
+        setProgress(prev => [...prev, '🧪 Server logy:'])
+        for (const l of data.logs.slice(0, 50)) { // limit
+          setProgress(prev => [...prev, l])
         }
       }
 
@@ -311,6 +321,17 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
                 <p className="text-xs text-blue-700">Platby</p>
                 <p className="text-lg font-semibold text-blue-900">{result.summary.payments.total}</p>
               </div>
+              {result.summary.advances && (
+                <div>
+                  <p className="text-xs text-blue-700">Předpis záloh</p>
+                  <p className="text-lg font-semibold text-blue-900">
+                    {result.summary.advances.total}
+                    <span className="ml-2 text-xs text-blue-600">
+                      (+{result.summary.advances.created} nových, {result.summary.advances.updated} upraveno)
+                    </span>
+                  </p>
+                </div>
+              )}
             </div>
             <div className="mt-4">
               <a

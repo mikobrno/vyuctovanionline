@@ -3,9 +3,11 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
 
+export const runtime = 'nodejs'
+
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string; serviceId: string }> }
+  { params }: { params: { id: string; serviceId: string } }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -13,7 +15,7 @@ export async function PATCH(
       return NextResponse.json({ message: 'Nepřihlášen' }, { status: 401 })
     }
 
-    const { id, serviceId } = await params
+    const { id, serviceId } = params
     const body = await req.json()
 
     // Ověření, že služba patří k dané budově
@@ -35,6 +37,13 @@ export async function PATCH(
         name: body.name,
         code: body.code,
         methodology: body.methodology,
+        
+        // NOVÁ POLE PRO DYNAMICKÝ ENGINE
+        dataSourceType: body.dataSourceType,
+        dataSourceName: body.dataSourceName,
+        dataSourceColumn: body.dataSourceColumn,
+        unitAttributeName: body.unitAttributeName,
+        
         measurementUnit: body.measurementUnit,
         unitPrice: body.unitPrice,
         fixedAmountPerUnit: body.fixedAmountPerUnit,

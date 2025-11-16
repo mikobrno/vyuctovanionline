@@ -3,19 +3,51 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-const CALCULATION_METHODS = [
-  { value: 'OWNERSHIP_SHARE', label: 'Vlastnický podíl', description: 'Podle zlomku vlastnictví (čitatel/jmenovatel)' },
-  { value: 'AREA', label: 'Podle výměry', description: 'Podle celkové plochy v m²' },
-  { value: 'PERSON_MONTHS', label: 'Podle osobo-měsíců', description: 'Podle počtu osob v jednotce' },
-  { value: 'METER_READING', label: 'Podle odečtů měřidel', description: 'Podle spotřeby naměřené měřidly' },
-  { value: 'FIXED_PER_UNIT', label: 'Fixní částka na jednotku', description: 'Pevná částka na byt/jednotku (např. Kč/byt)' },
-  { value: 'EQUAL_SPLIT', label: 'Rovným dílem', description: 'Stejná částka pro všechny jednotky (1/N)' },
-  { value: 'CUSTOM', label: 'Vlastní vzorec', description: 'Pokročilé nastavení' },
+// DYNAMICKÝ ENGINE - Typy datových zdrojů
+const DATA_SOURCE_TYPES = [
+  { value: 'METER_DATA', label: '📊 Podle měřidel', description: 'Rozúčtování podle naměřených spotřeb (voda, teplo, elektřina)' },
+  { value: 'UNIT_ATTRIBUTE', label: '📐 Podle atributu jednotky', description: 'Podle vlastnického podílu nebo výměry' },
+  { value: 'PERSON_MONTHS', label: '👨‍👩‍👧‍👦 Podle osobo-měsíců', description: 'Podle počtu osob bydlících v jednotce' },
+  { value: 'UNIT_COUNT', label: '🏠 Rovným dílem', description: 'Stejná částka na každou jednotku (1/N)' },
+  { value: 'FIXED_AMOUNT', label: '💰 Fixní částka', description: 'Pevná částka na jednotku (např. Kč/byt)' },
+  { value: 'NONE', label: '🚫 Nevyúčtovávat', description: 'Služba se nerozúčtovává (např. Fond oprav)' },
+]
+
+// Datové zdroje pro typ METER_DATA
+const METER_DATA_SOURCES = [
+  { value: 'VODOMER_SV', label: 'Vodoměry SV', unit: 'm³', description: 'Studená voda' },
+  { value: 'VODOMER_TUV', label: 'Vodoměry TUV', unit: 'm³', description: 'Teplá užitková voda' },
+  { value: 'TEPLO', label: 'Teplo', unit: 'GJ nebo kWh', description: 'Ústřední vytápění' },
+  { value: 'ELEKTROMER', label: 'Elektroměry', unit: 'kWh', description: 'Elektřina' },
+]
+
+// Atributy jednotky pro typ UNIT_ATTRIBUTE
+const UNIT_ATTRIBUTES = [
+  { value: 'VLASTNICKY_PODIL', label: 'Vlastnický podíl', description: 'Podle zlomku vlastnictví (čitatel/jmenovatel)' },
+  { value: 'CELKOVA_VYMERA', label: 'Celková výměra', description: 'Podle celkové plochy jednotky v m²' },
+  { value: 'PODLAHOVA_VYMERA', label: 'Podlahová výměra', description: 'Podle podlahové plochy v m²' },
+  { value: 'POCET_OBYVATEL', label: 'Počet obyvatel', description: 'Podle počtu osob registrovaných v jednotce' },
 ]
 
 interface ServiceConfigFormProps {
   buildingId: string
-  service: any
+  service: {
+    id: string
+    name: string
+    code: string
+    methodology: string
+    dataSourceType?: string | null
+    dataSourceName?: string | null
+    dataSourceColumn?: string | null
+    unitAttributeName?: string | null
+    measurementUnit?: string | null
+    unitPrice?: number | null
+    fixedAmountPerUnit?: number | null
+    advancePaymentColumn?: string | null
+    showOnStatement: boolean
+    isActive: boolean
+    order: number
+  }
 }
 
 export default function ServiceConfigForm({ buildingId, service }: ServiceConfigFormProps) {
@@ -27,6 +59,13 @@ export default function ServiceConfigForm({ buildingId, service }: ServiceConfig
     name: service.name || '',
     code: service.code || '',
     methodology: service.methodology || 'OWNERSHIP_SHARE',
+    
+    // NOVÁ POLE PRO DYNAMICKÝ ENGINE
+    dataSourceType: service.dataSourceType || '',
+    dataSourceName: service.dataSourceName || '',
+    dataSourceColumn: service.dataSourceColumn || 'consumption',
+    unitAttributeName: service.unitAttributeName || '',
+    
     measurementUnit: service.measurementUnit || '',
     unitPrice: service.unitPrice?.toString() || '',
     fixedAmountPerUnit: service.fixedAmountPerUnit?.toString() || '',
@@ -35,8 +74,6 @@ export default function ServiceConfigForm({ buildingId, service }: ServiceConfig
     isActive: service.isActive !== false,
     order: service.order?.toString() || '0',
   })
-
-  const selectedMethod = CALCULATION_METHODS.find(m => m.value === formData.methodology)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -53,6 +90,13 @@ export default function ServiceConfigForm({ buildingId, service }: ServiceConfig
           name: formData.name,
           code: formData.code,
           methodology: formData.methodology,
+          
+          // NOVÁ POLE
+          dataSourceType: formData.dataSourceType || null,
+          dataSourceName: formData.dataSourceName || null,
+          dataSourceColumn: formData.dataSourceColumn || null,
+          unitAttributeName: formData.unitAttributeName || null,
+          
           measurementUnit: formData.measurementUnit || null,
           unitPrice: formData.unitPrice ? parseFloat(formData.unitPrice) : null,
           fixedAmountPerUnit: formData.fixedAmountPerUnit ? parseFloat(formData.fixedAmountPerUnit) : null,
@@ -94,7 +138,7 @@ export default function ServiceConfigForm({ buildingId, service }: ServiceConfig
                 required
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 placeholder-gray-900"
                 placeholder="např. Teplo, Vodné a stočné, Správa"
               />
             </div>
@@ -108,159 +152,152 @@ export default function ServiceConfigForm({ buildingId, service }: ServiceConfig
                 required
                 value={formData.code}
                 onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 placeholder-gray-900"
                 placeholder="např. TEPLO, TUV, SPRAVA"
               />
             </div>
           </div>
         </div>
 
-        {/* Způsob výpočtu */}
+        {/* DYNAMICKÝ VÝPOČETNÍ ENGINE */}
         <div className="border-b border-gray-200 pb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Způsob rozúčtování</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            🔧 Dynamický výpočetní engine
+          </h2>
           
-          <div className="space-y-3">
-            {CALCULATION_METHODS.map((method) => (
-              <label
-                key={method.value}
-                className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                  formData.methodology === method.value
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="methodology"
-                  value={method.value}
-                  checked={formData.methodology === method.value}
-                  onChange={(e) => setFormData({ ...formData, methodology: e.target.value })}
-                  className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                />
-                <div className="ml-3 flex-1">
-                  <div className="font-medium text-gray-900">{method.label}</div>
-                  <div className="text-sm text-gray-900 mt-1">{method.description}</div>
-                </div>
+          <div className="space-y-4">
+            {/* Typ datového zdroje */}
+            <div>
+              <label className="block text-sm font-medium text-gray-900 mb-2">
+                Typ výpočtu *
               </label>
-            ))}
-          </div>
-        </div>
+              <div className="space-y-2">
+                {DATA_SOURCE_TYPES.map((type) => (
+                  <label
+                    key={type.value}
+                    className={`flex items-start p-3 border-2 rounded-lg cursor-pointer transition-colors ${
+                      formData.dataSourceType === type.value
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="dataSourceType"
+                      value={type.value}
+                      checked={formData.dataSourceType === type.value}
+                      onChange={(e) => setFormData({ 
+                        ...formData, 
+                        dataSourceType: e.target.value,
+                        dataSourceName: '',
+                        unitAttributeName: ''
+                      })}
+                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                    />
+                    <div className="ml-3 flex-1">
+                      <div className="font-medium text-gray-900">{type.label}</div>
+                      <div className="text-sm text-gray-600 mt-1">{type.description}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
 
-        {/* Specifické nastavení podle způsobu */}
-        {selectedMethod && (
-          <div className="border-b border-gray-200 pb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Nastavení pro: {selectedMethod.label}
-            </h2>
-
-            {/* Pro měřidla */}
-            {formData.methodology === 'METER_READING' && (
-              <div className="space-y-4">
+            {/* METER_DATA nastavení */}
+            {formData.dataSourceType === 'METER_DATA' && (
+              <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <h3 className="font-semibold text-gray-900">⚙️ Nastavení datového zdroje měřidel</h3>
+                
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2">
-                    Jednotka měření
+                    Zdroj dat *
                   </label>
                   <select
-                    value={formData.measurementUnit}
-                    onChange={(e) => setFormData({ ...formData, measurementUnit: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formData.dataSourceName}
+                    onChange={(e) => setFormData({ ...formData, dataSourceName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                    required
+                    aria-label="Zdroj dat pro měřidla"
                   >
-                    <option value="">Vyberte jednotku...</option>
-                    <option value="m³">m³ (kubické metry)</option>
-                    <option value="kWh">kWh (kilowatthodiny)</option>
-                    <option value="GJ">GJ (gigajouly)</option>
-                    <option value="ks">ks (kusy)</option>
+                    <option value="">Vyberte zdroj dat...</option>
+                    {METER_DATA_SOURCES.map((source) => (
+                      <option key={source.value} value={source.value}>
+                        {source.label} ({source.unit}) - {source.description}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2">
-                    Jednotková cena (Kč za jednotku)
+                    Sloupec / Hodnota
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.unitPrice}
-                    onChange={(e) => setFormData({ ...formData, unitPrice: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="např. 35.50"
-                  />
-                  <p className="mt-1 text-sm text-gray-900">
-                    Automaticky vypočteno: Náklad služby / Celková spotřeba domu
+                  <select
+                    value={formData.dataSourceColumn}
+                    onChange={(e) => setFormData({ ...formData, dataSourceColumn: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                    aria-label="Sloupec hodnoty z měřidel"
+                  >
+                    <option value="consumption">Spotřeba za období</option>
+                    <option value="currentReading">Aktuální stav</option>
+                    <option value="previousReading">Předchozí stav</option>
+                  </select>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Jakou hodnotu z měřidla použít pro výpočet
                   </p>
                 </div>
               </div>
             )}
 
-            {/* Pro fixní částku na jednotku */}
-            {formData.methodology === 'FIXED_PER_UNIT' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Fixní částka na jednotku (Kč/byt)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.fixedAmountPerUnit}
-                  onChange={(e) => setFormData({ ...formData, fixedAmountPerUnit: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="např. 500.00"
-                />
-                <p className="mt-1 text-sm text-gray-900">
-                  Tato částka bude účtována každé jednotce stejně (např. 500 Kč/byt)
-                </p>
+            {/* UNIT_ATTRIBUTE nastavení */}
+            {formData.dataSourceType === 'UNIT_ATTRIBUTE' && (
+              <div className="space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                <h3 className="font-semibold text-gray-900">⚙️ Nastavení atributu jednotky</h3>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    Atribut jednotky *
+                  </label>
+                  <select
+                    value={formData.unitAttributeName}
+                    onChange={(e) => setFormData({ ...formData, unitAttributeName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                    required
+                    aria-label="Atribut jednotky"
+                  >
+                    <option value="">Vyberte atribut...</option>
+                    {UNIT_ATTRIBUTES.map((attr) => (
+                      <option key={attr.value} value={attr.value}>
+                        {attr.label} - {attr.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
 
-            {/* Pro výměru */}
-            {formData.methodology === 'AREA' && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  💡 <strong>Výpočet:</strong> (Náklad služby / Celková výměra domu) × Výměra jednotky
-                </p>
-                <p className="text-xs text-blue-700 mt-2">
-                  Systém automaticky použije výměru každé jednotky v m²
-                </p>
-              </div>
-            )}
-
-            {/* Pro vlastnický podíl */}
-            {formData.methodology === 'OWNERSHIP_SHARE' && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  💡 <strong>Výpočet:</strong> Náklad služby × (Čitatel podílu / Jmenovatel podílu)
-                </p>
-                <p className="text-xs text-blue-700 mt-2">
-                  Systém automaticky použije vlastnický podíl každé jednotky (např. 100/10000)
-                </p>
-              </div>
-            )}
-
-            {/* Pro osobo-měsíce */}
-            {formData.methodology === 'PERSON_MONTHS' && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  💡 <strong>Výpočet:</strong> (Náklad služby / Celkem osobo-měsíců domu) × Osobo-měsíce jednotky
-                </p>
-                <p className="text-xs text-blue-700 mt-2">
-                  Systém sečte počet osob v jednotce za každý měsíc roku
-                </p>
-              </div>
-            )}
-
-            {/* Pro rovný díl */}
-            {formData.methodology === 'EQUAL_SPLIT' && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  💡 <strong>Výpočet:</strong> Náklad služby / Počet jednotek
-                </p>
-                <p className="text-xs text-blue-700 mt-2">
-                  Všechny jednotky platí stejnou částku
-                </p>
+            {/* FIXED_AMOUNT nastavení */}
+            {formData.dataSourceType === 'FIXED_AMOUNT' && (
+              <div className="space-y-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                <h3 className="font-semibold text-gray-900">⚙️ Nastavení fixní částky</h3>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    Fixní částka na jednotku (Kč/byt)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.fixedAmountPerUnit}
+                    onChange={(e) => setFormData({ ...formData, fixedAmountPerUnit: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 placeholder-gray-900"
+                    placeholder="např. 500"
+                  />
+                </div>
               </div>
             )}
           </div>
-        )}
+        </div>
 
         {/* Zálohy */}
         <div className="border-b border-gray-200 pb-6">
@@ -274,7 +311,7 @@ export default function ServiceConfigForm({ buildingId, service }: ServiceConfig
               type="text"
               value={formData.advancePaymentColumn}
               onChange={(e) => setFormData({ ...formData, advancePaymentColumn: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 placeholder-gray-900"
               placeholder="např. TEPLO, TUV, SPRAVA"
             />
             <p className="mt-1 text-sm text-gray-900">
@@ -294,6 +331,7 @@ export default function ServiceConfigForm({ buildingId, service }: ServiceConfig
                 checked={formData.showOnStatement}
                 onChange={(e) => setFormData({ ...formData, showOnStatement: e.target.checked })}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                aria-label="Zobrazit na výpisu"
               />
               <span className="text-sm text-gray-900">Zobrazit na výpisu pro vlastníky</span>
             </label>
@@ -304,6 +342,7 @@ export default function ServiceConfigForm({ buildingId, service }: ServiceConfig
                 checked={formData.isActive}
                 onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                aria-label="Služba aktivní"
               />
               <span className="text-sm text-gray-900">Služba je aktivní</span>
             </label>
@@ -317,7 +356,8 @@ export default function ServiceConfigForm({ buildingId, service }: ServiceConfig
               type="number"
               value={formData.order}
               onChange={(e) => setFormData({ ...formData, order: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              aria-label="Pořadí služby"
             />
           </div>
         </div>

@@ -1,7 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import CalculationEngineTest from './CalculationEngineTest'
+import BillingGenerator from './BillingGenerator'
+import BillingResultsViewer from './BillingResultsViewer'
+ 
 
 interface BuildingDetailTabsProps {
   building: any
@@ -10,10 +14,139 @@ interface BuildingDetailTabsProps {
   tab: string
 }
 
+function ImportInvoicesWidget({ buildingId, buildingName }: { buildingId: string; buildingName: string }) {
+  const [file, setFile] = useState('vyuctovani2024 (20).xlsx')
+  const [sheet, setSheet] = useState('faktury')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const runImport = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      setResult(null)
+      const url = `/api/buildings/${buildingId}/import/invoices?file=${encodeURIComponent(file)}&sheet=${encodeURIComponent(sheet)}`
+      const res = await fetch(url, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Import selhal')
+      setResult(data)
+    } catch (e: any) {
+      setError(e.message || 'Chyba importu')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex flex-col md:flex-row gap-3 items-start md:items-end">
+        <div>
+          <label className="block text-sm font-medium text-gray-900">Soubor v public</label>
+          <input
+            className="mt-1 w-80 px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900"
+            value={file}
+            onChange={(e) => setFile(e.target.value)}
+            placeholder="vyuctovani2024 (19).xlsx"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-900">List</label>
+          <input
+            className="mt-1 w-48 px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900"
+            value={sheet}
+            onChange={(e) => setSheet(e.target.value)}
+            placeholder="faktury"
+          />
+        </div>
+        <button
+          onClick={runImport}
+          disabled={loading}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-60"
+        >
+          {loading ? 'Importuji…' : 'Načíst faktury z public'}
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              setLoading(true)
+              setError(null)
+              setResult(null)
+              const url = `/api/import/public/complete?file=${encodeURIComponent(file)}&buildingName=${encodeURIComponent(buildingName)}`
+              const res = await fetch(url, { method: 'POST' })
+              const data = await res.json()
+              if (!res.ok) throw new Error(data?.error || 'Plný import selhal')
+              setResult(data)
+            } catch (e: any) {
+              setError(e.message || 'Chyba plného importu')
+            } finally {
+              setLoading(false)
+            }
+          }}
+          disabled={loading}
+          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-60"
+        >
+          {loading ? 'Probíhá…' : 'Plný import z public'}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {result && (
+        <div className="mt-3 text-sm text-gray-900">
+          <div>List: <span className="font-medium">{result.sheet}</span></div>
+          <div>Období: <span className="font-medium">{result.period}</span></div>
+          <div>Služby: vytvořeno {result.services?.created ?? 0}, existující {result.services?.existing ?? 0} (celkem {result.services?.total ?? 0})</div>
+          <div>Náklady: vytvořeno {result.costs?.created ?? 0} (celkem {result.costs?.total ?? 0})</div>
+          {result.warnings && result.warnings.length > 0 && (
+            <ul className="mt-2 list-disc ml-6 text-yellow-800">
+              {result.warnings.map((w: string, i: number) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function BuildingDetailTabs({ building, uniqueOwners, payments, tab }: BuildingDetailTabsProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set())
   const [showUnitFilter, setShowUnitFilter] = useState(false)
+
+  // Kontrola, zda building existuje
+  if (!building) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-500">Budova nebyla nalezena.</p>
+      </div>
+    )
+  }
+
+  // Bezpečné přístupy k properties - s fallbackem
+  const buildingUnits = building?.units || []
+  const buildingCosts = building?.costs || []
+  const buildingServices = building?.services || []
+
+  const [servicesState, setServicesState] = useState<any[]>(buildingServices)
+  useEffect(() => { setServicesState(buildingServices) }, [buildingServices])
+
+  const [savingServiceId, setSavingServiceId] = useState<string | null>(null)
+  const saveService = async (serviceId: string, payload: any) => {
+    try {
+      setSavingServiceId(serviceId)
+      const res = await fetch(`/api/buildings/${building.id}/services/${serviceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const updated = await res.json()
+      if (!res.ok) throw new Error(updated?.error || 'Uložení selhalo')
+      setServicesState((prev) => prev.map((s) => (s.id === serviceId ? { ...s, ...updated } : s)))
+    } finally {
+      setSavingServiceId(null)
+    }
+  }
 
   // Toggle výběr jednotky
   const toggleUnit = (unitId: string) => {
@@ -28,7 +161,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
 
   // Vybrat všechny jednotky
   const selectAllUnits = () => {
-    setSelectedUnits(new Set(building.units.map((u: any) => u.id)))
+    setSelectedUnits(new Set(buildingUnits.map((u: any) => u.id)))
   }
 
   // Zrušit výběr všech jednotek
@@ -37,7 +170,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
   }
 
   // Filtrování jednotek
-  const filteredUnits = building.units.filter((unit: any) => {
+  const filteredUnits = buildingUnits.filter((unit: any) => {
     const searchLower = searchTerm.toLowerCase()
     const matchesSearch = (
       unit.unitNumber.toLowerCase().includes(searchLower) ||
@@ -62,7 +195,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
   })
 
   // Filtrování faktur
-  const filteredCosts = building.costs.filter((cost: any) => {
+  const filteredCosts = buildingCosts.filter((cost: any) => {
     const searchLower = searchTerm.toLowerCase()
     return (
       cost.service?.name?.toLowerCase().includes(searchLower) ||
@@ -85,7 +218,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
 
   // Filtrování odečtů podle typu měřidla
   const getFilteredReadings = (meterType: string) => {
-    const readings = building.units.flatMap((unit: any) => 
+    const readings = buildingUnits.flatMap((unit: any) => 
       unit.meters.filter((m: any) => m.type === meterType).flatMap((meter: any) => 
         meter.readings.map((r: any) => ({ ...r, unit, meter }))
       )
@@ -122,6 +255,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                   tab === 'owners' ? 'vlastníky...' :
                   tab === 'invoices' ? 'faktury...' :
                   tab === 'payments' ? 'platby...' :
+                  tab === 'person_months' ? 'jednotky...' :
                   'odečty...'
                 }`}
                 value={searchTerm}
@@ -188,7 +322,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                 </div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-60 overflow-y-auto">
-                {building.units.map((unit: any) => (
+                {buildingUnits.map((unit: any) => (
                   <label
                     key={unit.id}
                     className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer transition-colors"
@@ -207,7 +341,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
               </div>
               {selectedUnits.size > 0 && (
                 <p className="mt-3 text-xs text-gray-900">
-                  Vybráno {selectedUnits.size} z {building.units.length} jednotek
+                  Vybráno {selectedUnits.size} z {buildingUnits.length} jednotek
                 </p>
               )}
             </div>
@@ -221,6 +355,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                 tab === 'owners' ? filteredOwners.length :
                 tab === 'invoices' ? filteredCosts.length :
                 tab === 'payments' ? filteredPayments.length :
+                tab === 'person_months' ? filteredUnits.length :
                 getFilteredReadings(
                   tab === 'hot_water' ? 'HOT_WATER' : 
                   tab === 'cold_water' ? 'COLD_WATER' : 
@@ -340,7 +475,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredOwners.map((owner: any) => {
-                const ownerUnits = building.units.filter((unit: any) => 
+                const ownerUnits = buildingUnits.filter((unit: any) => 
                   unit.ownerships.some((o: any) => o.ownerId === owner.id)
                 )
                 return (
@@ -382,11 +517,16 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold text-gray-900">⚙️ Nastavení služeb a výpočtů</h2>
             </div>
+
+            {/* Import faktur z public */}
+            <div className="mb-6 border border-blue-200 bg-blue-50 rounded-lg p-4">
+              <ImportInvoicesWidget buildingId={building.id} buildingName={building.name} />
+            </div>
             
-            {building.services && building.services.length > 0 ? (
+            {servicesState && servicesState.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                {building.services.map((service: any) => {
-                  const totalCost = building.costs
+                {servicesState.map((service: any) => {
+                  const totalCost = buildingCosts
                     .filter((c: any) => c.serviceId === service.id)
                     .reduce((sum: number, c: any) => sum + c.amount, 0)
                   
@@ -417,40 +557,90 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                         </Link>
                       </div>
                       
-                      <div className="space-y-2 text-sm">
-                        {service.measurementUnit && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-900">Jednotka:</span>
-                            <span className="font-medium text-gray-900">{service.measurementUnit}</span>
-                          </div>
-                        )}
-                        {service.fixedAmountPerUnit && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-900">Částka/jednotku:</span>
-                            <span className="font-medium text-gray-900">
-                              {service.fixedAmountPerUnit.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
-                            </span>
-                          </div>
-                        )}
-                        {service.advancePaymentColumn && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-900">Sloupec záloh:</span>
-                            <span className="font-mono text-xs text-gray-900 bg-gray-100 px-2 py-1 rounded">
-                              {service.advancePaymentColumn}
-                            </span>
-                          </div>
-                        )}
+                      <div className="space-y-3 text-sm">
                         <div className="flex justify-between pt-2 border-t border-gray-200">
                           <span className="text-gray-900">Celkový náklad:</span>
                           <span className="font-semibold text-blue-600">
                             {totalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                           </span>
                         </div>
-                        {!service.showOnStatement && (
-                          <div className="bg-yellow-50 border border-yellow-200 rounded px-2 py-1 text-xs text-yellow-800">
-                            ⚠️ Skryto na výpisu
+
+                        <form
+                          className="grid grid-cols-2 gap-3"
+                          onSubmit={(e) => {
+                            e.preventDefault()
+                            const fd = new FormData(e.currentTarget as HTMLFormElement)
+                            const methodology = String(fd.get('methodology') || service.methodology)
+                            const measurementUnit = String(fd.get('measurementUnit') || '').trim() || null
+                            const unitPriceRaw = String(fd.get('unitPrice') || '').replace(/\s/g, '').replace(',', '.')
+                            const fixedRaw = String(fd.get('fixedAmountPerUnit') || '').replace(/\s/g, '').replace(',', '.')
+                            const unitPrice = unitPriceRaw ? parseFloat(unitPriceRaw) : null
+                            const fixedAmountPerUnit = fixedRaw ? parseFloat(fixedRaw) : null
+                            const showOnStatement = !!fd.get('showOnStatement')
+                            const dataSourceType = String(fd.get('dataSourceType') || '').trim() || null
+                            const unitAttributeName = String(fd.get('unitAttributeName') || '').trim() || null
+
+                            const payload = {
+                              methodology,
+                              measurementUnit,
+                              unitPrice,
+                              fixedAmountPerUnit,
+                              showOnStatement,
+                              dataSourceType,
+                              unitAttributeName,
+                            }
+                            saveService(service.id, payload)
+                          }}
+                        >
+                          <label className="block">
+                            <span className="text-gray-900">Metodika</span>
+                            <select name="methodology" defaultValue={service.methodology} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900">
+                              <option value="OWNERSHIP_SHARE">Vlastnický podíl</option>
+                              <option value="AREA">Podle výměry</option>
+                              <option value="PERSON_MONTHS">Osobo-měsíce</option>
+                              <option value="METER_READING">Podle měřidel</option>
+                              <option value="FIXED_PER_UNIT">Fixní částka/byt</option>
+                              <option value="EQUAL_SPLIT">Rovným dílem</option>
+                              <option value="CUSTOM">Vlastní vzorec</option>
+                            </select>
+                          </label>
+                          <label className="block">
+                            <span className="text-gray-900">Jednotka</span>
+                            <input name="measurementUnit" defaultValue={service.measurementUnit || ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900" />
+                          </label>
+                          <label className="block">
+                            <span className="text-gray-900">Cena za jednotku</span>
+                            <input name="unitPrice" defaultValue={service.unitPrice ?? ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900" />
+                          </label>
+                          <label className="block">
+                            <span className="text-gray-900">Fixní částka/byt</span>
+                            <input name="fixedAmountPerUnit" defaultValue={service.fixedAmountPerUnit ?? ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900" />
+                          </label>
+                          <label className="block">
+                            <span className="text-gray-900">Zdroj dat</span>
+                            <select name="dataSourceType" defaultValue={service.dataSourceType || ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900">
+                              <option value="">—</option>
+                              <option value="METER_DATA">Měřidla</option>
+                              <option value="UNIT_ATTRIBUTE">Atribut jednotky</option>
+                              <option value="PERSON_MONTHS">Osobo-měsíce</option>
+                              <option value="UNIT_COUNT">Počet jednotek</option>
+                              <option value="NONE">Bez zdroje</option>
+                            </select>
+                          </label>
+                          <label className="block">
+                            <span className="text-gray-900">Atribut jednotky</span>
+                            <input name="unitAttributeName" defaultValue={service.unitAttributeName || ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900" />
+                          </label>
+                          <label className="flex items-center gap-2 col-span-2">
+                            <input type="checkbox" name="showOnStatement" defaultChecked={service.showOnStatement} className="h-4 w-4" />
+                            <span className="text-gray-900">Zobrazit na výpise</span>
+                          </label>
+                          <div className="col-span-2 flex justify-end">
+                            <button type="submit" className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60" disabled={savingServiceId === service.id}>
+                              {savingServiceId === service.id ? 'Ukládám…' : 'Uložit nastavení'}
+                            </button>
                           </div>
-                        )}
+                        </form>
                       </div>
                     </div>
                   )
@@ -615,6 +805,128 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
         </div>
       )}
 
+      {/* POČET OSOB (OSOBO-MĚSÍCE) */}
+      {tab === 'person_months' && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Počet osob v jednotkách</h2>
+            <div className="text-sm text-gray-900">
+              Importováno ze záložky Evidence (sloupce N, O, P)
+            </div>
+          </div>
+          
+          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="font-semibold text-gray-900 mb-2">📊 Jak funguje výpočet osobo-měsíců?</h3>
+            <ul className="text-sm text-gray-900 space-y-1">
+              <li>• <strong>Počet osob</strong> (sloupec N) - kolik osob bydlí v jednotce</li>
+              <li>• <strong>Evidence od</strong> (sloupec O) - od kdy jsou osoby evidovány</li>
+              <li>• <strong>Evidence do</strong> (sloupec P) - do kdy jsou osoby evidovány</li>
+              <li>• Systém automaticky vypočítá osobo-měsíce pro každý měsíc v období</li>
+              <li>• Použití: Rozúčtování služeb podle počtu osob (např. voda, odvoz odpadu)</li>
+            </ul>
+          </div>
+
+          {filteredUnits.length === 0 ? (
+            <p className="text-gray-900 text-center py-8">
+              {searchTerm ? 'Žádné jednotky nenalezeny' : 'Zatím nejsou žádné jednotky'}
+            </p>
+          ) : (
+            <div className="space-y-6">
+              {filteredUnits.map((unit: any) => {
+                const personMonths = unit.personMonths || []
+                
+                // Seskupit podle roku
+                const groupedByYear = personMonths.reduce((acc: any, pm: any) => {
+                  if (!acc[pm.year]) acc[pm.year] = []
+                  acc[pm.year].push(pm)
+                  return acc
+                }, {})
+                
+                // Získat roky v sestupném pořadí
+                const years = Object.keys(groupedByYear).map(Number).sort((a, b) => b - a)
+                
+                return (
+                  <div key={unit.id} className="border border-gray-200 rounded-lg p-6 bg-white">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          Jednotka {unit.unitNumber}
+                        </h3>
+                        {unit.ownerships[0] && (
+                          <p className="text-sm text-gray-900">
+                            {unit.ownerships[0].owner.firstName} {unit.ownerships[0].owner.lastName}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-gray-900">Aktuální počet osob</div>
+                        <div className="text-2xl font-bold text-blue-600">
+                          {unit.residents || 0}
+                        </div>
+                      </div>
+                    </div>
+
+                    {personMonths.length === 0 ? (
+                      <div className="text-center py-4 bg-gray-50 rounded-lg">
+                        <p className="text-gray-900 text-sm">
+                          Zatím nejsou importována data o počtu osob pro tuto jednotku
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {years.map(year => {
+                          const yearMonths = groupedByYear[year].sort((a: any, b: any) => a.month - b.month)
+                          const totalPersonMonths = yearMonths.reduce((sum: number, pm: any) => sum + pm.personCount, 0)
+                          
+                          return (
+                            <div key={year} className="border border-gray-200 rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="font-semibold text-gray-900">Rok {year}</h4>
+                                <div className="text-sm text-gray-900">
+                                  Celkem: <span className="font-bold text-blue-600">{totalPersonMonths}</span> osobo-měsíců
+                                </div>
+                              </div>
+                              
+                              <div className="grid grid-cols-12 gap-2">
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => {
+                                  const monthData = yearMonths.find((pm: any) => pm.month === month)
+                                  const personCount = monthData?.personCount || 0
+                                  const hasData = !!monthData
+                                  
+                                  return (
+                                    <div 
+                                      key={month}
+                                      className={`text-center p-2 rounded ${
+                                        hasData 
+                                          ? 'bg-blue-100 border border-blue-300' 
+                                          : 'bg-gray-50 border border-gray-200'
+                                      }`}
+                                    >
+                                      <div className="text-xs text-gray-900 mb-1">
+                                        {month}.
+                                      </div>
+                                      <div className={`text-lg font-bold ${
+                                        hasData ? 'text-blue-600' : 'text-gray-400'
+                                      }`}>
+                                        {personCount}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* VYÚČTOVÁNÍ */}
       {tab === 'billing' && (
         <div>
@@ -676,56 +988,9 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
         <div>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Měsíční předpis záloh</h2>
-            <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors text-sm">
-              📥 Import z Excelu
-            </button>
           </div>
           
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-            <svg className="h-16 w-16 text-yellow-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Tabulka předpisu záloh po měsících</h3>
-            <p className="text-gray-900 mb-4">
-              Zobrazuje, kolik měla každá jednotka platit za jednotlivé služby v každém měsíci roku.
-            </p>
-            <p className="text-sm text-gray-900 mb-4">
-              Data se načítají z Excelu (list &quot;Předpis po měsíci&quot;) nebo se mohou zadávat ručně.
-            </p>
-            <div className="bg-white border border-yellow-300 rounded-lg p-4 text-left max-w-2xl mx-auto">
-              <h4 className="font-semibold text-gray-900 mb-2">Příklad struktury:</h4>
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-gray-900">Jednotka</th>
-                    <th className="px-3 py-2 text-left text-gray-900">Služba</th>
-                    <th className="px-3 py-2 text-right text-gray-900">Leden</th>
-                    <th className="px-3 py-2 text-right text-gray-900">Únor</th>
-                    <th className="px-3 py-2 text-right text-gray-900">...</th>
-                    <th className="px-3 py-2 text-right text-gray-900">Celkem</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-t">
-                    <td className="px-3 py-2 text-gray-900">318/01</td>
-                    <td className="px-3 py-2 text-gray-900">Vodné</td>
-                    <td className="px-3 py-2 text-right text-gray-900">150 Kč</td>
-                    <td className="px-3 py-2 text-right text-gray-900">150 Kč</td>
-                    <td className="px-3 py-2 text-right text-gray-900">...</td>
-                    <td className="px-3 py-2 text-right font-semibold text-gray-900">1 800 Kč</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-6">
-              <button className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
-                📥 Import předpisu z Excelu
-              </button>
-              <p className="text-xs text-gray-900 mt-2">
-                Systém načte list &quot;Předpis po měsíci&quot; a automaticky vytvoří tabulku
-              </p>
-            </div>
-          </div>
+          <AdvancesMatrix buildingId={building.id} />
         </div>
       )}
 
@@ -757,7 +1022,9 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
               <tbody className="divide-y divide-gray-200">
                 {filteredUnits.map((unit: any) => {
                   const ownership = unit.ownerships[0]
-                  const ownershipPercent = ((unit.shareNumerator / unit.shareDenominator) * 100).toFixed(3)
+                  const shareNum = unit.shareNumerator ?? 0
+                  const shareDen = unit.shareDenominator === 0 ? 1 : (unit.shareDenominator ?? 1)
+                  const ownershipPercent = ((shareNum / shareDen) * 100).toFixed(3)
                   const activeMeters = unit.meters.filter((m: any) => m.isActive)
                   const personMonths = unit.personMonths?.reduce((sum: number, pm: any) => sum + pm.personCount, 0) || 0
                   
@@ -781,10 +1048,10 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                         <div className="text-xs text-gray-900">{unit.shareNumerator}/{unit.shareDenominator}</div>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="font-medium text-gray-900">{unit.totalArea.toFixed(2)} m²</div>
+                        <div className="font-medium text-gray-900">{(unit.totalArea ?? 0).toFixed(2)} m²</div>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="text-gray-900">{unit.floorArea.toFixed(2)} m²</div>
+                        <div className="text-gray-900">{(unit.floorArea ?? 0).toFixed(2)} m²</div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="text-gray-900">{unit.residents || 0}</div>
@@ -826,13 +1093,17 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                   <td className="px-4 py-3 text-gray-900">CELKEM</td>
                   <td className="px-4 py-3 text-gray-900">{filteredUnits.length} jednotek</td>
                   <td className="px-4 py-3 text-right text-gray-900">
-                    {filteredUnits.reduce((sum: number, u: any) => sum + (u.shareNumerator / u.shareDenominator), 0).toFixed(3)}%
+                    {filteredUnits.reduce((sum: number, u: any) => {
+                      const sn = u.shareNumerator ?? 0
+                      const sd = u.shareDenominator === 0 ? 1 : (u.shareDenominator ?? 1)
+                      return sum + (sn / sd)
+                    }, 0).toFixed(3)}%
                   </td>
                   <td className="px-4 py-3 text-right text-gray-900">
-                    {filteredUnits.reduce((sum: number, u: any) => sum + u.totalArea, 0).toFixed(2)} m²
+                    {filteredUnits.reduce((sum: number, u: any) => sum + (u.totalArea ?? 0), 0).toFixed(2)} m²
                   </td>
                   <td className="px-4 py-3 text-right text-gray-900">
-                    {filteredUnits.reduce((sum: number, u: any) => sum + u.floorArea, 0).toFixed(2)} m²
+                    {filteredUnits.reduce((sum: number, u: any) => sum + (u.floorArea ?? 0), 0).toFixed(2)} m²
                   </td>
                   <td className="px-4 py-3 text-right text-gray-900">
                     {filteredUnits.reduce((sum: number, u: any) => sum + (u.residents || 0), 0)}
@@ -862,6 +1133,211 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
           </div>
         </div>
       )}
+
+      {/* Test výpočetního enginu */}
+      {tab === 'calc_test' && (
+        <CalculationEngineTest
+          buildingId={building.id}
+          services={buildingServices.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            code: s.code,
+            dataSourceType: s.dataSourceType,
+            dataSourceName: s.dataSourceName,
+            unitAttributeName: s.unitAttributeName,
+          }))}
+        />
+      )}
+
+      {/* Generování vyúčtování */}
+      {tab === 'billing' && (
+        <BillingGenerator
+          buildingId={building.id}
+          buildingName={building.name}
+          services={buildingServices.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            code: s.code,
+          }))}
+          costs={buildingCosts.map((c: any) => ({
+            period: c.period,
+            serviceId: c.serviceId,
+            amount: c.amount,
+          }))}
+        />
+      )}
+
+      {/* Výsledky vyúčtování */}
+      {tab === 'results' && <BillingResultsViewerWrapper buildingId={building.id} />}
     </div>
   )
 }
+
+// Wrapper pro BillingResultsViewer s načítáním dat
+function BillingResultsViewerWrapper({ buildingId }: { buildingId: string }) {
+  const [billingPeriods, setBillingPeriods] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function loadBillingPeriods() {
+      try {
+        setLoading(true)
+        const response = await fetch(`/api/buildings/${buildingId}/billing-periods`)
+        if (!response.ok) throw new Error('Failed to load billing periods')
+        const data = await response.json()
+        setBillingPeriods(data)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error')
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadBillingPeriods()
+  }, [buildingId])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-gray-500">Načítám vyúčtování...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-red-800">Chyba: {error}</p>
+      </div>
+    )
+  }
+
+  return <BillingResultsViewer buildingId={buildingId} billingPeriods={billingPeriods} />
+}
+
+// Nový modul matice předpisů
+function AdvancesMatrix({ buildingId }: { buildingId: string }) {
+  const [year, setYear] = useState<number>(new Date().getFullYear())
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [units, setUnits] = useState<any[]>([])
+  const [services, setServices] = useState<any[]>([])
+  const [data, setData] = useState<Record<string, Record<string, { months: number[]; total: number }>>>({})
+  const [paid, setPaid] = useState<Record<string, Record<string, number>>>({})
+
+  async function load() {
+    try {
+      setLoading(true)
+      setError(null)
+      const res = await fetch(`/api/buildings/${buildingId}/advances?year=${year}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.message || 'Nepodařilo se načíst předpisy')
+      setUnits(json.units)
+      setServices(json.services)
+      setData(json.data)
+      setPaid(json.paidByUnitService || {})
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Chyba při načítání')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [buildingId, year])
+
+  const updateAllMonths = async (unitId: string, serviceId: string, amount: number) => {
+    const res = await fetch(`/api/buildings/${buildingId}/advances`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unitId, serviceId, year, amount, mode: 'all' })
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      throw new Error(j?.message || 'Uložení selhalo')
+    }
+    // Refresh
+    await load()
+  }
+
+  if (loading) return <div className="text-gray-500">Načítám předpisy…</div>
+  if (error) return <div className="bg-red-50 border border-red-200 rounded p-3 text-red-800">{error}</div>
+
+  if (units.length === 0 || services.length === 0) {
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">Zatím nejsou k dispozici předpisy</h3>
+        <p className="text-sm text-gray-900">Zadejte je ručně nebo je importujte z Excelu.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <label className="text-sm text-gray-900">Rok:</label>
+        <input type="number" value={year} onChange={(e) => setYear(parseInt(e.target.value || String(new Date().getFullYear()), 10))} className="w-24 px-2 py-1 border border-gray-300 rounded text-gray-900" />
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">Jednotka</th>
+              {services.map((s) => (
+                <th key={s.id} className="px-4 py-3 text-right text-xs font-medium text-gray-900 uppercase">{s.name}</th>
+              ))}
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 uppercase">Předepsáno celkem</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 uppercase">Uhrazeno celkem</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {units.map((u) => {
+              const unitRowTotals = services.reduce((sum, s) => sum + (data[u.id]?.[s.id]?.total || 0), 0)
+              const unitPaidTotal = services.reduce((sum, s) => sum + (paid[u.id]?.[s.id] || 0), 0)
+              return (
+                <tr key={u.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                    {u.unitNumber}
+                    {u.variableSymbol && <span className="ml-2 text-xs text-gray-500">VS: {u.variableSymbol}</span>}
+                  </td>
+                  {services.map((s) => {
+                    const cell = data[u.id]?.[s.id]
+                    const total = cell?.total || 0
+                    const paidSrv = paid[u.id]?.[s.id] || 0
+                    // jednoduché editační pole na nastavení všech měsíců
+                    return (
+                      <td key={s.id} className="px-4 py-3 text-right align-middle">
+                        <div className="flex items-center justify-end gap-2">
+                          <input
+                            type="number"
+                            placeholder="měsíc"
+                            className="w-24 px-2 py-1 border border-gray-300 rounded text-right text-gray-900"
+                            defaultValue={cell ? Math.round((total / 12) * 100) / 100 : 0}
+                            onBlur={async (e) => {
+                              const val = parseFloat(e.target.value)
+                              if (isNaN(val)) return
+                              try { await updateAllMonths(u.id, s.id, val) } catch (err) { alert(err instanceof Error ? err.message : 'Uložení selhalo') }
+                            }}
+                          />
+                          <div className="text-xs text-gray-500 w-28 text-right">
+                            {(total).toLocaleString('cs-CZ')} Kč
+                            <div className="text-[10px] text-green-700">uhrazeno {(paidSrv).toLocaleString('cs-CZ')}</div>
+                          </div>
+                        </div>
+                      </td>
+                    )
+                  })}
+                  <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">{unitRowTotals.toLocaleString('cs-CZ')} Kč</td>
+                  <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">{unitPaidTotal.toLocaleString('cs-CZ')} Kč</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="text-xs text-gray-500">Tip: do pole zadejte měsíční částku a klikněte mimo – nastaví se pro všech 12 měsíců.</div>
+    </div>
+  )
+}
+
