@@ -159,8 +159,10 @@ export async function POST(req: NextRequest) {
     // 1. NAJÍT NEBO VYTVOŘIT DŮM
     const finalBuildingName = buildingName || 'Importovaná budova ' + new Date().toLocaleDateString('cs-CZ')
     
-    // Načíst adresu ze záložky "Vstupní data" z buňky B3
+    // Načíst adresu a období ze záložky "Vstupní data"
     let buildingAddress = 'Adresu upravte v detailu budovy'
+    let billingPeriod = year // Defaultní období z parametru year
+    
     const inputDataSheetName = workbook.SheetNames.find(name => 
       name.toLowerCase().includes('vstupní') || name.toLowerCase().includes('vstupni') || name.toLowerCase().includes('input')
     )
@@ -169,11 +171,25 @@ export async function POST(req: NextRequest) {
       const inputSheet = workbook.Sheets[inputDataSheetName]
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawData = utils.sheet_to_json<any[]>(inputSheet, { header: 1, defval: '' })
-      // B3 = row index 2, column index 1
+      
+      // B3 = row index 2, column index 1 (adresa)
       if (rawData.length > 2 && rawData[2] && rawData[2][1]) {
         const addressValue = String(rawData[2][1]).trim()
         if (addressValue) {
           buildingAddress = addressValue
+        }
+      }
+      
+      // B12 = row index 11, column index 1 (období)
+      if (rawData.length > 11 && rawData[11] && rawData[11][1]) {
+        const periodValue = String(rawData[11][1]).trim()
+        if (periodValue) {
+          // Očekáváme formát RRRR nebo číslo roku
+          const periodMatch = periodValue.match(/(\d{4})/)
+          if (periodMatch) {
+            billingPeriod = periodMatch[1]
+            console.log(`[Import] Načteno období z B12: ${billingPeriod}`)
+          }
         }
       }
     }
@@ -350,12 +366,17 @@ export async function POST(req: NextRequest) {
               })
             }
             
+            const calculationMethod = methodology.toLowerCase().includes('měřidl') || methodology.toLowerCase().includes('odečet') ? 'METER_READING' :
+                                      methodology.toLowerCase().includes('byt') || methodology.toLowerCase().includes('jednotk') ? 'FIXED_PER_UNIT' :
+                                      methodology.toLowerCase().includes('rovn') ? 'EQUAL_SPLIT' :
+                                      methodology.toLowerCase().includes('podíl') ? 'OWNERSHIP_SHARE' : 'OWNERSHIP_SHARE'
+            
             service = await prisma.service.create({
               data: {
                 buildingId: building.id,
                 name: serviceName,
                 code: uniqueCode,
-                methodology: methodology || 'vlastnický podíl',
+                methodology: calculationMethod as any,
                 measurementUnit: methodology.includes('měřidlo') ? 'kWh' : null,
                 isActive: true,
                 order: summary.services.total
@@ -367,15 +388,15 @@ export async function POST(req: NextRequest) {
           }
           summary.services.total++
 
-          // Vytvořit náklad
+          // Vytvořit náklad - použít období z B12
           await prisma.cost.create({
             data: {
               buildingId: building.id,
               serviceId: service.id,
               amount,
               description: `Import z Excelu - ${serviceName}`,
-              invoiceDate: new Date(`${year}-12-31`),
-              period: parseInt(year)
+              invoiceDate: new Date(`${billingPeriod}-12-31`),
+              period: parseInt(billingPeriod)
             }
           })
           summary.costs.created++
@@ -522,7 +543,7 @@ export async function POST(req: NextRequest) {
                 data: {
                   unitId: unit.id,
                   ownerId: owner.id,
-                  validFrom: new Date(`${year}-01-01`),
+                  validFrom: new Date(`${billingPeriod}-01-01`),
                   sharePercent: 100
                 }
               })
@@ -549,7 +570,7 @@ export async function POST(req: NextRequest) {
               buildingId: building.id,
               name: METER_TYPE_LABELS[meterType],
               code: meterType,
-              methodology: 'měřidla',
+              methodology: 'METER_READING' as any,
               measurementUnit: meterType === 'HEATING' ? 'kWh' : meterType.includes('WATER') ? 'm³' : 'kWh',
               isActive: true
             }
@@ -570,19 +591,19 @@ export async function POST(req: NextRequest) {
               initialReading,
               serviceId: service.id,
               isActive: true,
-              installedAt: new Date(`${year}-01-01`)
+              installedAt: new Date(`${billingPeriod}-01-01`)
             }
           })
         }
 
-        // Vytvořit odečet
+        // Vytvořit odečet - použít období z B12
         await prisma.meterReading.create({
           data: {
             meterId: meter.id,
-            readingDate: new Date(`${year}-12-31`),
+            readingDate: new Date(`${billingPeriod}-12-31`),
             value: finalReading,
             consumption,
-            period: parseInt(year),
+            period: parseInt(billingPeriod),
             note: `Import z Excelu - ${ownerName}`
           }
         })
@@ -664,8 +685,8 @@ export async function POST(req: NextRequest) {
 
             console.log(`[Platby] Jednotka ${unitNumber}, měsíc ${month}: ${amount} Kč`)
 
-            // Vytvořit platbu pro daný měsíc
-            const paymentDate = new Date(parseInt(year), month - 1, 15)
+            // Vytvořit platbu pro daný měsíc - použít období z B12
+            const paymentDate = new Date(parseInt(billingPeriod), month - 1, 15)
             
             await prisma.payment.create({
               data: {
@@ -673,8 +694,8 @@ export async function POST(req: NextRequest) {
                 amount,
                 paymentDate,
                 variableSymbol: unit.variableSymbol,
-                period: parseInt(year),
-                description: `Úhrada záloh ${month.toString().padStart(2, '0')}/${year}`
+                period: parseInt(billingPeriod),
+                description: `Úhrada záloh ${month.toString().padStart(2, '0')}/${billingPeriod}`
               }
             })
             summary.payments.created++
@@ -690,7 +711,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Úspěšně importováno kompletní vyúčtování pro rok ${year}`,
+      message: `Úspěšně importováno kompletní vyúčtování pro rok ${billingPeriod}`,
       summary
     })
 

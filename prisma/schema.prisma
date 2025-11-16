@@ -173,11 +173,14 @@ model Service {
   buildingId          String
   name                String              // např. "Teplo", "TUV", "Správa"
   code                String              // zkratka
-  methodology         String              // způsob rozúčtování (podíl, měřidla, osoby, atd.)
+  methodology         CalculationMethod   @default(OWNERSHIP_SHARE) // způsob rozúčtování
   measurementUnit     String?             // jednotka měření (m³, kWh, osobo-měsíc)
   unitPrice           Float?              // cena za jednotku
+  fixedAmountPerUnit  Float?              // fixní částka na jednotku (např. Kč/byt)
+  advancePaymentColumn String?            // odkaz na sloupec v předpisu záloh
   order               Int                 @default(0)
   isActive            Boolean             @default(true)
+  showOnStatement     Boolean             @default(true) // zobrazit na výpisu
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
@@ -189,6 +192,18 @@ model Service {
 
   @@unique([buildingId, code])
   @@map("services")
+}
+
+// Způsoby výpočtu služeb
+enum CalculationMethod {
+  OWNERSHIP_SHARE  // Podle vlastnického podílu
+  AREA             // Podle podlahové plochy
+  PERSON_MONTHS    // Podle počtu osob (osobo-měsíců)
+  METER_READING    // Podle odečtu měřidel
+  FIXED_PER_UNIT   // Fixní částka na byt (dle počtu jednotek)
+  EQUAL_SPLIT      // Rovným dílem
+  NO_BILLING       // Nevyúčtovávat (např. Fond oprav)
+  CUSTOM           // Vlastní vzorec
 }
 
 // Náklad (faktura) na dům

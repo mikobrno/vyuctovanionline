@@ -89,7 +89,7 @@ export default function BuildingForm({ building }: BuildingFormProps) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="name" className="block text-sm font-medium text-gray-900 mb-2">
               Název domu *
             </label>
             <input
@@ -105,7 +105,7 @@ export default function BuildingForm({ building }: BuildingFormProps) {
           </div>
 
           <div>
-            <label htmlFor="ico" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="ico" className="block text-sm font-medium text-gray-900 mb-2">
               IČO
             </label>
             <input
@@ -120,7 +120,7 @@ export default function BuildingForm({ building }: BuildingFormProps) {
           </div>
 
           <div>
-            <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="address" className="block text-sm font-medium text-gray-900 mb-2">
               Adresa *
             </label>
             <input
@@ -136,7 +136,7 @@ export default function BuildingForm({ building }: BuildingFormProps) {
           </div>
 
           <div>
-            <label htmlFor="city" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="city" className="block text-sm font-medium text-gray-900 mb-2">
               Město *
             </label>
             <input
@@ -152,7 +152,7 @@ export default function BuildingForm({ building }: BuildingFormProps) {
           </div>
 
           <div>
-            <label htmlFor="zip" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="zip" className="block text-sm font-medium text-gray-900 mb-2">
               PSČ *
             </label>
             <input
@@ -168,7 +168,7 @@ export default function BuildingForm({ building }: BuildingFormProps) {
           </div>
 
           <div>
-            <label htmlFor="bankAccount" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="bankAccount" className="block text-sm font-medium text-gray-900 mb-2">
               Číslo účtu
             </label>
             <input
@@ -187,7 +187,7 @@ export default function BuildingForm({ building }: BuildingFormProps) {
       <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-4">
         <Link
           href={building ? `/buildings/${building.id}` : '/buildings'}
-          className="px-6 py-2 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
+          className="px-6 py-2 border border-gray-300 rounded-lg font-semibold text-gray-900 hover:bg-gray-100 transition-colors"
         >
           Zrušit
         </Link>

@@ -33,7 +33,7 @@ export default async function EditBuildingPage({ params }: { params: Promise<{ i
           <h1 className="text-3xl font-bold text-gray-900">
             Upravit dům
           </h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-gray-900">
             Aktualizace údajů bytového domu
           </p>
         </div>

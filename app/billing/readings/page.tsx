@@ -18,7 +18,7 @@ export default async function ReadingsPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8 flex justify-between items-start">
           <div>
-            <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
+            <div className="flex items-center gap-2 text-sm text-gray-900 mb-4">
               <Link href="/billing" className="hover:text-blue-600">Vyúčtování</Link>
               <span>/</span>
               <span className="text-gray-900">Odečty</span>
@@ -26,7 +26,7 @@ export default async function ReadingsPage() {
             <h1 className="text-3xl font-bold text-gray-900">
               Odečty měřidel
             </h1>
-            <p className="mt-2 text-gray-600">
+            <p className="mt-2 text-gray-900">
               Zaznamenejte konečné stavy všech vodoměrů a topných měřičů
             </p>
           </div>
@@ -42,7 +42,7 @@ export default async function ReadingsPage() {
         </div>
 
         <div className="bg-white rounded-lg shadow p-6">
-          <p className="text-gray-600 mb-4">
+          <p className="text-gray-900 mb-4">
             Pro zadávání odečtů nejdříve vytvořte měřidla u jednotek nebo použijte import z Excelu.
           </p>
           <div className="flex gap-4">

@@ -101,7 +101,7 @@ export default async function BuildingDetailPage({
           <div className="flex items-center gap-4 mb-4">
             <Link 
               href="/buildings"
-              className="text-gray-400 hover:text-gray-600"
+              className="text-gray-400 hover:text-gray-900"
             >
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -111,7 +111,7 @@ export default async function BuildingDetailPage({
               <h1 className="text-3xl font-bold text-gray-900">
                 {building.name}
               </h1>
-              <p className="mt-2 text-gray-600">
+              <p className="mt-2 text-gray-900">
                 {building.address}, {building.city}
               </p>
             </div>
@@ -129,7 +129,7 @@ export default async function BuildingDetailPage({
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">Jednotek</p>
+                <p className="text-sm font-medium text-gray-900">Jednotek</p>
                 <p className="mt-2 text-3xl font-bold text-gray-900">{building._count.units}</p>
               </div>
               <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -143,7 +143,7 @@ export default async function BuildingDetailPage({
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">Vlastníků</p>
+                <p className="text-sm font-medium text-gray-900">Vlastníků</p>
                 <p className="mt-2 text-3xl font-bold text-gray-900">{uniqueOwners.length}</p>
               </div>
               <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -157,7 +157,7 @@ export default async function BuildingDetailPage({
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">Služeb</p>
+                <p className="text-sm font-medium text-gray-900">Služeb</p>
                 <p className="mt-2 text-3xl font-bold text-gray-900">{building._count.services}</p>
               </div>
               <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -171,7 +171,7 @@ export default async function BuildingDetailPage({
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">Celková výměra</p>
+                <p className="text-sm font-medium text-gray-900">Celková výměra</p>
                 <p className="mt-2 text-2xl font-bold text-gray-900">
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {building.units.reduce((sum: number, unit: any) => sum + unit.totalArea, 0).toFixed(1)} m²
@@ -195,7 +195,7 @@ export default async function BuildingDetailPage({
                 className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'units'
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
                 }`}
               >
                 🏠 Jednotky
@@ -205,7 +205,7 @@ export default async function BuildingDetailPage({
                 className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'owners'
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
                 }`}
               >
                 👥 Vlastníci ({uniqueOwners.length})
@@ -215,7 +215,7 @@ export default async function BuildingDetailPage({
                 className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'invoices'
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
                 }`}
               >
                 🧾 Faktury
@@ -225,7 +225,7 @@ export default async function BuildingDetailPage({
                 className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'hot_water'
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
                 }`}
               >
                 💧 Odečty TUV
@@ -235,7 +235,7 @@ export default async function BuildingDetailPage({
                 className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'cold_water'
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
                 }`}
               >
                 ❄️ Odečty SV
@@ -245,7 +245,7 @@ export default async function BuildingDetailPage({
                 className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'heating'
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
                 }`}
               >
                 🔥 Teplo
@@ -255,17 +255,37 @@ export default async function BuildingDetailPage({
                 className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'payments'
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
                 }`}
               >
                 💳 Platby
+              </Link>
+              <Link
+                href={`/buildings/${building.id}?tab=advances`}
+                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                  tab === 'advances'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
+                }`}
+              >
+                📅 Předpis po měsíci
+              </Link>
+              <Link
+                href={`/buildings/${building.id}?tab=parameters`}
+                className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
+                  tab === 'parameters'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
+                }`}
+              >
+                ⚙️ Parametry
               </Link>
               <Link
                 href={`/buildings/${building.id}?tab=billing`}
                 className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'billing'
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
                 }`}
               >
                 📊 Vyúčtování

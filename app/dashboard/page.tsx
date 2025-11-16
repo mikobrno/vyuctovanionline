@@ -21,7 +21,7 @@ export default async function DashboardPage() {
           <h1 className="text-3xl font-bold text-gray-900">
             Vítejte, {session.user.name || session.user.email}
           </h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-gray-900">
             Přehled systému pro vyúčtování služeb
           </p>
         </div>
@@ -33,7 +33,7 @@ export default async function DashboardPage() {
           <h2 className="text-xl font-semibold text-gray-900 mb-4">
             📊 Rychlý import dat z Excelu
           </h2>
-          <p className="text-gray-600 mb-4">
+          <p className="text-gray-900 mb-4">
             Nahrajte svůj Excel soubor a systém automaticky načte všechna data (faktury, odečty, platby)
           </p>
           <CompleteImport />
@@ -51,7 +51,7 @@ export default async function DashboardPage() {
                 className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <h3 className="font-medium text-gray-900">Správa domů</h3>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-sm text-gray-900 mt-1">
                   Přidat nebo upravit bytové domy
                 </p>
               </a>
@@ -60,7 +60,7 @@ export default async function DashboardPage() {
                 className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <h3 className="font-medium text-gray-900">Jednotky</h3>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-sm text-gray-900 mt-1">
                   Evidence bytů a vlastníků
                 </p>
               </a>
@@ -69,7 +69,7 @@ export default async function DashboardPage() {
                 className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <h3 className="font-medium text-gray-900">Vyúčtování</h3>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-sm text-gray-900 mt-1">
                   Spustit výpočet vyúčtování
                 </p>
               </a>
@@ -94,7 +94,7 @@ export default async function DashboardPage() {
                   <p className="text-sm font-medium text-gray-900">
                     Systém je připraven
                   </p>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-900">
                     Začněte přidáním bytového domu
                   </p>
                 </div>

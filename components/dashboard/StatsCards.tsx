@@ -58,7 +58,7 @@ export default async function StatsCards() {
         <div key={stat.name} className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">{stat.name}</p>
+              <p className="text-sm font-medium text-gray-900">{stat.name}</p>
               <p className="mt-2 text-3xl font-bold text-gray-900">{stat.value}</p>
             </div>
             <div className={`${stat.color} rounded-lg p-3 text-white`}>

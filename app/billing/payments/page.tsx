@@ -33,7 +33,7 @@ export default async function PaymentsPage() {
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
+          <div className="flex items-center gap-2 text-sm text-gray-900 mb-4">
             <Link href="/billing" className="hover:text-blue-600">Vyúčtování</Link>
             <span>/</span>
             <span className="text-gray-900">Platby</span>
@@ -41,7 +41,7 @@ export default async function PaymentsPage() {
           <h1 className="text-3xl font-bold text-gray-900">
             Evidence plateb
           </h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-gray-900">
             Přehled přijatých plateb záloh
           </p>
         </div>
@@ -50,11 +50,11 @@ export default async function PaymentsPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jednotka</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Částka</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Datum</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">VS</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Období</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Jednotka</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Částka</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Datum</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">VS</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Období</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -75,20 +75,20 @@ export default async function PaymentsPage() {
                   <td className="px-6 py-4 text-sm text-gray-900">
                     {payment.amount.toLocaleString()} Kč
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
+                  <td className="px-6 py-4 text-sm text-gray-900">
                     {new Date(payment.paymentDate).toLocaleDateString('cs-CZ')}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
+                  <td className="px-6 py-4 text-sm text-gray-900">
                     {payment.variableSymbol}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
+                  <td className="px-6 py-4 text-sm text-gray-900">
                     {payment.period}
                   </td>
                 </tr>
               ))}
               {payments.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-900">
                     Zatím nejsou zaznamenány žádné platby
                   </td>
                 </tr>

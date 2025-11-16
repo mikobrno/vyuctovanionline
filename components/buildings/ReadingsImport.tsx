@@ -109,7 +109,7 @@ export default function ReadingsImport({ buildingId, year = new Date().getFullYe
   return (
     <div className="mt-8 bg-white rounded-lg shadow p-6">
       <h2 className="text-xl font-semibold text-gray-900 mb-4">📊 Import odečtů z Excelu</h2>
-      <p className="text-gray-600 mb-4">
+      <p className="text-gray-900 mb-4">
         Nahrajte Excel soubor se záložkami odečtů měřidel (rok {year}). Systém načte odečty ze všech záložek: Vodoměry TUV, Vodoměry SV, Teplo, Elektroměry.
       </p>
 
@@ -137,8 +137,8 @@ export default function ReadingsImport({ buildingId, year = new Date().getFullYe
           <p className="text-lg font-medium text-gray-900 mb-2">
             {uploading ? 'Importuji odečty...' : 'Klikněte pro výběr souboru'}
           </p>
-          <p className="text-sm text-gray-600">nebo přetáhněte soubor sem</p>
-          <p className="text-xs text-gray-500 mt-2">Podporované formáty: .xlsx, .xls</p>
+          <p className="text-sm text-gray-900">nebo přetáhněte soubor sem</p>
+          <p className="text-xs text-gray-900 mt-2">Podporované formáty: .xlsx, .xls</p>
         </label>
       </div>
 
@@ -173,16 +173,16 @@ export default function ReadingsImport({ buildingId, year = new Date().getFullYe
                     <table className="min-w-full text-sm">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-2 text-left font-medium text-gray-700">Jednotka</th>
-                          <th className="px-4 py-2 text-left font-medium text-gray-700">Vlastník</th>
-                          <th className="px-4 py-2 text-right font-medium text-gray-700">Spotřeba</th>
+                          <th className="px-4 py-2 text-left font-medium text-gray-900">Jednotka</th>
+                          <th className="px-4 py-2 text-left font-medium text-gray-900">Vlastník</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-900">Spotřeba</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {readings.map((item, index) => (
                           <tr key={index}>
                             <td className="px-4 py-2 font-medium">{item.unitNumber}</td>
-                            <td className="px-4 py-2 text-gray-600">{item.ownerName}</td>
+                            <td className="px-4 py-2 text-gray-900">{item.ownerName}</td>
                             <td className="px-4 py-2 text-right font-mono">
                               {item.consumption.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
                             </td>
@@ -221,7 +221,7 @@ export default function ReadingsImport({ buildingId, year = new Date().getFullYe
             <div>
               <h3 className="text-sm font-semibold text-gray-900 mb-2">Přeskočené položky</h3>
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                <ul className="text-sm text-gray-700 space-y-1">
+                <ul className="text-sm text-gray-900 space-y-1">
                   {result.skipped.map((item, index) => (
                     <li key={index}>• {item}</li>
                   ))}

@@ -43,7 +43,7 @@ export default async function PaymentsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">💳 Přehled úhrad záloh</h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-gray-900">
             Matice zobrazující zaplacené zálohy podle jednotek a měsíců (rok {currentYear})
           </p>
         </div>
@@ -54,25 +54,25 @@ export default async function PaymentsPage() {
               <h2 className="text-xl font-semibold text-gray-900">
                 🏢 {building.name}
               </h2>
-              <p className="text-sm text-gray-600">{building.address}, {building.city}</p>
+              <p className="text-sm text-gray-900">{building.address}, {building.city}</p>
             </div>
 
             <div className="p-6 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50">
-                    <th className="px-4 py-2 text-left font-medium text-gray-700 sticky left-0 bg-gray-50">
+                    <th className="px-4 py-2 text-left font-medium text-gray-900 sticky left-0 bg-gray-50">
                       Jednotka
                     </th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-700">
+                    <th className="px-4 py-2 text-left font-medium text-gray-900">
                       Vlastník
                     </th>
                     {Array.from({ length: 12 }, (_, i) => (
-                      <th key={i} className="px-3 py-2 text-right font-medium text-gray-700 min-w-20">
+                      <th key={i} className="px-3 py-2 text-right font-medium text-gray-900 min-w-20">
                         {new Date(currentYear, i, 1).toLocaleDateString('cs-CZ', { month: 'short' })}
                       </th>
                     ))}
-                    <th className="px-4 py-2 text-right font-medium text-gray-700 bg-gray-100 sticky right-0">
+                    <th className="px-4 py-2 text-right font-medium text-gray-900 bg-gray-100 sticky right-0">
                       Celkem
                     </th>
                   </tr>
@@ -101,7 +101,7 @@ export default async function PaymentsPage() {
                             {unit.unitNumber}
                           </Link>
                         </td>
-                        <td className="px-4 py-2 text-gray-700">
+                        <td className="px-4 py-2 text-gray-900">
                           {currentOwner ? `${currentOwner.firstName} ${currentOwner.lastName}` : '-'}
                         </td>
                         {Array.from({ length: 12 }, (_, i) => {
@@ -177,7 +177,7 @@ export default async function PaymentsPage() {
 
         {buildingsWithPayments.length === 0 && (
           <div className="bg-white rounded-lg shadow p-8 text-center">
-            <p className="text-gray-600">Zatím nejsou evidovány žádné budovy.</p>
+            <p className="text-gray-900">Zatím nejsou evidovány žádné budovy.</p>
             <Link
               href="/buildings/new"
               className="mt-4 inline-block text-blue-600 hover:text-blue-800 font-medium"

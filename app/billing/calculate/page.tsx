@@ -28,7 +28,7 @@ export default async function CalculatePage() {
       
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
+          <div className="flex items-center gap-2 text-sm text-gray-900 mb-4">
             <Link href="/billing" className="hover:text-blue-600">Vyúčtování</Link>
             <span>/</span>
             <span className="text-gray-900">Výpočet</span>
@@ -36,7 +36,7 @@ export default async function CalculatePage() {
           <h1 className="text-3xl font-bold text-gray-900">
             Spustit výpočet vyúčtování
           </h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-gray-900">
             Automatický výpočet ročního vyúčtování služeb
           </p>
         </div>
@@ -46,15 +46,15 @@ export default async function CalculatePage() {
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-blue-50 p-4 rounded-lg">
               <div className="text-2xl font-bold text-blue-600">{costsCount}</div>
-              <div className="text-sm text-gray-600">Nákladů</div>
+              <div className="text-sm text-gray-900">Nákladů</div>
             </div>
             <div className="bg-green-50 p-4 rounded-lg">
               <div className="text-2xl font-bold text-green-600">{paymentsCount}</div>
-              <div className="text-sm text-gray-600">Plateb</div>
+              <div className="text-sm text-gray-900">Plateb</div>
             </div>
             <div className="bg-purple-50 p-4 rounded-lg">
               <div className="text-2xl font-bold text-purple-600">{unitsCount}</div>
-              <div className="text-sm text-gray-600">Jednotek</div>
+              <div className="text-sm text-gray-900">Jednotek</div>
             </div>
           </div>
         </div>

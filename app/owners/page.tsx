@@ -41,7 +41,7 @@ export default async function OwnersPage() {
             <h1 className="text-3xl font-bold text-gray-900">
               Vlastníci
             </h1>
-            <p className="mt-2 text-gray-600">
+            <p className="mt-2 text-gray-900">
               Správa vlastníků jednotek
             </p>
           </div>
@@ -68,7 +68,7 @@ export default async function OwnersPage() {
                 {owner.firstName} {owner.lastName}
               </h3>
               
-              <div className="space-y-2 text-sm text-gray-600 mb-4">
+              <div className="space-y-2 text-sm text-gray-900 mb-4">
                 {owner.email && (
                   <div className="flex items-center">
                     <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -89,10 +89,10 @@ export default async function OwnersPage() {
 
               {owner.ownerships.length > 0 && (
                 <div className="border-t border-gray-200 pt-4">
-                  <p className="text-xs font-medium text-gray-500 mb-2">Vlastní jednotky:</p>
+                  <p className="text-xs font-medium text-gray-900 mb-2">Vlastní jednotky:</p>
                   <div className="space-y-1">
                     {owner.ownerships.map((ownership: (typeof owner.ownerships)[number]) => (
-                      <div key={ownership.id} className="text-sm text-gray-700">
+                      <div key={ownership.id} className="text-sm text-gray-900">
                         {ownership.unit.unitNumber} ({ownership.unit.building.name})
                       </div>
                     ))}
@@ -104,7 +104,7 @@ export default async function OwnersPage() {
                 <button className="flex-1 text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
                   Detail
                 </button>
-                <button className="flex-1 text-gray-600 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                <button className="flex-1 text-gray-900 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
                   Upravit
                 </button>
               </div>

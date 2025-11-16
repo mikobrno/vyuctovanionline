@@ -37,7 +37,7 @@ export default async function ReadingsImportPage() {
       <main className="py-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-8">
-            <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
+            <div className="flex items-center gap-2 text-sm text-gray-900 mb-4">
               <Link href="/billing" className="hover:text-blue-600">Vyúčtování</Link>
               <span>/</span>
               <Link href="/billing/readings" className="hover:text-blue-600">Odečty</Link>
@@ -45,7 +45,7 @@ export default async function ReadingsImportPage() {
               <span className="text-gray-900">Import z Excelu</span>
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Import odečtů z Excelu</h1>
-            <p className="mt-2 text-gray-600">
+            <p className="mt-2 text-gray-900">
               Importujte odečty měřidel ze záložek &quot;Vodoměry TUV&quot;, &quot;Vodoměry SV&quot;, &quot;Teplo&quot; a &quot;Elektroměry&quot;
             </p>
           </div>
@@ -80,7 +80,7 @@ export default async function ReadingsImportPage() {
                     className="p-4 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition"
                   >
                     <h3 className="font-semibold text-gray-900">{building.name}</h3>
-                    <p className="text-sm text-gray-600">{building.address}</p>
+                    <p className="text-sm text-gray-900">{building.address}</p>
                   </a>
                 ))}
               </div>
@@ -89,7 +89,7 @@ export default async function ReadingsImportPage() {
 
           <div className="mt-8 bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">📋 Formát Excel souboru</h2>
-            <div className="prose prose-sm text-gray-600">
+            <div className="prose prose-sm text-gray-900">
               <p>Excel soubor musí obsahovat následující záložky:</p>
               <ul>
                 <li><strong>&quot;Vodoměry TUV&quot;</strong> - odečty teplé vody</li>
@@ -105,7 +105,7 @@ export default async function ReadingsImportPage() {
                 <li><strong>Sloupec H:</strong> Konečný stav (odečtená hodnota)</li>
                 <li><strong>Sloupec I:</strong> Spotřeba za období</li>
               </ul>
-              <p className="text-sm text-gray-500 mt-4">
+              <p className="text-sm text-gray-900 mt-4">
                 Systém automaticky přeskočí prázdné řádky a řádky s nulovou spotřebou.
                 Pokud měřidlo pro jednotku ještě neexistuje, bude automaticky vytvořeno.
               </p>

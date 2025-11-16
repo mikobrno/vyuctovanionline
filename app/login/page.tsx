@@ -56,14 +56,14 @@ export default function LoginPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Vyúčtování Online
           </h1>
-          <p className="text-gray-600">
+          <p className="text-gray-900">
             Systém pro správu vyúčtování SVJ
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="email" className="block text-sm font-medium text-gray-900 mb-2">
               Email
             </label>
             <input
@@ -78,7 +78,7 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="password" className="block text-sm font-medium text-gray-900 mb-2">
               Heslo
             </label>
             <input
@@ -107,7 +107,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-8 text-center text-sm text-gray-600">
+        <div className="mt-8 text-center text-sm text-gray-900">
           <p>Demo účty:</p>
           <p className="mt-2">Admin: admin@vyuctovani.cz / admin123</p>
           <p>Správce: spravce@vyuctovani.cz / spravce123</p>

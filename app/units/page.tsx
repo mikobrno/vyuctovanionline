@@ -45,7 +45,7 @@ export default async function UnitsPage() {
             <h1 className="text-3xl font-bold text-gray-900">
               Jednotky
             </h1>
-            <p className="mt-2 text-gray-600">
+            <p className="mt-2 text-gray-900">
               Správa bytů, garáží a nebytových prostorů
             </p>
           </div>
@@ -61,22 +61,22 @@ export default async function UnitsPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
                   Jednotka
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
                   Vlastník
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
                   Výměra
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
                   Podíl
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
                   VS
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-900 uppercase tracking-wider">
                   Akce
                 </th>
               </tr>
@@ -95,7 +95,7 @@ export default async function UnitsPage() {
                         <div className="text-sm font-medium text-gray-900">
                           {unit.unitNumber}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-gray-900">
                           {unit.building.name}
                         </div>
                       </div>
@@ -107,7 +107,7 @@ export default async function UnitsPage() {
                         <div className="text-sm font-medium text-gray-900">
                           {unit.ownerships[0].owner.firstName} {unit.ownerships[0].owner.lastName}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-gray-900">
                           {unit.ownerships[0].owner.email}
                         </div>
                       </div>
@@ -133,7 +133,7 @@ export default async function UnitsPage() {
                     </Link>
                     <Link
                       href={`/units/${unit.id}/edit`}
-                      className="text-gray-600 hover:text-gray-900"
+                      className="text-gray-900 hover:text-gray-900"
                     >
                       Upravit
                     </Link>

@@ -183,7 +183,7 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
       <h2 className="text-xl font-semibold text-gray-900 mb-4">📊 Nahrát kompletní vyúčtování</h2>
       
       <div className="mb-6">
-        <label htmlFor="buildingName" className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="buildingName" className="block text-sm font-medium text-gray-900 mb-2">
           Název domu (volitelné)
         </label>
         <input
@@ -192,15 +192,15 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
           value={buildingName}
           onChange={(e) => setBuildingName(e.target.value)}
           placeholder="Např. Bytový dům č.p. 318, Brno"
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
         />
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-gray-900">
           Pokud dům s tímto názvem už existuje, použije se. Jinak se vytvoří nový. Pokud necháte prázdné, vytvoří se &quot;Importovaná budova&quot;.
         </p>
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-900 mb-2">
           Rok vyúčtování: <strong>{year}</strong>
         </label>
       </div>
@@ -237,10 +237,10 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
           <p className="text-lg font-medium text-gray-900 mb-2">
             {uploading ? currentStep : 'Klikněte pro výběr souboru'}
           </p>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-900">
             {uploading ? 'Prosím čekejte...' : 'nebo přetáhněte soubor sem'}
           </p>
-          <p className="text-xs text-gray-500 mt-2">Podporované formáty: .xlsx, .xls</p>
+          <p className="text-xs text-gray-900 mt-2">Podporované formáty: .xlsx, .xls</p>
         </label>
       </div>
 

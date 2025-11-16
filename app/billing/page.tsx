@@ -20,7 +20,7 @@ export default async function BillingPage() {
           <h1 className="text-3xl font-bold text-gray-900">
             Vyúčtování
           </h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-gray-900">
             Výpočet a správa ročního vyúčtování služeb
           </p>
         </div>
@@ -42,7 +42,7 @@ export default async function BillingPage() {
                   </div>
                   <div className="ml-4 flex-1">
                     <h3 className="text-sm font-medium text-gray-900">1. Evidence nákladů</h3>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-gray-900 mt-1">
                       Zadejte všechny faktury za služby (teplo, voda, správa, atd.)
                     </p>
                   </div>
@@ -56,7 +56,7 @@ export default async function BillingPage() {
                   </div>
                   <div className="ml-4 flex-1">
                     <h3 className="text-sm font-medium text-gray-900">2. Odečty měřidel</h3>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-gray-900 mt-1">
                       Zaznamenejte konečné stavy všech vodoměrů a topných měřičů
                     </p>
                   </div>
@@ -68,7 +68,7 @@ export default async function BillingPage() {
                   </div>
                   <div className="ml-4 flex-1">
                     <h3 className="text-sm font-medium text-gray-900">3. Evidence plateb</h3>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-gray-900 mt-1">
                       Importujte nebo zadejte platby záloh od vlastníků
                     </p>
                   </div>
@@ -76,11 +76,11 @@ export default async function BillingPage() {
 
                 <div className="flex items-start">
                   <div className="shrink-0 h-8 w-8 bg-gray-100 rounded-full flex items-center justify-center">
-                    <span className="text-gray-600 font-semibold">4</span>
+                    <span className="text-gray-900 font-semibold">4</span>
                   </div>
                   <div className="ml-4 flex-1">
                     <h3 className="text-sm font-medium text-gray-900">4. Spuštění výpočtu</h3>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-gray-900 mt-1">
                       Systém automaticky vypočítá vyúčtování pro všechny jednotky
                     </p>
                   </div>
@@ -88,11 +88,11 @@ export default async function BillingPage() {
 
                 <div className="flex items-start">
                   <div className="shrink-0 h-8 w-8 bg-gray-100 rounded-full flex items-center justify-center">
-                    <span className="text-gray-600 font-semibold">5</span>
+                    <span className="text-gray-900 font-semibold">5</span>
                   </div>
                   <div className="ml-4 flex-1">
                     <h3 className="text-sm font-medium text-gray-900">5. Generování a odeslání</h3>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-gray-900 mt-1">
                       Vygenerujte PDF a odešlete vyúčtování vlastníkům
                     </p>
                   </div>
@@ -114,7 +114,7 @@ export default async function BillingPage() {
                     </svg>
                   </div>
                   <h3 className="font-medium text-gray-900 mb-1">Náklady</h3>
-                  <p className="text-sm text-gray-600">Zadat faktury</p>
+                  <p className="text-sm text-gray-900">Zadat faktury</p>
                 </Link>
 
                 <Link href="/billing/readings" className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left">
@@ -124,7 +124,7 @@ export default async function BillingPage() {
                     </svg>
                   </div>
                   <h3 className="font-medium text-gray-900 mb-1">Odečty</h3>
-                  <p className="text-sm text-gray-600">Zadat měření</p>
+                  <p className="text-sm text-gray-900">Zadat měření</p>
                 </Link>
 
                 <Link href="/billing/payments" className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left">
@@ -134,7 +134,7 @@ export default async function BillingPage() {
                     </svg>
                   </div>
                   <h3 className="font-medium text-gray-900 mb-1">Platby</h3>
-                  <p className="text-sm text-gray-600">Import výpisů</p>
+                  <p className="text-sm text-gray-900">Import výpisů</p>
                 </Link>
 
                 <Link href="/billing/calculate" className="p-4 border-2 border-blue-500 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all text-left">
@@ -144,7 +144,7 @@ export default async function BillingPage() {
                     </svg>
                   </div>
                   <h3 className="font-medium text-gray-900 mb-1">Spustit výpočet</h3>
-                  <p className="text-sm text-gray-600">Vyúčtovat</p>
+                  <p className="text-sm text-gray-900">Vyúčtovat</p>
                 </Link>
               </div>
             </div>
@@ -154,7 +154,7 @@ export default async function BillingPage() {
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Poslední vyúčtování</h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-900">
                 Zatím nebylo provedeno žádné vyúčtování
               </p>
             </div>

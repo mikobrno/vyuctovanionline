@@ -38,7 +38,7 @@ export default async function NewUnitPage({
           <h1 className="text-3xl font-bold text-gray-900">
             Přidat novou jednotku
           </h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-gray-900">
             Vytvořte novou jednotku (byt, garáž, sklep)
           </p>
         </div>

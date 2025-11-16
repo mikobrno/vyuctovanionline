@@ -42,7 +42,7 @@ export default async function EditUnitPage({ params }: { params: Promise<{ id: s
           <h1 className="text-3xl font-bold text-gray-900">
             Upravit jednotku
           </h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-gray-900">
             Aktualizace údajů jednotky {unit.unitNumber}
           </p>
         </div>

@@ -147,7 +147,7 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
       
       {/* Výběr typu importu */}
       <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-900 mb-2">
           Vyberte typ dat k importu
         </label>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -160,11 +160,11 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
               className={`p-4 text-left border-2 rounded-lg transition-colors ${
                 importType === type
                   ? 'border-blue-600 bg-blue-50 text-blue-900'
-                  : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                  : 'border-gray-200 hover:border-gray-300 text-gray-900'
               } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <div className="font-medium mb-1">{info.label}</div>
-              <div className="text-xs text-gray-600">{info.description}</div>
+              <div className="text-xs text-gray-900">{info.description}</div>
             </button>
           ))}
         </div>
@@ -193,7 +193,7 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
         </div>
       )}
 
-      <p className="text-gray-600 mb-4">
+      <p className="text-gray-900 mb-4">
         {importType === 'all'
           ? `Nahrajte Excel soubor s kompletním vyúčtováním (rok ${year}). Systém automaticky rozpozná a importuje všechna data ze všech listů.`
           : importType === 'invoices' 
@@ -226,8 +226,8 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
           <p className="text-lg font-medium text-gray-900 mb-2">
             {uploading ? 'Importuji faktury...' : 'Klikněte pro výběr souboru'}
           </p>
-          <p className="text-sm text-gray-600">nebo přetáhněte soubor sem</p>
-          <p className="text-xs text-gray-500 mt-2">Podporované formáty: .xlsx, .xls</p>
+          <p className="text-sm text-gray-900">nebo přetáhněte soubor sem</p>
+          <p className="text-xs text-gray-900 mt-2">Podporované formáty: .xlsx, .xls</p>
         </label>
       </div>
 
@@ -269,9 +269,9 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
                     <table className="min-w-full text-sm">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-2 text-left font-medium text-gray-700">Služba</th>
-                          <th className="px-4 py-2 text-right font-medium text-gray-700">Částka</th>
-                          <th className="px-4 py-2 text-center font-medium text-gray-700">Status</th>
+                          <th className="px-4 py-2 text-left font-medium text-gray-900">Služba</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-900">Částka</th>
+                          <th className="px-4 py-2 text-center font-medium text-gray-900">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -328,14 +328,14 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
                       if (data.imported.length === 0) return null
                       return (
                         <div key={key} className="border border-gray-200 rounded-lg p-3">
-                          <h4 className="text-xs font-semibold text-gray-700 mb-2">{label}</h4>
+                          <h4 className="text-xs font-semibold text-gray-900 mb-2">{label}</h4>
                           <div className="overflow-auto">
                             <table className="min-w-full text-xs">
                               <thead className="bg-gray-50">
                                 <tr>
-                                  <th className="px-3 py-1 text-left font-medium text-gray-700">Jednotka</th>
-                                  <th className="px-3 py-1 text-left font-medium text-gray-700">Měřidlo</th>
-                                  <th className="px-3 py-1 text-right font-medium text-gray-700">Spotřeba</th>
+                                  <th className="px-3 py-1 text-left font-medium text-gray-900">Jednotka</th>
+                                  <th className="px-3 py-1 text-left font-medium text-gray-900">Měřidlo</th>
+                                  <th className="px-3 py-1 text-right font-medium text-gray-900">Spotřeba</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-200">
@@ -372,16 +372,16 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
                     <tr>
                       {importType === 'invoices' ? (
                         <>
-                          <th className="px-4 py-2 text-left font-medium text-gray-700">Služba</th>
-                          <th className="px-4 py-2 text-right font-medium text-gray-700">Částka</th>
-                          <th className="px-4 py-2 text-center font-medium text-gray-700">Status</th>
+                          <th className="px-4 py-2 text-left font-medium text-gray-900">Služba</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-900">Částka</th>
+                          <th className="px-4 py-2 text-center font-medium text-gray-900">Status</th>
                         </>
                       ) : (
                         <>
-                          <th className="px-4 py-2 text-left font-medium text-gray-700">Jednotka</th>
-                          <th className="px-4 py-2 text-left font-medium text-gray-700">Číslo měřidla</th>
-                          <th className="px-4 py-2 text-right font-medium text-gray-700">Spotřeba</th>
-                          <th className="px-4 py-2 text-center font-medium text-gray-700">Status</th>
+                          <th className="px-4 py-2 text-left font-medium text-gray-900">Jednotka</th>
+                          <th className="px-4 py-2 text-left font-medium text-gray-900">Číslo měřidla</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-900">Spotřeba</th>
+                          <th className="px-4 py-2 text-center font-medium text-gray-900">Status</th>
                         </>
                       )}
                     </tr>
@@ -458,7 +458,7 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
             <div>
               <h3 className="text-sm font-semibold text-gray-900 mb-2">Přeskočené položky</h3>
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                <ul className="text-sm text-gray-700 space-y-1">
+                <ul className="text-sm text-gray-900 space-y-1">
                   {result.skipped.map((item, index) => (
                     <li key={index}>• {item}</li>
                   ))}

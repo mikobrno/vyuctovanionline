@@ -59,7 +59,7 @@ export default async function ReadingsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">📊 Přehled odečtů měřidel</h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-gray-900">
             Zadání a správa odečtů energií pro všechny jednotky (rok {currentYear})
           </p>
         </div>
@@ -70,7 +70,7 @@ export default async function ReadingsPage() {
               <h2 className="text-xl font-semibold text-gray-900">
                 🏢 {building.name}
               </h2>
-              <p className="text-sm text-gray-600">{building.address}, {building.city}</p>
+              <p className="text-sm text-gray-900">{building.address}, {building.city}</p>
             </div>
 
             {/* Rozdělení podle typu měřidla */}
@@ -91,28 +91,28 @@ export default async function ReadingsPage() {
                     <table className="min-w-full text-sm">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-2 text-left font-medium text-gray-700">
+                          <th className="px-4 py-2 text-left font-medium text-gray-900">
                             Jednotka
                           </th>
-                          <th className="px-4 py-2 text-left font-medium text-gray-700">
+                          <th className="px-4 py-2 text-left font-medium text-gray-900">
                             Vlastník
                           </th>
-                          <th className="px-4 py-2 text-left font-medium text-gray-700">
+                          <th className="px-4 py-2 text-left font-medium text-gray-900">
                             Číslo měřidla
                           </th>
-                          <th className="px-4 py-2 text-right font-medium text-gray-700">
+                          <th className="px-4 py-2 text-right font-medium text-gray-900">
                             Počáteční stav
                           </th>
-                          <th className="px-4 py-2 text-right font-medium text-gray-700">
+                          <th className="px-4 py-2 text-right font-medium text-gray-900">
                             Konečný stav
                           </th>
-                          <th className="px-4 py-2 text-right font-medium text-gray-700">
+                          <th className="px-4 py-2 text-right font-medium text-gray-900">
                             Spotřeba
                           </th>
-                          <th className="px-4 py-2 text-center font-medium text-gray-700">
+                          <th className="px-4 py-2 text-center font-medium text-gray-900">
                             Datum odečtu
                           </th>
-                          <th className="px-4 py-2 text-center font-medium text-gray-700">
+                          <th className="px-4 py-2 text-center font-medium text-gray-900">
                             Status
                           </th>
                         </tr>
@@ -135,15 +135,15 @@ export default async function ReadingsPage() {
                                     {unit.unitNumber}
                                   </Link>
                                 </td>
-                                <td className="px-4 py-2 text-gray-700">
+                                <td className="px-4 py-2 text-gray-900">
                                   {currentOwner
                                     ? `${currentOwner.firstName} ${currentOwner.lastName}`
                                     : '-'}
                                 </td>
-                                <td className="px-4 py-2 font-mono text-gray-700">
+                                <td className="px-4 py-2 font-mono text-gray-900">
                                   {meter.serialNumber}
                                 </td>
-                                <td className="px-4 py-2 text-right font-mono text-gray-700">
+                                <td className="px-4 py-2 text-right font-mono text-gray-900">
                                   {meter.initialReading.toLocaleString('cs-CZ', {
                                     minimumFractionDigits: 2
                                   })}
@@ -162,7 +162,7 @@ export default async function ReadingsPage() {
                                       })
                                     : '-'}
                                 </td>
-                                <td className="px-4 py-2 text-center text-gray-700">
+                                <td className="px-4 py-2 text-center text-gray-900">
                                   {latestReading
                                     ? new Date(latestReading.readingDate).toLocaleDateString(
                                         'cs-CZ'
@@ -204,7 +204,7 @@ export default async function ReadingsPage() {
 
         {buildingsWithReadings.length === 0 && (
           <div className="bg-white rounded-lg shadow p-8 text-center">
-            <p className="text-gray-600">Zatím nejsou evidovány žádné budovy.</p>
+            <p className="text-gray-900">Zatím nejsou evidovány žádné budovy.</p>
             <Link
               href="/buildings/new"
               className="mt-4 inline-block text-blue-600 hover:text-blue-800 font-medium"

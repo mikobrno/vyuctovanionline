@@ -46,13 +46,13 @@ export default async function ExpensesPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8 flex justify-between items-start">
           <div>
-            <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
+            <div className="flex items-center gap-2 text-sm text-gray-900 mb-4">
               <Link href="/billing" className="hover:text-blue-600">Vyúčtování</Link>
               <span>/</span>
               <span className="text-gray-900">Náklady</span>
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Evidence nákladů</h1>
-            <p className="mt-2 text-gray-600">Zadejte všechny faktury za služby pro rok {currentYear}</p>
+            <p className="mt-2 text-gray-900">Zadejte všechny faktury za služby pro rok {currentYear}</p>
           </div>
           <Link
             href="/billing/expenses/import"

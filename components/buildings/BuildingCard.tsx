@@ -71,7 +71,7 @@ export default function BuildingCard({ building }: BuildingCardProps) {
         {building.name}
       </h3>
       
-      <div className="space-y-2 text-sm text-gray-600 mb-4">
+      <div className="space-y-2 text-sm text-gray-900 mb-4">
         <div className="flex items-center">
           <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -90,13 +90,13 @@ export default function BuildingCard({ building }: BuildingCardProps) {
       </div>
 
       <div className="flex gap-4 text-sm">
-        <div className="flex items-center text-gray-600">
+        <div className="flex items-center text-gray-900">
           <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
           </svg>
           {building._count.units} jednotek
         </div>
-        <div className="flex items-center text-gray-600">
+        <div className="flex items-center text-gray-900">
           <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
@@ -113,7 +113,7 @@ export default function BuildingCard({ building }: BuildingCardProps) {
         </Link>
         <Link
           href={`/buildings/${building.id}/edit`}
-          className="flex-1 text-center text-gray-600 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          className="flex-1 text-center text-gray-900 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           Upravit
         </Link>
@@ -131,11 +131,11 @@ export default function BuildingCard({ building }: BuildingCardProps) {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Smazat dům?</h3>
-                <p className="text-sm text-gray-600">Tato akce je nevratná</p>
+                <p className="text-sm text-gray-900">Tato akce je nevratná</p>
               </div>
             </div>
             
-            <p className="text-gray-700 mb-6">
+            <p className="text-gray-900 mb-6">
               Opravdu chcete smazat dům <strong>{building.name}</strong>?
               <br />
               <span className="text-sm text-red-600">

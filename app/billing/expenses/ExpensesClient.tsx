@@ -133,7 +133,7 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
           <h2 className="text-lg font-semibold mb-4">Nový náklad</h2>
           <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Dům</label>
+              <label className="block text-sm font-medium text-gray-900 mb-1">Dům</label>
               <select
                 value={formData.buildingId}
                 onChange={(e) => handleBuildingChange(e.target.value)}
@@ -146,7 +146,7 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Služba</label>
+              <label className="block text-sm font-medium text-gray-900 mb-1">Služba</label>
               <select
                 value={formData.serviceId}
                 onChange={(e) => setFormData({...formData, serviceId: e.target.value})}
@@ -160,7 +160,7 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Částka (Kč)</label>
+              <label className="block text-sm font-medium text-gray-900 mb-1">Částka (Kč)</label>
               <input
                 type="number"
                 step="0.01"
@@ -171,7 +171,7 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Datum faktury</label>
+              <label className="block text-sm font-medium text-gray-900 mb-1">Datum faktury</label>
               <input
                 type="date"
                 value={formData.invoiceDate}
@@ -181,7 +181,7 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Číslo faktury</label>
+              <label className="block text-sm font-medium text-gray-900 mb-1">Číslo faktury</label>
               <input
                 type="text"
                 value={formData.invoiceNumber}
@@ -191,7 +191,7 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Období (rok)</label>
+              <label className="block text-sm font-medium text-gray-900 mb-1">Období (rok)</label>
               <input
                 type="number"
                 value={formData.period}
@@ -201,7 +201,7 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Popis</label>
+              <label className="block text-sm font-medium text-gray-900 mb-1">Popis</label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({...formData, description: e.target.value})}
@@ -235,13 +235,13 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dům</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Služba</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Popis</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Částka</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Datum</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Faktura</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Akce</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Dům</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Služba</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Popis</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Částka</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Datum</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Faktura</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Akce</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -249,14 +249,14 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
               <tr key={cost.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 text-sm text-gray-900">{cost.building.name}</td>
                 <td className="px-6 py-4 text-sm font-medium text-gray-900">{cost.service.name}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">{cost.description}</td>
+                <td className="px-6 py-4 text-sm text-gray-900">{cost.description}</td>
                 <td className="px-6 py-4 text-sm text-gray-900 font-semibold">
                   {cost.amount.toLocaleString('cs-CZ')} Kč
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-600">
+                <td className="px-6 py-4 text-sm text-gray-900">
                   {new Date(cost.invoiceDate).toLocaleDateString('cs-CZ')}
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-600">
+                <td className="px-6 py-4 text-sm text-gray-900">
                   {cost.invoiceNumber || '-'}
                 </td>
                 <td className="px-6 py-4 text-sm">
@@ -271,13 +271,13 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
             ))}
             {initialCosts.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={7} className="px-6 py-12 text-center text-gray-900">
                   <div className="flex flex-col items-center">
                     <svg className="h-12 w-12 text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                     <p className="text-lg font-medium text-gray-900 mb-1">Zatím nejsou zadány žádné náklady</p>
-                    <p className="text-sm text-gray-600">Začněte přidáním první faktury za služby</p>
+                    <p className="text-sm text-gray-900">Začněte přidáním první faktury za služby</p>
                   </div>
                 </td>
               </tr>

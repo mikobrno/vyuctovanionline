@@ -109,7 +109,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="md:col-span-2">
-            <label htmlFor="buildingId" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="buildingId" className="block text-sm font-medium text-gray-900 mb-2">
               Bytový dům *
             </label>
             <select
@@ -130,7 +130,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
           </div>
 
           <div>
-            <label htmlFor="unitNumber" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="unitNumber" className="block text-sm font-medium text-gray-900 mb-2">
               Číslo jednotky *
             </label>
             <input
@@ -146,7 +146,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
           </div>
 
           <div>
-            <label htmlFor="variableSymbol" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="variableSymbol" className="block text-sm font-medium text-gray-900 mb-2">
               Variabilní symbol *
             </label>
             <input
@@ -162,7 +162,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
           </div>
 
           <div>
-            <label htmlFor="totalArea" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="totalArea" className="block text-sm font-medium text-gray-900 mb-2">
               Celková výměra (m²) *
             </label>
             <input
@@ -180,7 +180,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
           </div>
 
           <div>
-            <label htmlFor="floorArea" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="floorArea" className="block text-sm font-medium text-gray-900 mb-2">
               Podlahová plocha (m²)
             </label>
             <input
@@ -197,7 +197,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
           </div>
 
           <div>
-            <label htmlFor="shareNumerator" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="shareNumerator" className="block text-sm font-medium text-gray-900 mb-2">
               Podíl - čitatel *
             </label>
             <input
@@ -214,7 +214,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
           </div>
 
           <div>
-            <label htmlFor="shareDenominator" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="shareDenominator" className="block text-sm font-medium text-gray-900 mb-2">
               Podíl - jmenovatel *
             </label>
             <input
@@ -231,7 +231,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
           </div>
 
           <div>
-            <label htmlFor="residents" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="residents" className="block text-sm font-medium text-gray-900 mb-2">
               Počet obyvatel
             </label>
             <input
@@ -251,7 +251,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
       <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-4">
         <Link
           href={unit ? `/units/${unit.id}` : '/units'}
-          className="px-6 py-2 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
+          className="px-6 py-2 border border-gray-300 rounded-lg font-semibold text-gray-900 hover:bg-gray-100 transition-colors"
         >
           Zrušit
         </Link>

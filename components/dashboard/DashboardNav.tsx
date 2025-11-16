@@ -25,13 +25,13 @@ export default function DashboardNav({ session }: DashboardNavProps) {
             <div className="hidden md:flex ml-10 space-x-4">
               <a
                 href="/dashboard"
-                className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                className="text-gray-900 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
               >
                 Dashboard
               </a>
               <a
                 href="/buildings"
-                className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                className="text-gray-900 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
               >
                 Domy
               </a>
@@ -43,7 +43,7 @@ export default function DashboardNav({ session }: DashboardNavProps) {
               <p className="text-sm font-medium text-gray-900">
                 {session.user.name || session.user.email}
               </p>
-              <p className="text-xs text-gray-600">
+              <p className="text-xs text-gray-900">
                 {session.user.role === 'ADMIN' && 'Administrátor'}
                 {session.user.role === 'MANAGER' && 'Správce SVJ'}
                 {session.user.role === 'OWNER' && 'Vlastník'}

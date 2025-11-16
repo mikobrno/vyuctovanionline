@@ -20,7 +20,7 @@ export default async function NewBuildingPage() {
           <h1 className="text-3xl font-bold text-gray-900">
             Přidat nový dům
           </h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-gray-900">
             Vytvořte nový bytový dům v systému
           </p>
         </div>
