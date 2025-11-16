@@ -108,7 +108,7 @@ model Unit {
   totalArea             Float
   floorArea             Float?
   residents             Int?
-  variableSymbol        String   @unique
+  variableSymbol        String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

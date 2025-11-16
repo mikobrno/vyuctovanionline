@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import DashboardNav from '@/components/dashboard/DashboardNav'
 import StatsCards from '@/components/dashboard/StatsCards'
+import CompleteImport from '@/components/buildings/CompleteImport'
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions)
@@ -26,6 +27,17 @@ export default async function DashboardPage() {
         </div>
 
         <StatsCards />
+
+        {/* Rychlý import z Excelu */}
+        <div className="mt-8 bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            📊 Rychlý import dat z Excelu
+          </h2>
+          <p className="text-gray-600 mb-4">
+            Nahrajte svůj Excel soubor a systém automaticky načte všechna data (faktury, odečty, platby)
+          </p>
+          <CompleteImport />
+        </div>
 
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Rychlé akce */}

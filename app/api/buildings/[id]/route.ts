@@ -103,15 +103,20 @@ export async function DELETE(
       return NextResponse.json({ error: 'Nepřihlášen' }, { status: 401 })
     }
 
+    if (session.user.role !== 'ADMIN' && session.user.role !== 'MANAGER') {
+      return NextResponse.json({ error: 'Nemáte oprávnění mazat domy' }, { status: 403 })
+    }
+
     const { id } = await params
 
-    // Kontrola, zda dům má jednotky
     const building = await prisma.building.findUnique({
       where: { id },
       include: {
         _count: {
           select: {
             units: true,
+            services: true,
+            costs: true,
           },
         },
       },
@@ -121,18 +126,15 @@ export async function DELETE(
       return NextResponse.json({ error: 'Dům nebyl nalezen' }, { status: 404 })
     }
 
-    if (building._count.units > 0) {
-      return NextResponse.json(
-        { error: 'Nelze smazat dům, který obsahuje jednotky' },
-        { status: 400 }
-      )
-    }
-
+    // Smazat dům včetně všech souvisejících záznamů (cascade delete)
     await prisma.building.delete({
       where: { id },
     })
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ 
+      success: true,
+      message: `Dům "${building.name}" byl úspěšně smazán včetně ${building._count.units} jednotek, ${building._count.services} služeb a ${building._count.costs} nákladů.`
+    })
   } catch (error) {
     console.error('Error deleting building:', error)
     return NextResponse.json(

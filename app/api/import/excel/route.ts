@@ -1,3 +1,32 @@
+interface ColumnDescriptor {
+  index: number
+  columnNumber: number
+  letter: string
+  header: string
+}
+
+interface MeterReadingRow {
+  unitNumber: string
+  meterNumber: string
+  initialReading: number
+  finalReading: number
+  consumption: number
+  rowNumber: number
+  yearlyCost?: number
+  radioModule?: string
+  externalId?: string
+}
+
+interface ImportedReading {
+  unitNumber: string
+  meterNumber: string
+  consumption: number
+  initialReading: number
+  yearlyCost?: number
+  radioModule?: string
+  externalId?: string
+  status: string
+}
 import { NextRequest, NextResponse } from 'next/server'
 import { read, utils } from 'xlsx'
 

@@ -1,5 +1,6 @@
 import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import DashboardNav from '@/components/dashboard/DashboardNav'
 
@@ -106,7 +107,7 @@ export default async function BillingPage() {
               </h2>
               
               <div className="grid grid-cols-2 gap-4">
-                <button className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left">
+                <Link href="/billing/expenses" className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left">
                   <div className="h-8 w-8 bg-blue-100 rounded-lg flex items-center justify-center mb-3">
                     <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -114,9 +115,9 @@ export default async function BillingPage() {
                   </div>
                   <h3 className="font-medium text-gray-900 mb-1">Náklady</h3>
                   <p className="text-sm text-gray-600">Zadat faktury</p>
-                </button>
+                </Link>
 
-                <button className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left">
+                <Link href="/billing/readings" className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left">
                   <div className="h-8 w-8 bg-green-100 rounded-lg flex items-center justify-center mb-3">
                     <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -124,9 +125,9 @@ export default async function BillingPage() {
                   </div>
                   <h3 className="font-medium text-gray-900 mb-1">Odečty</h3>
                   <p className="text-sm text-gray-600">Zadat měření</p>
-                </button>
+                </Link>
 
-                <button className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left">
+                <Link href="/billing/payments" className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left">
                   <div className="h-8 w-8 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
                     <svg className="h-5 w-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
@@ -134,9 +135,9 @@ export default async function BillingPage() {
                   </div>
                   <h3 className="font-medium text-gray-900 mb-1">Platby</h3>
                   <p className="text-sm text-gray-600">Import výpisů</p>
-                </button>
+                </Link>
 
-                <button className="p-4 border-2 border-blue-500 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all text-left">
+                <Link href="/billing/calculate" className="p-4 border-2 border-blue-500 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all text-left">
                   <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center mb-3">
                     <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -144,7 +145,7 @@ export default async function BillingPage() {
                   </div>
                   <h3 className="font-medium text-gray-900 mb-1">Spustit výpočet</h3>
                   <p className="text-sm text-gray-600">Vyúčtovat</p>
-                </button>
+                </Link>
               </div>
             </div>
           </div>

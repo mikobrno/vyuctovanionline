@@ -35,24 +35,6 @@ export default function DashboardNav({ session }: DashboardNavProps) {
               >
                 Domy
               </a>
-              <a
-                href="/units"
-                className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-              >
-                Jednotky
-              </a>
-              <a
-                href="/owners"
-                className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-              >
-                Vlastníci
-              </a>
-              <a
-                href="/billing"
-                className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-              >
-                Vyúčtování
-              </a>
             </div>
           </div>
 

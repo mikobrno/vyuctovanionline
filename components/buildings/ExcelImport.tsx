@@ -2,18 +2,76 @@
 
 import { useCallback, useRef, useState } from 'react'
 
-type UploadSummary = {
-  message: string
-  sheets: { name: string; rowCount: number }[]
-  preview: (string | number | null)[][]
+type ImportedCost = {
+  service: string
+  amount: number
+  newService: boolean
 }
 
-export default function ExcelImport() {
+type ImportedReading = {
+  unitNumber: string
+  meterNumber: string
+  consumption: number
+  status: string
+}
+
+type ImportResult = {
+  message: string
+  imported: (ImportedCost | ImportedReading)[]
+  skipped: string[]
+  errors: string[]
+  summary?: string[]
+  results?: {
+    invoices: { imported: ImportedCost[]; errors: string[]; skipped: string[] }
+    hot_water: { imported: ImportedReading[]; errors: string[]; skipped: string[] }
+    cold_water: { imported: ImportedReading[]; errors: string[]; skipped: string[] }
+    heating: { imported: ImportedReading[]; errors: string[]; skipped: string[] }
+    electricity: { imported: ImportedReading[]; errors: string[]; skipped: string[] }
+  }
+  totalImported?: number
+}
+
+type ImportType = 'all' | 'invoices' | 'hot_water' | 'cold_water' | 'heating' | 'electricity'
+
+interface ExcelImportProps {
+  buildingId: string
+  year?: number
+}
+
+const IMPORT_TYPES: Record<ImportType, { label: string; description: string }> = {
+  all: {
+    label: '🎯 Kompletní import',
+    description: 'Automaticky importuje všechna data (faktury + všechny odečty)'
+  },
+  invoices: { 
+    label: '💰 Faktury', 
+    description: 'Import nákladů z listu "Faktury"' 
+  },
+  hot_water: { 
+    label: '🚿 Odečty TUV', 
+    description: 'Import odečtů teplé vody z listu "Vodoměry TUV"' 
+  },
+  cold_water: { 
+    label: '💧 Odečty SV', 
+    description: 'Import odečtů studené vody z listu "Vodoměry SV"' 
+  },
+  heating: { 
+    label: '🔥 Odečty tepla', 
+    description: 'Import odečtů topení z listu "Teplo"' 
+  },
+  electricity: { 
+    label: '⚡ Odečty elektřiny', 
+    description: 'Import odečtů elektřiny z listu "Elektroměry"' 
+  }
+}
+
+export default function ExcelImport({ buildingId, year = new Date().getFullYear() }: ExcelImportProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [dragActive, setDragActive] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [summary, setSummary] = useState<UploadSummary | null>(null)
+  const [result, setResult] = useState<ImportResult | null>(null)
+  const [importType, setImportType] = useState<ImportType>('all')
 
   const resetInput = () => {
     if (inputRef.current) {
@@ -24,7 +82,7 @@ export default function ExcelImport() {
   const uploadFile = useCallback(async (file: File) => {
     setUploading(true)
     setError(null)
-    setSummary(null)
+    setResult(null)
     try {
       if (!/\.xlsx?$/i.test(file.name)) {
         throw new Error('Podporované jsou pouze soubory XLS nebo XLSX')
@@ -32,6 +90,9 @@ export default function ExcelImport() {
 
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('buildingId', buildingId)
+      formData.append('year', year.toString())
+      formData.append('importType', importType)
 
       const response = await fetch('/api/import/excel', {
         method: 'POST',
@@ -41,17 +102,17 @@ export default function ExcelImport() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.message ?? 'Nahrání se nezdařilo')
+        throw new Error(data.message ?? 'Import se nezdařil')
       }
 
-      setSummary(data)
+      setResult(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nahrání se nezdařilo')
+      setError(err instanceof Error ? err.message : 'Import se nezdařil')
     } finally {
       setUploading(false)
       resetInput()
     }
-  }, [])
+  }, [buildingId, year, importType])
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) {
@@ -83,8 +144,62 @@ export default function ExcelImport() {
   return (
     <div className="mt-8 bg-white rounded-lg shadow p-6">
       <h2 className="text-xl font-semibold text-gray-900 mb-4">📊 Import dat z Excelu</h2>
+      
+      {/* Výběr typu importu */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Vyberte typ dat k importu
+        </label>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {(Object.entries(IMPORT_TYPES) as [ImportType, typeof IMPORT_TYPES[ImportType]][]).map(([type, info]) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setImportType(type)}
+              disabled={uploading}
+              className={`p-4 text-left border-2 rounded-lg transition-colors ${
+                importType === type
+                  ? 'border-blue-600 bg-blue-50 text-blue-900'
+                  : 'border-gray-200 hover:border-gray-300 text-gray-700'
+              } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <div className="font-medium mb-1">{info.label}</div>
+              <div className="text-xs text-gray-600">{info.description}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Info box pro kompletní import */}
+      {importType === 'all' && (
+        <div className="mb-4 bg-blue-50 border-l-4 border-blue-500 p-4">
+          <div className="flex items-start">
+            <div className="shrink-0">
+              <svg className="h-5 w-5 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-800">Co bude importováno:</h3>
+              <div className="mt-2 text-sm text-blue-700">
+                <ul className="list-disc list-inside space-y-1">
+                  <li>Bytové domy a jejich údaje</li>
+                  <li>Jednotky (byty, garáže, sklepy)</li>
+                  <li>Odečty formular</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <p className="text-gray-600 mb-4">
-        Nahrajte svůj Excel soubor (např. vyuctovani2024.xlsx) a systém automaticky připraví data k importu.
+        {importType === 'all'
+          ? `Nahrajte Excel soubor s kompletním vyúčtováním (rok ${year}). Systém automaticky rozpozná a importuje všechna data ze všech listů.`
+          : importType === 'invoices' 
+          ? `Nahrajte Excel soubor se záložkou "Faktury" (rok ${year}). Systém načte náklady ze sloupce E, služby ze sloupce A a způsob rozúčtování ze sloupce C.`
+          : `Nahrajte Excel soubor se záložkou "${IMPORT_TYPES[importType].description.split('"')[1]}" (rok ${year}). Systém automaticky páruje odečty podle čísla měřidla.`
+        }
       </p>
 
       <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center transition-colors">
@@ -109,7 +224,7 @@ export default function ExcelImport() {
             </svg>
           </div>
           <p className="text-lg font-medium text-gray-900 mb-2">
-            {uploading ? 'Nahrávám...' : 'Klikněte pro výběr souboru'}
+            {uploading ? 'Importuji faktury...' : 'Klikněte pro výběr souboru'}
           </p>
           <p className="text-sm text-gray-600">nebo přetáhněte soubor sem</p>
           <p className="text-xs text-gray-500 mt-2">Podporované formáty: .xlsx, .xls</p>
@@ -118,45 +233,236 @@ export default function ExcelImport() {
 
       {error && (
         <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-          {error}
+          ⚠️ {error}
         </div>
       )}
 
-      {summary && (
+      {result && (
         <div className="mt-6 space-y-4">
           <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg text-sm">
-            {summary.message}
+            ✅ {result.message}
           </div>
 
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">Detaily listů</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {summary.sheets.map((sheet) => (
-                <div key={sheet.name} className="p-3 border border-gray-200 rounded-lg text-sm flex justify-between">
-                  <span className="font-medium text-gray-900">{sheet.name}</span>
-                  <span className="text-gray-600">{sheet.rowCount} řádků</span>
-                </div>
-              ))}
+          {/* Souhrn pro kompletní import */}
+          {result.summary && result.summary.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-blue-900 mb-3">📋 Souhrn importu</h3>
+              <ul className="space-y-2">
+                {result.summary.map((item, index) => (
+                  <li key={index} className="text-sm text-blue-800 flex items-center">
+                    <span className="mr-2">{item.startsWith('✅') ? '✅' : '⚠️'}</span>
+                    <span>{item.replace(/^[✅⚠️]\s*/, '')}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
+          )}
 
-          {summary.preview.length > 0 && (
+          {/* Detailní výsledky pro kompletní import */}
+          {result.results && (
+            <div className="space-y-4">
+              {/* Faktury */}
+              {result.results.invoices.imported.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">💰 Importované faktury</h3>
+                  <div className="overflow-auto border border-gray-200 rounded-lg">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium text-gray-700">Služba</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-700">Částka</th>
+                          <th className="px-4 py-2 text-center font-medium text-gray-700">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {result.results.invoices.imported.map((item, index) => (
+                          <tr key={index}>
+                            <td className="px-4 py-2 text-gray-900">{item.service}</td>
+                            <td className="px-4 py-2 text-right font-mono text-gray-900">
+                              {item.amount.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                            </td>
+                            <td className="px-4 py-2 text-center">
+                              {item.newService ? (
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800">
+                                  Nová služba
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-gray-100 text-gray-800">
+                                  Existující
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50">
+                        <tr>
+                          <td className="px-4 py-2 font-semibold">Celkem</td>
+                          <td className="px-4 py-2 text-right font-semibold font-mono text-gray-900">
+                            {result.results.invoices.imported
+                              .reduce((sum, item) => sum + item.amount, 0)
+                              .toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                          </td>
+                          <td className="px-4 py-2"></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Odečty - sloučené zobrazení */}
+              {(result.results.hot_water.imported.length > 0 ||
+                result.results.cold_water.imported.length > 0 ||
+                result.results.heating.imported.length > 0 ||
+                result.results.electricity.imported.length > 0) && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">📊 Importované odečty měřidel</h3>
+                  <div className="space-y-3">
+                    {[
+                      { key: 'hot_water', label: '🚿 Teplá voda (TUV)', data: result.results.hot_water },
+                      { key: 'cold_water', label: '💧 Studená voda (SV)', data: result.results.cold_water },
+                      { key: 'heating', label: '🔥 Teplo', data: result.results.heating },
+                      { key: 'electricity', label: '⚡ Elektřina', data: result.results.electricity }
+                    ].map(({ key, label, data }) => {
+                      if (data.imported.length === 0) return null
+                      return (
+                        <div key={key} className="border border-gray-200 rounded-lg p-3">
+                          <h4 className="text-xs font-semibold text-gray-700 mb-2">{label}</h4>
+                          <div className="overflow-auto">
+                            <table className="min-w-full text-xs">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="px-3 py-1 text-left font-medium text-gray-700">Jednotka</th>
+                                  <th className="px-3 py-1 text-left font-medium text-gray-700">Měřidlo</th>
+                                  <th className="px-3 py-1 text-right font-medium text-gray-700">Spotřeba</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200">
+                                {data.imported.map((item, idx) => (
+                                  <tr key={idx}>
+                                    <td className="px-3 py-1 text-gray-900">{item.unitNumber}</td>
+                                    <td className="px-3 py-1 font-mono text-gray-900">{item.meterNumber}</td>
+                                    <td className="px-3 py-1 text-right font-mono text-gray-900">
+                                      {item.consumption.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Původní zobrazení pro jednotlivé importy */}
+          {!result.results && result.imported.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Náhled prvních řádků</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">
+                {importType === 'invoices' ? 'Importované faktury' : 'Importované odečty'}
+              </h3>
               <div className="overflow-auto border border-gray-200 rounded-lg">
                 <table className="min-w-full text-sm">
-                  <tbody>
-                    {summary.preview.map((row, rowIndex) => (
-                      <tr key={`preview-${rowIndex}`} className={rowIndex === 0 ? 'bg-gray-50 font-semibold' : ''}>
-                        {row.map((cell, cellIndex) => (
-                          <td key={`cell-${rowIndex}-${cellIndex}`} className="px-3 py-2 border border-gray-100">
-                            {cell ?? ''}
-                          </td>
-                        ))}
+                  <thead className="bg-gray-50">
+                    <tr>
+                      {importType === 'invoices' ? (
+                        <>
+                          <th className="px-4 py-2 text-left font-medium text-gray-700">Služba</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-700">Částka</th>
+                          <th className="px-4 py-2 text-center font-medium text-gray-700">Status</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="px-4 py-2 text-left font-medium text-gray-700">Jednotka</th>
+                          <th className="px-4 py-2 text-left font-medium text-gray-700">Číslo měřidla</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-700">Spotřeba</th>
+                          <th className="px-4 py-2 text-center font-medium text-gray-700">Status</th>
+                        </>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {result.imported.map((item, index) => (
+                      <tr key={index}>
+                        {importType === 'invoices' && 'service' in item ? (
+                          <>
+                            <td className="px-4 py-2 text-gray-900">{item.service}</td>
+                            <td className="px-4 py-2 text-right font-mono text-gray-900">{item.amount.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</td>
+                            <td className="px-4 py-2 text-center">
+                              {item.newService ? (
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800">
+                                  Nová služba
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-gray-100 text-gray-800">
+                                  Existující
+                                </span>
+                              )}
+                            </td>
+                          </>
+                        ) : 'unitNumber' in item ? (
+                          <>
+                            <td className="px-4 py-2 text-gray-900">{item.unitNumber}</td>
+                            <td className="px-4 py-2 text-gray-900">{item.meterNumber}</td>
+                            <td className="px-4 py-2 text-right font-mono text-gray-900">{item.consumption.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-4 py-2 text-center">
+                              <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-green-100 text-green-800">
+                                Importováno
+                              </span>
+                            </td>
+                          </>
+                        ) : null}
                       </tr>
                     ))}
                   </tbody>
+                  {importType === 'invoices' && (
+                    <tfoot className="bg-gray-50">
+                      <tr>
+                        <td className="px-4 py-2 font-semibold">Celkem</td>
+                        <td className="px-4 py-2 text-right font-semibold font-mono text-gray-900">
+                          {result.imported
+                            .filter((item): item is ImportedCost => 'amount' in item)
+                            .reduce((sum, item) => sum + item.amount, 0)
+                            .toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                        </td>
+                        <td className="px-4 py-2"></td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* Chyby */}
+          {result.errors && result.errors.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Chyby při importu</h3>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <ul className="text-sm text-yellow-800 space-y-1">
+                  {result.errors.map((err, index) => (
+                    <li key={index}>⚠️ {err}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* Přeskočené položky */}
+          {result.skipped && result.skipped.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Přeskočené položky</h3>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <ul className="text-sm text-gray-700 space-y-1">
+                  {result.skipped.map((item, index) => (
+                    <li key={index}>• {item}</li>
+                  ))}
+                </ul>
               </div>
             </div>
           )}
