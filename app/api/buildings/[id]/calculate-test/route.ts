@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { calculateServiceDistribution } from '@/lib/calculationEngine'
+import { prisma } from '@/lib/prisma'
 
 /**
  * API endpoint pro testování dynamického výpočetního enginu
@@ -69,5 +70,61 @@ export async function POST(
       },
       { status: 500 }
     )
+  }
+}
+
+/**
+ * GET endpoint pro spuštění výpočtu pro všechny služby v budově
+ */
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const buildingId = params.id;
+  const periodId = req.nextUrl.searchParams.get('periodId');
+
+  if (!buildingId || !periodId) {
+    return NextResponse.json({ error: 'Missing buildingId or periodId' }, { status: 400 });
+  }
+
+  try {
+    // Načtení všech služeb pro budovu
+    const services = await prisma.service.findMany({
+      where: { buildingId },
+    });
+
+    const results = [];
+
+    for (const service of services) {
+      // Načtení celkových nákladů pro službu
+      const cost = await prisma.cost.findFirst({
+        where: { serviceId: service.id, period: parseInt(periodId, 10) },
+      });
+
+      if (!cost) {
+        results.push({
+          serviceId: service.id,
+          serviceName: service.name,
+          error: 'No cost data found',
+        });
+        continue;
+      }
+
+      // Spuštění výpočtu pro službu
+      const serviceResults = await calculateServiceDistribution(
+        service.id,
+        buildingId,
+        parseInt(periodId, 10),
+        cost.amount
+      );
+
+      results.push({
+        serviceId: service.id,
+        serviceName: service.name,
+        results: serviceResults,
+      });
+    }
+
+    return NextResponse.json(results);
+  } catch (error) {
+    console.error('Error during calculation:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

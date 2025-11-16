@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { read, utils } from 'xlsx'
 import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
+import { CalculationMethod, DataSourceType, MeterType } from '@prisma/client'
 
 export const runtime = 'nodejs'
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
@@ -72,6 +72,8 @@ interface ImportSummary {
   }
   costs: {
     created: number
+    updated?: number
+    skipped?: number
     total: number
   }
   readings: {
@@ -101,7 +103,7 @@ interface ImportSummary {
   warnings: string[]
 }
 
-type UnitLite = { id: string; meters?: { id: string; type: Prisma.MeterType; isActive: boolean }[]; variableSymbol?: string }
+type UnitLite = { id: string; meters?: { id: string; type: MeterType; isActive: boolean }[]; variableSymbol?: string }
 
 export async function POST(req: NextRequest) {
   try {
@@ -151,7 +153,7 @@ export async function POST(req: NextRequest) {
       units: { created: 0, existing: 0, total: 0 },
       owners: { created: 0, existing: 0, total: 0 },
       services: { created: 0, existing: 0, total: 0 },
-      costs: { created: 0, total: 0 },
+      costs: { created: 0, updated: 0, skipped: 0, total: 0 },
       readings: { created: 0, total: 0, details: [] },
       payments: { created: 0, total: 0 },
       costsByService: [],
@@ -237,6 +239,15 @@ export async function POST(req: NextRequest) {
     summary.building.id = building.id
     summary.building.name = building.name
 
+    // BillingPeriod záznam (potřebný pro výpočty)
+    const billingPeriodRecord = await prisma.billingPeriod.upsert({
+      where: { buildingId_year: { buildingId: building.id, year: parseInt(billingPeriod, 10) } },
+      update: {},
+      create: { buildingId: building.id, year: parseInt(billingPeriod, 10) }
+    })
+    // ID období lze použít v dalších částech (zatím neukládáme do meterReading, protože schéma má jen numeric period)
+    log(`[Import] BillingPeriod ID: ${billingPeriodRecord.id}`)
+
     // 2. IMPORT VLASTNÍKŮ ZE ZÁLOŽKY "EVIDENCE"
     const evidenceSheetName = workbook.SheetNames.find(name => 
       name.toLowerCase().includes('evidence') || name.toLowerCase().includes('evidenc')
@@ -307,13 +318,43 @@ export async function POST(req: NextRequest) {
         for (let i = 0; i < dataRows.length; i++) {
           const row = dataRows[i]
           if (!row || row.length === 0 || !row[1]) continue
-          
-          const unitNumber = String(row[0] || '').trim()
+
+          // A: Jednotky (např. "Jednotka č. 318/01" nebo "318/01")
+          const unitCellRaw = String(row[0] || '').trim()
+          const unitNumber = unitCellRaw
+            .replace(/jednotka\s*č\.?\s*/i, '')
+            .replace(/^byt\s*/i, '')
+            .replace(/^č\.?\s*/i, '')
+            .trim()
+
           const fullName = String(row[1] || '').trim()
           const address = String(row[2] || '').trim()
-          const email = String(row[3] || '').trim() // sloupec D (index 3)
-          const phone = String(row[4] || '').trim()
-          
+          const email = String(row[3] || '').trim() // D
+          const phone = String(row[4] || '').trim() // E
+          const areaRaw = String(row[6] || '').trim() // G: Celková výměra bytu
+          const variableSymbol = String(row[9] || '').trim() // J: Variabilní symbol
+          const ownershipShareRaw = String(row[8] || '').trim() // I: Podíl v domě
+
+          // Parse area
+          const totalArea = (() => {
+            const num = parseFloat(areaRaw.replace(',', '.'))
+            return Number.isFinite(num) ? num : 0
+          })()
+
+          // Parse ownership share into numerator/denominator
+          let shareNumerator = 0
+            , shareDenominator = 10000 // default high denominator for decimal conversion
+          if (/^\d+\s*\/\s*\d+$/.test(ownershipShareRaw)) {
+            const [a, b] = ownershipShareRaw.split('/')
+            shareNumerator = parseInt(a.trim(), 10)
+            shareDenominator = parseInt(b.trim(), 10) || 1
+          } else if (ownershipShareRaw) {
+            const dec = parseFloat(ownershipShareRaw.replace(',', '.'))
+            if (Number.isFinite(dec)) {
+              shareNumerator = Math.round(dec * shareDenominator)
+            }
+          }
+
           if (!fullName || !unitNumber) continue
 
           // Rozdělit jméno na křestní jméno a příjmení
@@ -364,7 +405,52 @@ export async function POST(req: NextRequest) {
           }
           summary.owners.total++
 
-          // Uložit mapování jednotka -> vlastník
+          // Jednotka – vytvořit / aktualizovat (používáme unitNumber jako unikátní v rámci buildingu)
+          let unit = await prisma.unit.findUnique({ where: { buildingId_unitNumber: { buildingId: building.id, unitNumber } } })
+          if (!unit) {
+            unit = await prisma.unit.create({
+              data: {
+                buildingId: building.id,
+                unitNumber,
+                type: 'APARTMENT',
+                shareNumerator: shareNumerator || 0,
+                shareDenominator: shareDenominator || 1,
+                totalArea: totalArea || 0,
+                variableSymbol: variableSymbol || null
+              }
+            })
+            summary.units.created++
+          } else {
+            await prisma.unit.update({
+              where: { id: unit.id },
+              data: {
+                shareNumerator: shareNumerator || unit.shareNumerator,
+                shareDenominator: shareDenominator || unit.shareDenominator,
+                totalArea: totalArea || unit.totalArea,
+                variableSymbol: variableSymbol || unit.variableSymbol || null
+              }
+            })
+            summary.units.existing++
+          }
+          summary.units.total++
+
+          // Ownership – přiřadit vlastníka k jednotce (pokud neexistuje vztah pro aktuální rok)
+          const yearStart = new Date(parseInt(billingPeriod, 10), 0, 1)
+          const existingOwnership = await prisma.ownership.findFirst({
+            where: { unitId: unit.id, ownerId: owner.id }
+          })
+          if (!existingOwnership) {
+            await prisma.ownership.create({
+              data: {
+                unitId: unit.id,
+                ownerId: owner.id,
+                validFrom: yearStart,
+                sharePercent: 100
+              }
+            })
+          }
+
+          // Uložit mapování jednotka -> vlastník (pro pozdější použití)
           ownerMap.set(unitNumber, { id: owner.id, firstName, lastName })
         }
       } else {
@@ -440,32 +526,48 @@ export async function POST(req: NextRequest) {
           })()
 
         if (!service) {
-            const baseCode = serviceName.substring(0, 10).toUpperCase().replace(/\s/g, '_').replace(/[^A-Z0-9_]/g, '')
-            let uniqueCode = baseCode
-            let counter = 1
-            while (await prisma.service.findFirst({ where: { buildingId: building.id, code: uniqueCode } })) {
-              uniqueCode = `${baseCode}_${counter++}`
-            }
-            service = await prisma.service.create({
-              data: {
-                buildingId: building.id,
-                name: serviceName,
-                code: uniqueCode,
-                methodology: calculationMethod as Prisma.CalculationMethod,
-                dataSourceType: (src.dataSourceType as Prisma.DataSourceType) ?? undefined,
-                unitAttributeName: src.unitAttributeName ?? undefined,
-                measurementUnit: src.measurementUnit ?? undefined,
-                isActive: true,
-                order: summary.services.total
+            // Robustní generování unikátního kódu služby s retry při kolizi
+            const baseCode = serviceName
+              .substring(0, 10)
+              .toUpperCase()
+              .replace(/\s+/g, '_')
+              .replace(/[^A-Z0-9_]/g, '') || 'SERVICE'
+            let created: typeof service | null = null
+            for (let attempt = 0; attempt < 15 && !created; attempt++) {
+              const candidate = attempt === 0 ? baseCode : `${baseCode}_${attempt}`
+              try {
+                created = await prisma.service.create({
+                  data: {
+                    buildingId: building.id,
+                    name: serviceName,
+                    code: candidate,
+                    methodology: calculationMethod as CalculationMethod,
+                    dataSourceType: (src.dataSourceType as DataSourceType) ?? undefined,
+                    unitAttributeName: src.unitAttributeName ?? undefined,
+                    measurementUnit: src.measurementUnit ?? undefined,
+                    isActive: true,
+                    order: summary.services.total
+                  }
+                })
+                service = created
+              } catch (e) {
+                if (e instanceof Error && e.message.includes('Unique constraint failed')) {
+                  // kolize – zkus další suffix
+                  continue
+                }
+                throw e
               }
-            })
+            }
+            if (!service) {
+              throw new Error(`Nepodařilo se vytvořit službu '${serviceName}' (kolize kódu po 15 pokusech).`)
+            }
             summary.services.created++
           } else {
             await prisma.service.update({
               where: { id: service.id },
               data: {
-                methodology: calculationMethod as Prisma.CalculationMethod,
-                dataSourceType: (src.dataSourceType as Prisma.DataSourceType) ?? undefined,
+                methodology: calculationMethod as CalculationMethod,
+                dataSourceType: (src.dataSourceType as DataSourceType) ?? undefined,
                 unitAttributeName: src.unitAttributeName ?? undefined,
                 measurementUnit: src.measurementUnit ?? undefined,
               }
@@ -492,6 +594,73 @@ export async function POST(req: NextRequest) {
       }
     } else {
       summary.warnings.push('Záložka "Faktury" nebyla nalezena. Náklady nebyly importovány.')
+    }
+
+    // 3. PROCESS FAKTURY SHEET
+    const fakturySheetName = workbook.SheetNames.find(name => name.toLowerCase().includes('faktury'));
+
+    if (fakturySheetName) {
+      const fakturySheet = workbook.Sheets[fakturySheetName]
+      const rawData = utils.sheet_to_json<string[]>(fakturySheet, { header: 1, defval: '' }) as string[][]
+
+      // Find header row
+      const headerRowIndex = rawData.findIndex(row => {
+        const normalized = row.map(cell => normalizeHeaderCell(String(cell)))
+        return normalized.includes('název služby') && normalized.includes('způsob rozúčtování')
+      })
+
+      if (headerRowIndex !== -1) {
+        const header = rawData[headerRowIndex].map(cell => normalizeHeaderCell(String(cell)))
+        const idxServiceName = header.indexOf('název služby');
+        const idxBillingMethod = header.indexOf('způsob rozúčtování');
+
+        const dataRows = rawData.slice(headerRowIndex + 1);
+
+        for (const row of dataRows) {
+          const serviceName = String(row[idxServiceName] || '').trim();
+          const billingMethod = String(row[idxBillingMethod] || '').trim().toLowerCase();
+
+          if (!serviceName || !billingMethod) continue;
+
+          // Map billing method to Prisma schema
+          const methodMapping: Record<string, { method: CalculationMethod; dataSource: DataSourceType | null; unitAttribute: string | null }> = {
+            'na byt': { method: 'FIXED_PER_UNIT', dataSource: null, unitAttribute: null },
+            'vlastnický podíl': { method: 'OWNERSHIP_SHARE', dataSource: null, unitAttribute: 'VLASTNICKY_PODIL' },
+            'odečet sv': { method: 'METER_READING', dataSource: 'METER_DATA', unitAttribute: null },
+            'odečet tuv': { method: 'METER_READING', dataSource: 'METER_DATA', unitAttribute: null },
+            'externí (pro teplo)': { method: 'METER_READING', dataSource: 'METER_DATA', unitAttribute: null },
+            'nevyúčtovává se': { method: 'NO_BILLING', dataSource: null, unitAttribute: null }
+          };
+
+          const mapped = methodMapping[billingMethod] || { method: 'NO_BILLING', dataSource: null, unitAttribute: null };
+
+          // Update or create service in database
+          const code = serviceName.replace(/\s+/g, '_').toUpperCase().substring(0, 10)
+          await prisma.service.upsert({
+            where: { buildingId_code: { buildingId: building.id, code } },
+            update: {
+              name: serviceName,
+              methodology: mapped.method,
+              dataSourceType: mapped.dataSource,
+              unitAttributeName: mapped.unitAttribute
+            },
+            create: {
+              name: serviceName,
+              buildingId: building.id,
+              code,
+              methodology: mapped.method,
+              dataSourceType: mapped.dataSource,
+              unitAttributeName: mapped.unitAttribute
+            }
+          })
+
+          log(`[Faktury] Aktualizována služba: ${serviceName} (${billingMethod})`);
+        }
+      } else {
+        summary.warnings.push('Na listu "Faktury" nebyla nalezena hlavička s očekávanými sloupci.');
+      }
+    } else {
+      summary.warnings.push('Záložka "Faktury" nebyla nalezena.');
     }
 
     // 3. IMPORT ODEČTŮ
@@ -593,15 +762,17 @@ export async function POST(req: NextRequest) {
         const unitNumber = String(row[0] || '').trim()
         const ownerName = String(row[1] || '').trim()
 
-        const initialReading = parseNumberCell(String(row[initialIdx] || '')) ?? 0
-        const finalReading = parseNumberCell(String(row[finalIdx] || '')) ?? 0
-        let consumption = parseNumberCell(String(row[consumptionIdx] || '')) ?? 0
+        const serialNumber = String(row[5] || '').trim()
+        // Explicitní mapování sloupců: G (index 6) = startValue, H (index 7) = endValue, I (index 8) = consumption
+        const startValue = parseNumberCell(String(row[6] || '')) ?? 0
+        const endValue = parseNumberCell(String(row[7] || '')) ?? 0
+        let consumption = parseNumberCell(String(row[8] || '')) ?? (endValue > startValue ? endValue - startValue : 0)
 
         // Optional columns parsed above nejsou dále používány
 
         // Vypočítat spotřebu, pokud není zadaná
-        if (consumption === 0 && finalReading > initialReading) {
-          consumption = finalReading - initialReading
+        if (consumption === 0 && endValue > startValue) {
+          consumption = endValue - startValue
         }
 
         // Přeskočit neplatné řádky
@@ -683,36 +854,41 @@ export async function POST(req: NextRequest) {
           summary.services.total++
         }
 
-        // Najít nebo vytvořit měřidlo
-        let meter = unit.meters?.find((m: { id: string; type: Prisma.MeterType; isActive: boolean }) => m.type === meterType && m.isActive)
-
-        if (!meter) {
-          meter = await prisma.meter.create({
-            data: {
-              unitId: unit.id,
-              serialNumber: `${unitNumber}-${meterType}`,
-              type: meterType as Prisma.MeterType,
-              initialReading,
-              serviceId: service.id,
-              isActive: true,
-              installedAt: new Date(`${billingPeriod}-01-01`)
-            }
-          })
-        }
-
-        // Vytvořit odečet - použít období z B12
-        await prisma.meterReading.create({
-          data: {
-            meterId: (meter as { id: string }).id,
-            readingDate: new Date(`${billingPeriod}-12-31`),
-            value: finalReading,
-            consumption,
-            period: parseInt(billingPeriod),
-            note: `Import z Excelu - ${ownerName}`
+        // Upsert měřidla podle serialNumber (pokud chybí -> fallback)
+        const effectiveSerial = serialNumber || `${unitNumber}-${meterType}`
+        const meter = await prisma.meter.upsert({
+          where: { unitId_serialNumber: { unitId: unit.id, serialNumber: effectiveSerial } },
+          update: { type: meterType as MeterType, isActive: true },
+          create: {
+            unitId: unit.id,
+            serialNumber: effectiveSerial,
+            type: meterType as MeterType,
+            initialReading: startValue,
+            serviceId: service.id,
+            isActive: true,
+            installedAt: new Date(`${billingPeriod}-01-01`)
           }
         })
-        summary.readings.created++
-        summary.readings.total++
+
+        const existingReading = await prisma.meterReading.findFirst({
+          where: { meterId: meter.id, period: parseInt(billingPeriod, 10) }
+        })
+        if (!existingReading) {
+          await prisma.meterReading.create({
+            data: {
+              meterId: meter.id,
+              readingDate: new Date(`${billingPeriod}-12-31`),
+              value: endValue, // původní pole value reprezentuje koncový stav
+              startValue,
+              endValue,
+              consumption,
+              period: parseInt(billingPeriod, 10),
+              note: `Import z ${sheetName} - ${ownerName}`
+            }
+          })
+          summary.readings.created++
+          summary.readings.total++
+        }
       }
     }
 
@@ -974,142 +1150,194 @@ export async function POST(req: NextRequest) {
 
     if (advancesSheetName) {
       const advancesSheet = workbook.Sheets[advancesSheetName]
+      // Hrubá data (včetně sloučených buněk - prázdné hodnoty zůstávají prázdné)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawData = utils.sheet_to_json<any[]>(advancesSheet, { header: 1, defval: '' })
-
-      // Najdi řádek se sloupci měsíců (obsahuje mnoho hodnot 1..12)
-      const monthRx = /^(0?[1-9]|1[0-2])$|leden|unor|únor|brezen|březen|duben|kveten|květen|cervenec|červenec|cerven|červen|srpen|zari|září|rijen|říjen|listopad|prosinec/
-      const headerRowIndex = rawData.findIndex(row => {
-        const norm = (row as unknown[]).map(c => normalizeHeaderCell(String(c ?? '')))
-        const matched = norm.filter(c => monthRx.test(c)).length
-        return matched >= 6
-      })
-
-      if (headerRowIndex !== -1) {
-        const header = rawData[headerRowIndex] || []
-        const norm = (header as unknown[]).map(c => normalizeHeaderCell(String(c ?? '')))
-
-        // Heuristika pro sloupec jednotky: najdi sloupec s nejvíce neprázdnými stringy v následujících řádcích
-        let unitIdx = 0
-        let bestScore = -1
-        for (let col = 0; col < norm.length; col++) {
-          let score = 0
-          for (let r = headerRowIndex + 1; r < Math.min(rawData.length, headerRowIndex + 40); r++) {
-            const v = rawData[r]?.[col]
-            if (v && isNaN(Number(String(v).replace(/\s/g, '')))) score++
-          }
-          if (score > bestScore) { bestScore = score; unitIdx = col }
-        }
-
-        // Řádek s názvy služeb bývá nad řádkem s měsíci (kvůli sloučení buněk)
-        const labelRowIndexCandidates = [headerRowIndex - 1, headerRowIndex - 2]
-        let labelRowIndex = labelRowIndexCandidates.find(i => i >= 0 && rawData[i] && (rawData[i] as unknown[]).some(c => String(c ?? '').trim() !== ''))
-        if (typeof labelRowIndex !== 'number') labelRowIndex = headerRowIndex - 1
-        const labelRow = (rawData[labelRowIndex] || []) as unknown[]
-        const labelNorm = labelRow.map(c => normalizeHeaderCell(String(c ?? '')))
-
-        type ServiceBlock = { name: string; startCol: number; monthCols: number[] }
-        const blocks: ServiceBlock[] = []
-
-        // Najdi začátky bloků: sloupec, kde je v hlavičce "1" a v řádku nad tím nějaký název
-        for (let c = unitIdx + 1; c < norm.length; c++) {
-          const h = norm[c]
-          if (/^(0?1|leden)$/.test(h)) {
-            // Název služby – vezmi buď přímo v tomto sloupci, nebo nejbližší nenulový vlevo v labelNorm
-            let serviceName = labelNorm[c] || ''
-            if (!serviceName) {
-              for (let k = c; k >= unitIdx + 1; k--) {
-                if (labelNorm[k]) { serviceName = labelNorm[k]; break }
-              }
-            }
-            serviceName = serviceName || 'Neznama sluzba'
-
-            // Vytvoř mapu 12 měsíců (očekáváme sekvenci 1..12)
-            const monthCols: number[] = []
-            for (let m = 0; m < 12; m++) {
-              const col = c + m
-              const hv = normalizeHeaderCell(String(norm[col] ?? ''))
-              const expected = String(m + 1)
-              if (hv === expected || hv === expected.padStart(2, '0') || monthRx.test(hv)) {
-                monthCols.push(col)
-              }
-            }
-            if (monthCols.length >= 6) {
-              blocks.push({ name: serviceName, startCol: c, monthCols })
-              // posuň se za blok
-              c += Math.max(0, monthCols.length - 1)
-            }
-          }
-        }
-
-        log(`[Předpis] Nalezeno ${blocks.length} bloků služeb`)
-        const dataRows = rawData.slice(headerRowIndex + 1)
-        let advancesCreated = 0
-        let advancesUpdated = 0
-
-        const normName = (s: string) => normalizeHeaderCell(s)
-        const existingServices = await prisma.service.findMany({ where: { buildingId: building.id } })
-        const getService = async (name: string) => {
-          const n = normName(name)
-          let svc = existingServices.find((s: { name: string }) => normName(s.name) === n || normName(s.name).includes(n) || n.includes(normName(s.name)))
-          if (svc) return svc
-          // vytvoř pokud chybí
-          const baseCode = name.substring(0, 10).toUpperCase().replace(/\s/g, '_').replace(/[^A-Z0-9_]/g, '')
-          let uniqueCode = baseCode; let cnt = 1
-          while (await prisma.service.findFirst({ where: { buildingId: building.id, code: uniqueCode } })) uniqueCode = `${baseCode}_${cnt++}`
-          svc = await prisma.service.create({
-            data: {
-              buildingId: building.id,
-              name,
-              code: uniqueCode,
-              methodology: 'OWNERSHIP_SHARE' as unknown as Prisma.CalculationMethod,
-              dataSourceType: 'UNIT_COUNT' as unknown as Prisma.DataSourceType,
-              isActive: true
-            }
-          })
-          existingServices.push(svc)
-          return svc
-        }
-
-        for (let i = 0; i < dataRows.length; i++) {
-          const row = dataRows[i] as unknown[]
-          const unitNumber = String(row[unitIdx] ?? '').trim()
-          if (!unitNumber) continue
-
-          let unit = unitMap.get(unitNumber)
-          if (!unit) {
-            const found = await prisma.unit.findFirst({ where: { buildingId: building.id, unitNumber } })
-            if (found) { unit = { id: found.id }; unitMap.set(unitNumber, unit) }
-          }
-          if (!unit) { continue }
-
-          for (const block of blocks) {
-            // vezmi první nenulovou měsíční hodnotu
-            let monthlyAmount = 0
-            for (const col of block.monthCols) {
-              const v = String(row[col] ?? '').trim()
-              const num = parseFloat(v.replace(/\s/g, '').replace(',', '.'))
-              if (Number.isFinite(num) && num !== 0) { monthlyAmount = num; break }
-            }
-            if (!monthlyAmount) continue
-
-            const service = await getService(block.name)
-            let ap = await prisma.advancePayment.findUnique({ where: { serviceId_year: { serviceId: service.id, year: parseInt(billingPeriod) } } })
-            if (!ap) ap = await prisma.advancePayment.create({ data: { serviceId: service.id, year: parseInt(billingPeriod) } })
-            const key = { advancePaymentId_unitId: { advancePaymentId: ap.id, unitId: (unit as UnitLite).id } }
-            const existing = await prisma.advancePaymentRecord.findUnique({ where: key })
-            if (!existing) { await prisma.advancePaymentRecord.create({ data: { advancePaymentId: ap.id, unitId: (unit as UnitLite).id, monthlyAmount } }); advancesCreated++ }
-            else { await prisma.advancePaymentRecord.update({ where: key, data: { monthlyAmount } }); advancesUpdated++ }
-          }
-        }
-
-        log(`[Předpis] Vytvořeno ${advancesCreated}, aktualizováno ${advancesUpdated} záznamů předpisů záloh`)
-        summary.advances = { created: advancesCreated, updated: advancesUpdated, total: advancesCreated + advancesUpdated }
+      if (rawData.length < 3) {
+        summary.warnings.push(`List "${advancesSheetName}" je příliš krátký pro import předpisu.`)
       } else {
-        summary.warnings.push('Na listu "' + advancesSheetName + '" nebyla nalezena čitelná hlavička s měsíci (1..12).')
+        const headerRowServices = rawData[0] as unknown[]
+        const headerRowMonths = rawData[1] as unknown[]
+        const yearInt = parseInt(billingPeriod, 10)
+
+        type HeaderMapping = { serviceId: string; serviceName: string; month: number } | null
+        const headerMap: HeaderMapping[] = []
+
+        // Přednačíst všechny služby z DB kvůli výkonu
+        const existingServices = await prisma.service.findMany({ where: { buildingId: building.id } })
+        const normalize = (s: string) => normalizeHeaderCell(s)
+
+        const getOrCreateService = async (nameRaw: string) => {
+          const name = nameRaw.trim()
+          if (!name) return null
+          const normName = normalize(name)
+          let svc = existingServices.find(s => normalize(s.name) === normName)
+          if (svc) return svc
+          // vytvoř novou službu (default OWNERSHIP_SHARE) s odolností proti duplicitnímu kódu
+          const baseCode = name.substring(0, 10).toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '') || 'SERVICE'
+          let attempt = 0
+          while (attempt < 10) {
+            const candidate = attempt === 0 ? baseCode : `${baseCode}_${attempt}`
+            // Kontrola existence kódu
+            const exists = await prisma.service.findFirst({ where: { buildingId: building.id, code: candidate } })
+            if (exists) { attempt++; continue }
+            try {
+              svc = await prisma.service.create({
+                data: {
+                  buildingId: building.id,
+                  name,
+                  code: candidate,
+                  methodology: 'OWNERSHIP_SHARE',
+                  dataSourceType: 'UNIT_COUNT',
+                  isActive: true
+                }
+              })
+              existingServices.push(svc)
+              log(`[Předpis] Vytvořena služba '${name}' s kódem '${candidate}'`)
+              return svc
+            } catch (e) {
+              if (e instanceof Error && e.message.includes('Unique constraint failed')) {
+                attempt++
+                continue
+              }
+              throw e
+            }
+          }
+          summary.warnings.push(`[Předpis] Nepodařilo se vytvořit službu '${name}' po 10 pokusech.`)
+          return null
+        }
+
+        let currentServiceId: string | null = null
+        let currentServiceName: string | null = null
+
+        for (let j = 1; j < headerRowMonths.length; j++) { // j=0 je "SEZNAM"
+          const svcCellRaw = String(headerRowServices[j] ?? '').trim()
+          if (svcCellRaw) {
+            const svc = await getOrCreateService(svcCellRaw)
+            currentServiceId = svc ? svc.id : null
+            currentServiceName = svc ? svc.name : null
+          }
+
+            const monthCell = String(headerRowMonths[j] ?? '').trim().toLowerCase()
+            if (!monthCell) { headerMap[j] = null; continue }
+            if (monthCell === 'celkem' || monthCell === 'celk' || monthCell === 'sum') { headerMap[j] = null; continue }
+
+            let month: number | null = null
+            if (/^(0?[1-9]|1[0-2])$/.test(monthCell)) {
+              month = parseInt(monthCell, 10)
+            } else {
+              const monthNames: Record<string, number> = {
+                'leden': 1, 'unor': 2, 'únor': 2, 'brezen': 3, 'březen': 3,
+                'duben': 4, 'kveten': 5, 'květen': 5, 'cerven': 6, 'červen': 6,
+                'cervenec': 7, 'červenec': 7, 'srpen': 8, 'zari': 9, 'září': 9,
+                'rijen': 10, 'říjen': 10, 'listopad': 11, 'prosinec': 12
+              }
+              month = monthNames[monthCell] ?? null
+            }
+
+            if (month && currentServiceId) {
+              headerMap[j] = { serviceId: currentServiceId, serviceName: currentServiceName || '', month }
+            } else {
+              headerMap[j] = null
+            }
+        }
+
+        log(`[Předpis] Vytvořena mapa sloupců: ${headerMap.filter(m => m).length} měsíčních sloupců.`)
+
+        // Zpracovat datové řádky (od indexu 2 dál)
+        let createdCount = 0
+        const dataRows = rawData.slice(2)
+
+        for (const dataRow of dataRows) {
+          if (!dataRow || dataRow.length === 0) continue
+          const unitCellRaw = String(dataRow[0] ?? '').trim()
+          if (!unitCellRaw) continue
+          const unitNumber = unitCellRaw
+            .replace(/jednotka\s*č\.?\s*/i, '')
+            .replace(/bazén\s*č\.?\s*/i, '')
+            .replace(/^byt\s*/i, '')
+            .replace(/^č\.?\s*/i, '')
+            .trim()
+          if (!unitNumber || /celkem/i.test(unitNumber)) continue
+
+          let unitLite = unitMap.get(unitNumber)
+          if (!unitLite) {
+            const found = await prisma.unit.findFirst({ where: { buildingId: building.id, unitNumber } })
+            if (!found) {
+              // nevytváříme automaticky – přeskočíme
+              summary.warnings.push(`[Předpis] Jednotka '${unitNumber}' nebyla nalezena, řádek přeskočen.`)
+              continue
+            }
+            unitLite = { id: found.id }
+            unitMap.set(unitNumber, unitLite)
+          }
+
+          for (let j = 1; j < headerMap.length; j++) {
+            const mapping = headerMap[j]
+            if (!mapping) continue
+            const cellRaw = String(dataRow[j] ?? '').trim()
+            if (!cellRaw) continue
+            const amount = parseFloat(cellRaw.replace(/\s/g, '').replace(',', '.'))
+            if (!Number.isFinite(amount) || amount <= 0) continue
+
+            // AdvanceMonthly zápis (model existuje) – unikátní kombinace unitId, serviceId, year, month
+            const existing = await prisma.advanceMonthly.findUnique({
+              where: { unitId_serviceId_year_month: { unitId: unitLite.id, serviceId: mapping.serviceId, year: yearInt, month: mapping.month } }
+            }).catch(() => null)
+            if (!existing) {
+              await prisma.advanceMonthly.create({
+                data: { unitId: unitLite.id, serviceId: mapping.serviceId, year: yearInt, month: mapping.month, amount }
+              })
+              createdCount++
+            } else {
+              await prisma.advanceMonthly.update({ where: { id: existing.id }, data: { amount } })
+            }
+          }
+        }
+        log(`[Předpis] Vytvořeno nebo aktualizováno ${createdCount} měsíčních záznamů záloh.`)
+        summary.advances = { created: createdCount, updated: 0, total: createdCount }
       }
     } else {
       summary.warnings.push('Záložka "Předpis po měsíci" nebyla nalezena. Předpisy záloh nebyly importovány.')
+    }
+
+    // 6. PROCESS 'NÁKLADY NA DŮM' SHEET (celkové roční náklady služeb)
+    const costSheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('náklady na dům'))
+    if (costSheetName) {
+      const sheet = workbook.Sheets[costSheetName]
+      const rawRows = utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' })
+      const headerIdx = rawRows.findIndex(r => r.some(c => String(c).toLowerCase().includes('položka')))
+      if (headerIdx === -1) {
+        log(`[Náklady] Hlavička pro list ${costSheetName} nebyla nalezena.`)
+      } else {
+        const periodYear = parseInt(billingPeriod, 10)
+        if (!Number.isFinite(periodYear)) {
+          log('[Náklady] Neplatné období – náklady přeskočeny.')
+        } else {
+          const services = await prisma.service.findMany({ where: { buildingId: building.id } })
+          let created = 0, updated = 0, skipped = 0
+          for (const row of rawRows.slice(headerIdx + 1)) {
+            const serviceName = String(row[1] ?? '').trim()
+            const amountRaw = String(row[5] ?? '').replace(/\s/g, '').replace(',', '.')
+            const amount = parseFloat(amountRaw)
+            if (!serviceName || !Number.isFinite(amount) || amount <= 0) { skipped++; continue }
+            const service = services.find(s => s.name.trim() === serviceName)
+            if (!service) { log(`[Náklady] Služba "${serviceName}" nebyla nalezena, přeskočeno.`); skipped++; continue }
+            const existing = await prisma.cost.findFirst({ where: { serviceId: service.id, period: periodYear } })
+            if (existing) {
+              await prisma.cost.update({ where: { id: existing.id }, data: { amount } })
+              updated++
+            } else {
+              await prisma.cost.create({ data: { buildingId: building.id, serviceId: service.id, amount, description: `Import z listu ${costSheetName}`, invoiceDate: new Date(), period: periodYear } })
+              created++
+            }
+          }
+          log(`[Náklady] Náklady dokončeny. Vytvořeno ${created}, aktualizováno ${updated}, přeskočeno ${skipped}.`)
+          summary.costs = { created, updated, skipped, total: created + updated }
+        }
+      }
+    } else {
+      log(`[Náklady] List 'Náklady na dům' nebyl nalezen.`)
     }
 
     return NextResponse.json({
@@ -1143,3 +1371,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message, debugStack: stack }, { status: 500 })
   }
 }
+export {}

@@ -294,6 +294,8 @@ model MeterReading {
   meterId         String
   readingDate     DateTime
   value           Float    // hodnota odečtu
+  startValue      Float?   // počáteční stav v období (import)
+  endValue        Float?   // konečný stav v období (import)
   period          Int      // rok vyúčtování
   consumption     Float?   // vypočtená spotřeba
   note            String?
