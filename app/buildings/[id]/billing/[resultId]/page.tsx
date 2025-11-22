@@ -3,7 +3,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import DashboardNav from '@/components/dashboard/DashboardNav'
-import BillingStatement from '@/components/buildings/BillingStatement'
+import { BillingStatement } from '@/components/buildings/BillingStatement'
 import { prisma } from '@/lib/prisma'
 
 export default async function BillingResultDetailPage({ 
@@ -56,6 +56,75 @@ export default async function BillingResultDetailPage({
   }
 
   const building = billingResult.billingPeriod.building
+  const year = billingResult.billingPeriod.year
+
+  // Načíst další data pro zobrazení (měřidla, platby)
+  // Poznámka: V "Black Box" režimu zatím tato data nemusí být v DB kompletní,
+  // ale připravíme strukturu pro BillingStatement.
+  
+  const meters = await prisma.meter.findMany({
+    where: { unitId: billingResult.unitId },
+    include: {
+      readings: { where: { period: year } },
+      service: true
+    }
+  });
+
+  const payments = await prisma.payment.findMany({
+    where: { unitId: billingResult.unitId, period: year },
+    orderBy: { paymentDate: 'asc' }
+  });
+
+  // Transformace dat pro komponentu BillingStatement
+  const statementData = {
+    building: {
+      name: building.name,
+      address: `${building.address}, ${building.city}`,
+      accountNumber: building.bankAccount || '',
+      variableSymbol: billingResult.unit.variableSymbol || ''
+    },
+    unit: {
+      name: billingResult.unit.unitNumber,
+      owner: billingResult.unit.ownerships[0]?.owner 
+        ? `${billingResult.unit.ownerships[0].owner.lastName} ${billingResult.unit.ownerships[0].owner.firstName}` 
+        : 'Neznámý vlastník',
+      share: `${billingResult.unit.shareNumerator}/${billingResult.unit.shareDenominator}`
+    },
+    period: {
+      year: year,
+      startDate: `${year}-01-01`,
+      endDate: `${year}-12-31`
+    },
+    services: billingResult.serviceCosts.map(cost => ({
+      name: cost.service.name,
+      unit: cost.service.measurementUnit || '',
+      share: 0, // TODO: Dopočítat podíl pokud je potřeba
+      buildingCost: cost.buildingTotalCost,
+      buildingUnits: cost.buildingConsumption || 0,
+      pricePerUnit: cost.unitPricePerUnit || 0,
+      userUnits: cost.unitConsumption || 0,
+      userCost: cost.unitCost,
+      advance: cost.unitAdvance,
+      result: cost.unitBalance
+    })),
+    totals: {
+      cost: billingResult.totalCost,
+      advance: billingResult.totalAdvancePrescribed,
+      result: billingResult.result
+    },
+    readings: meters.flatMap(m => m.readings.map(r => ({
+      service: m.service?.name || m.type,
+      meterId: m.serialNumber,
+      startValue: r.startValue || 0,
+      endValue: r.endValue || r.value,
+      consumption: r.consumption || (r.value - (r.startValue || 0))
+    }))),
+    payments: payments.map(p => ({
+      month: p.paymentDate.getMonth() + 1,
+      prescribed: 0, // TODO: Načíst předpis
+      paid: p.amount
+    }))
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -83,13 +152,7 @@ export default async function BillingResultDetailPage({
           </div>
         </div>
 
-        <BillingStatement
-          billingResult={billingResult}
-          period={billingResult.billingPeriod.year}
-          buildingName={building.name}
-          buildingAddress={`${building.address}, ${building.city}`}
-          buildingId={buildingId}
-        />
+        <BillingStatement data={statementData} />
       </main>
     </div>
   )
