@@ -73,11 +73,11 @@ export default function BillingControlPanel({ buildingId, year }: BillingControl
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
+      <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-4">
         <h3 className="text-lg font-semibold text-white">
           📊 Kontrolní panel vyúčtování - Přehled služeb (obdobně jako list &quot;Faktury&quot;)
         </h3>
-        <p className="text-sm text-blue-100 mt-1">
+        <p className="text-sm text-teal-100 mt-1">
           Zobrazuje způsob rozúčtování každé služby a kontrolní údaje
         </p>
       </div>
@@ -86,22 +86,22 @@ export default function BillingControlPanel({ buildingId, year }: BillingControl
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Služba
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Způsob rozúčtování
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-900 uppercase tracking-wider">
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Náklad za rok
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-900 uppercase tracking-wider">
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Jednotek (dům)
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-900 uppercase tracking-wider">
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Kč/jedn (dům)
               </th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-900 uppercase tracking-wider">
+              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Akce
               </th>
             </tr>
@@ -119,11 +119,11 @@ export default function BillingControlPanel({ buildingId, year }: BillingControl
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900">
+                    <div className="text-sm text-gray-500">
                       {METHODOLOGY_NAMES[service.methodology] || service.methodology}
                     </div>
                     {isNoBilling && (
-                      <div className="text-xs text-gray-900 mt-1">
+                      <div className="text-xs text-gray-500 mt-1">
                         Tato položka se nepřenáší do vyúčtování
                       </div>
                     )}
@@ -140,7 +140,7 @@ export default function BillingControlPanel({ buildingId, year }: BillingControl
                     {isNoBilling ? (
                       <span className="text-sm text-gray-400">-</span>
                     ) : (
-                      <div className="text-sm text-gray-900">
+                      <div className="text-sm text-gray-500">
                         {service.buildingUnits.toLocaleString('cs-CZ', {
                           minimumFractionDigits: service.methodology === 'METER_READING' ? 3 : 0,
                           maximumFractionDigits: service.methodology === 'METER_READING' ? 3 : 2
@@ -152,7 +152,7 @@ export default function BillingControlPanel({ buildingId, year }: BillingControl
                     {isNoBilling ? (
                       <span className="text-sm text-gray-400">-</span>
                     ) : (
-                      <div className="text-sm font-semibold text-blue-600">
+                      <div className="text-sm font-semibold text-teal-600">
                         {service.pricePerUnit.toLocaleString('cs-CZ', {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2
@@ -163,7 +163,7 @@ export default function BillingControlPanel({ buildingId, year }: BillingControl
                   <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
                     <a
                       href={`/buildings/${buildingId}/services/${service.id}/edit`}
-                      className="text-blue-600 hover:text-blue-900 font-medium"
+                      className="text-teal-600 hover:text-teal-900 font-medium"
                     >
                       ⚙️ Nastavit
                     </a>
@@ -191,12 +191,12 @@ export default function BillingControlPanel({ buildingId, year }: BillingControl
         </table>
       </div>
 
-      <div className="bg-blue-50 px-6 py-4 border-t border-blue-100">
+      <div className="bg-teal-50 px-6 py-4 border-t border-teal-100">
         <div className="flex items-start gap-3">
-          <div className="text-blue-600 text-xl">💡</div>
-          <div className="text-sm text-blue-800">
+          <div className="text-teal-600 text-xl">💡</div>
+          <div className="text-sm text-teal-800">
             <p className="font-medium mb-1">Jak to funguje:</p>
-            <ul className="list-disc list-inside space-y-1 text-blue-700">
+            <ul className="list-disc list-inside space-y-1 text-teal-700">
               <li><strong>Jednotek (dům)</strong> = Celkový počet dílů, na které se náklad dělí (např. součet m³, počet bytů, součet podílů)</li>
               <li><strong>Kč/jedn (dům)</strong> = Náklad za rok ÷ Jednotek = Cena za jeden díl</li>
               <li>Pro každý byt se pak jeho náklad vypočítá: <strong>Kč/jedn × Počet dílů bytu</strong></li>

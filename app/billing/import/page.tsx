@@ -21,7 +21,7 @@ export default async function CompleteImportPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Import kompletního vyúčtování</h1>
-            <p className="mt-2 text-gray-900">
+            <p className="mt-2 text-gray-500">
               Nahrajte Excel soubor s kompletními daty vyúčtování (faktury, odečty, platby) a systém automaticky vytvoří nebo doplní dům a všechny související záznamy.
             </p>
           </div>
@@ -30,7 +30,7 @@ export default async function CompleteImportPage() {
 
           <div className="mt-8 bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">📋 Co bude importováno</h2>
-            <div className="prose prose-sm text-gray-900">
+            <div className="prose prose-sm text-gray-500">
               <p>Excel soubor musí obsahovat následující záložky:</p>
               <ul>
                 <li>
@@ -58,7 +58,7 @@ export default async function CompleteImportPage() {
                   </ul>
                 </li>
               </ul>
-              <p className="text-sm text-gray-900 mt-4">
+              <p className="text-sm text-gray-500 mt-4">
                 Systém automaticky vytvoří dům, jednotky, služby, měřidla a propojí vše dohromady.
                 Pokud dům se stejným názvem už existuje, použije se existující a doplní se jen nová data.
               </p>

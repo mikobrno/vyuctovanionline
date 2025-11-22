@@ -57,6 +57,7 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
   const [buildingName, setBuildingName] = useState('')
   const [progress, setProgress] = useState<string[]>([])
   const [currentStep, setCurrentStep] = useState('')
+  const [percentage, setPercentage] = useState(0)
 
   const resetInput = () => {
     if (inputRef.current) {
@@ -69,6 +70,7 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
     setError(null)
     setResult(null)
     setProgress([])
+    setPercentage(0)
     setCurrentStep('Připravuji import...')
     
     try {
@@ -92,66 +94,108 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
         body: formData,
       })
 
-      const data = await response.json()
+      const contentType = response.headers.get('Content-Type')
 
-      if (!response.ok) {
-        // Vyčistit technické chyby z Turbopack/Next.js
-        let cleanMessage = data.message ?? 'Import se nezdařil'
+      if (contentType && contentType.includes('application/x-ndjson')) {
+        const reader = response.body?.getReader()
+        if (!reader) throw new Error('Stream not supported')
         
-        // Odstranit technické detaily z chybové hlášky
-        if (cleanMessage.includes('TURBOPACK') || cleanMessage.includes('__imported__module')) {
-          // Extrahovat hlavní chybu z Prisma
-          if (cleanMessage.includes('Unique constraint failed')) {
-            if (cleanMessage.includes('unitNumber')) {
-              cleanMessage = 'Import selhal: V souboru jsou duplicitní čísla jednotek. Zkontrolujte prosím, že každá jednotka má unikátní číslo (např. 318/01, 318/02).'
-            } else {
-              cleanMessage = 'Import selhal: Nalezena duplicitní data v databázi. Zkontrolujte prosím, že importovaná data jsou unikátní.'
+        const decoder = new TextDecoder()
+        let buffer = ''
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          
+          for (const line of lines) {
+            if (!line.trim()) continue
+            try {
+              const msg = JSON.parse(line)
+              if (msg.type === 'log') {
+                setProgress(prev => [...prev, msg.message])
+              } else if (msg.type === 'progress') {
+                if (msg.percentage) setPercentage(msg.percentage)
+                if (msg.step) setCurrentStep(msg.step)
+              } else if (msg.type === 'result') {
+                setResult(msg.data)
+                setCurrentStep('✅ Import dokončen!')
+                setPercentage(100)
+                router.refresh()
+              } else if (msg.type === 'error') {
+                throw new Error(msg.message)
+              }
+            } catch (e) {
+              console.error('Parse error', e)
             }
-          } else if (cleanMessage.includes('Foreign key')) {
-            cleanMessage = 'Import selhal: Chyba propojení dat v databázi. Zkontrolujte prosím, že budova existuje.'
-          } else {
-            cleanMessage = 'Import selhal: Chyba při zpracování dat. Zkontrolujte prosím formát Excelu a zkuste to znovu.'
           }
         }
-        
-        throw new Error(cleanMessage)
-      }
+      } else {
+        const data = await response.json()
 
-      // Zpracovat summary a zobrazit kroky + serverové logy
-      if (data.summary) {
-        setProgress(prev => [...prev, `🏢 Budova: ${data.summary.building.name} ${data.summary.building.created ? '(nově vytvořena)' : '(existující)'}`])
-        
-        if (data.summary.units.total > 0) {
-          setProgress(prev => [...prev, `🏠 Jednotky: ${data.summary.units.total} (${data.summary.units.created} nových)`])
+        if (!response.ok) {
+          // Vyčistit technické chyby z Turbopack/Next.js
+          let cleanMessage = data.message ?? 'Import se nezdařil'
+          
+          // Odstranit technické detaily z chybové hlášky
+          if (cleanMessage.includes('TURBOPACK') || cleanMessage.includes('__imported__module')) {
+            // Extrahovat hlavní chybu z Prisma
+            if (cleanMessage.includes('Unique constraint failed')) {
+              if (cleanMessage.includes('unitNumber')) {
+                cleanMessage = 'Import selhal: V souboru jsou duplicitní čísla jednotek. Zkontrolujte prosím, že každá jednotka má unikátní číslo (např. 318/01, 318/02).'
+              } else {
+                cleanMessage = 'Import selhal: Nalezena duplicitní data v databázi. Zkontrolujte prosím, že importovaná data jsou unikátní.'
+              }
+            } else if (cleanMessage.includes('Foreign key')) {
+              cleanMessage = 'Import selhal: Chyba propojení dat v databázi. Zkontrolujte prosím, že budova existuje.'
+            } else {
+              cleanMessage = 'Import selhal: Chyba při zpracování dat. Zkontrolujte prosím formát Excelu a zkuste to znovu.'
+            }
+          }
+          
+          throw new Error(cleanMessage)
         }
-        
-        if (data.summary.services.total > 0) {
-          setProgress(prev => [...prev, `⚙️ Služby: ${data.summary.services.total} (${data.summary.services.created} nových)`])
-        }
-        
-        if (data.summary.costs.total > 0) {
-          setProgress(prev => [...prev, `🧾 Faktury: ${data.summary.costs.total} importováno`])
-        }
-        
-        if (data.summary.readings.total > 0) {
-          setProgress(prev => [...prev, `📊 Odečty měřidel: ${data.summary.readings.total} importováno`])
-        }
-        
-        if (data.summary.payments.total > 0) {
-          setProgress(prev => [...prev, `💳 Platby: ${data.summary.payments.total} importováno`])
-        }
-      }
 
-      if (Array.isArray(data.logs) && data.logs.length) {
-        setProgress(prev => [...prev, '🧪 Server logy:'])
-        for (const l of data.logs.slice(0, 50)) { // limit
-          setProgress(prev => [...prev, l])
+        // Zpracovat summary a zobrazit kroky + serverové logy
+        if (data.summary) {
+          setProgress(prev => [...prev, `🏢 Budova: ${data.summary.building.name} ${data.summary.building.created ? '(nově vytvořena)' : '(existující)'}`])
+          
+          if (data.summary.units.total > 0) {
+            setProgress(prev => [...prev, `🏠 Jednotky: ${data.summary.units.total} (${data.summary.units.created} nových)`])
+          }
+          
+          if (data.summary.services.total > 0) {
+            setProgress(prev => [...prev, `⚙️ Služby: ${data.summary.services.total} (${data.summary.services.created} nových)`])
+          }
+          
+          if (data.summary.costs.total > 0) {
+            setProgress(prev => [...prev, `🧾 Faktury: ${data.summary.costs.total} importováno`])
+          }
+          
+          if (data.summary.readings.total > 0) {
+            setProgress(prev => [...prev, `📊 Odečty měřidel: ${data.summary.readings.total} importováno`])
+          }
+          
+          if (data.summary.payments.total > 0) {
+            setProgress(prev => [...prev, `💳 Platby: ${data.summary.payments.total} importováno`])
+          }
         }
-      }
 
-      setCurrentStep('✅ Import dokončen!')
-      setResult(data)
-      router.refresh()
+        if (Array.isArray(data.logs) && data.logs.length) {
+          setProgress(prev => [...prev, '🧪 Server logy:'])
+          for (const l of data.logs.slice(0, 50)) { // limit
+            setProgress(prev => [...prev, l])
+          }
+        }
+
+        setCurrentStep('✅ Import dokončen!')
+        setResult(data)
+        setPercentage(100)
+        router.refresh()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import se nezdařil')
       setCurrentStep('❌ Import selhal')
@@ -193,7 +237,7 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
       <h2 className="text-xl font-semibold text-gray-900 mb-4">📊 Nahrát kompletní vyúčtování</h2>
       
       <div className="mb-6">
-        <label htmlFor="buildingName" className="block text-sm font-medium text-gray-900 mb-2">
+        <label htmlFor="buildingName" className="block text-sm font-medium text-gray-500 mb-2">
           Název domu (volitelné)
         </label>
         <input
@@ -202,15 +246,15 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
           value={buildingName}
           onChange={(e) => setBuildingName(e.target.value)}
           placeholder="Např. Bytový dům č.p. 318, Brno"
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-gray-900"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-gray-900"
         />
-        <p className="mt-1 text-sm text-gray-900">
+        <p className="mt-1 text-sm text-gray-500">
           Pokud dům s tímto názvem už existuje, použije se. Jinak se vytvoří nový. Pokud necháte prázdné, vytvoří se &quot;Importovaná budova&quot;.
         </p>
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-900 mb-2">
+        <label className="block text-sm font-medium text-gray-500 mb-2">
           Rok vyúčtování: <strong>{year}</strong>
         </label>
       </div>
@@ -230,11 +274,11 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          className={`block ${uploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${dragActive ? 'text-primary' : ''}`}
+          className={`block ${uploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${dragActive ? 'text-teal-600' : ''}`}
         >
           <div className="mx-auto h-16 w-16 text-gray-400 mb-4">
             {uploading ? (
-              <svg className="animate-spin h-16 w-16 text-primary" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin h-16 w-16 text-teal-600" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -247,10 +291,15 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
           <p className="text-lg font-medium text-gray-900 mb-2">
             {uploading ? currentStep : 'Klikněte pro výběr souboru'}
           </p>
-          <p className="text-sm text-gray-900">
+          {uploading && (
+            <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2 max-w-md mx-auto">
+              <div className="bg-teal-600 h-2.5 rounded-full transition-all duration-300" style={{ width: `${percentage}%` }}></div>
+            </div>
+          )}
+          <p className="text-sm text-gray-500">
             {uploading ? 'Prosím čekejte...' : 'nebo přetáhněte soubor sem'}
           </p>
-          <p className="text-xs text-gray-900 mt-2">Podporované formáty: .xlsx, .xls</p>
+          <p className="text-xs text-gray-500 mt-2">Podporované formáty: .xlsx, .xls</p>
         </label>
       </div>
 
@@ -336,7 +385,7 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
             <div className="mt-4">
               <a
                 href={`/buildings/${result.summary.building.id}`}
-                className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition"
+                className="inline-flex items-center px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition"
               >
                 Zobrazit detail domu
               </a>

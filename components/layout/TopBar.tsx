@@ -49,9 +49,6 @@ export default function TopBar({ user }: TopBarProps) {
             <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5"></span>
             ONLINE
           </span>
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
-            CHYSTANÉ KVÓRUM 65 %
-          </span>
         </div>
 
         <div className="h-6 w-px bg-gray-200 mx-2"></div>

@@ -122,7 +122,7 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
       <div className="mb-6">
         <button
           onClick={handleShowForm}
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700"
+          className="bg-teal-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-teal-700"
         >
           + Přidat náklad
         </button>
@@ -133,11 +133,11 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
           <h2 className="text-lg font-semibold mb-4">Nový náklad</h2>
           <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Dům</label>
+              <label className="block text-sm font-medium text-gray-500 mb-1">Dům</label>
               <select
                 value={formData.buildingId}
                 onChange={(e) => handleBuildingChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 required
               >
                 {buildings.map(b => (
@@ -146,11 +146,11 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Služba</label>
+              <label className="block text-sm font-medium text-gray-500 mb-1">Služba</label>
               <select
                 value={formData.serviceId}
                 onChange={(e) => setFormData({...formData, serviceId: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 required
               >
                 {services.length === 0 && <option value="">Načítání...</option>}
@@ -160,52 +160,52 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Částka (Kč)</label>
+              <label className="block text-sm font-medium text-gray-500 mb-1">Částka (Kč)</label>
               <input
                 type="number"
                 step="0.01"
                 value={formData.amount}
                 onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Datum faktury</label>
+              <label className="block text-sm font-medium text-gray-500 mb-1">Datum faktury</label>
               <input
                 type="date"
                 value={formData.invoiceDate}
                 onChange={(e) => setFormData({...formData, invoiceDate: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Číslo faktury</label>
+              <label className="block text-sm font-medium text-gray-500 mb-1">Číslo faktury</label>
               <input
                 type="text"
                 value={formData.invoiceNumber}
                 onChange={(e) => setFormData({...formData, invoiceNumber: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 placeholder="Např. 2024001"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Období (rok)</label>
+              <label className="block text-sm font-medium text-gray-500 mb-1">Období (rok)</label>
               <input
                 type="number"
                 value={formData.period}
                 onChange={(e) => setFormData({...formData, period: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 required
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-900 mb-1">Popis</label>
+              <label className="block text-sm font-medium text-gray-500 mb-1">Popis</label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({...formData, description: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 rows={2}
                 placeholder="Např. Teplo - roční vyúčtování"
                 required
@@ -215,7 +215,7 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
               <button 
                 type="submit" 
                 disabled={loading}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
               >
                 {loading ? 'Ukládání...' : 'Uložit'}
               </button>
@@ -235,13 +235,13 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Dům</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Služba</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Popis</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Částka</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Datum</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Faktura</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase">Akce</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dům</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Služba</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Popis</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Částka</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Datum</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Faktura</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Akce</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -249,14 +249,14 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
               <tr key={cost.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 text-sm text-gray-900">{cost.building.name}</td>
                 <td className="px-6 py-4 text-sm font-medium text-gray-900">{cost.service.name}</td>
-                <td className="px-6 py-4 text-sm text-gray-900">{cost.description}</td>
+                <td className="px-6 py-4 text-sm text-gray-500">{cost.description}</td>
                 <td className="px-6 py-4 text-sm text-gray-900 font-semibold">
                   {cost.amount.toLocaleString('cs-CZ')} Kč
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-900">
+                <td className="px-6 py-4 text-sm text-gray-500">
                   {new Date(cost.invoiceDate).toLocaleDateString('cs-CZ')}
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-900">
+                <td className="px-6 py-4 text-sm text-gray-500">
                   {cost.invoiceNumber || '-'}
                 </td>
                 <td className="px-6 py-4 text-sm">
@@ -271,13 +271,13 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
             ))}
             {initialCosts.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-gray-900">
+                <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                   <div className="flex flex-col items-center">
                     <svg className="h-12 w-12 text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                     <p className="text-lg font-medium text-gray-900 mb-1">Zatím nejsou zadány žádné náklady</p>
-                    <p className="text-sm text-gray-900">Začněte přidáním první faktury za služby</p>
+                    <p className="text-sm text-gray-500">Začněte přidáním první faktury za služby</p>
                   </div>
                 </td>
               </tr>
@@ -287,12 +287,12 @@ export default function ExpensesClient({ initialCosts, buildings, currentYear }:
       </div>
 
       {initialCosts.length > 0 && (
-        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="mt-4 bg-teal-50 border border-teal-200 rounded-lg p-4">
           <div className="flex items-start">
-            <svg className="h-5 w-5 text-blue-600 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-5 w-5 text-teal-600 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <div className="text-sm text-blue-800">
+            <div className="text-sm text-teal-800">
               <p className="font-medium">Celkem {initialCosts.length} nákladů pro rok {currentYear}</p>
               <p className="mt-1">
                 Celková částka: <strong>
