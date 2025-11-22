@@ -87,6 +87,17 @@ model Building {
   ico           String?
   bankAccount   String?
   managerName   String?  // Správce budovy (z Excelu: Vstupni data B34)
+  managerEmail  String?  // Email domovníka
+  managerPhone  String?  // Telefon domovníka
+  email         String?  // Email pro hlášení
+  
+  // Globální parametry budovy pro výpočty
+  totalArea         Float?   // Užitná plocha domu - celková
+  chargeableArea    Float?   // Užitná plocha domu - započitatelná
+  chimneysCount     Int?     // Počet komínů
+  totalPeople       Int?     // Počet osob (celkem/výtah)
+  unitCountOverride Int?     // Ruční přepsání počtu jednotek (pokud se liší od DB)
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -94,6 +105,7 @@ model Building {
   services      Service[]
   costs         Cost[]
   billingPeriods BillingPeriod[]
+  calculationConfigs CalculationConfig[]
 
   @@map("buildings")
 }
@@ -121,9 +133,24 @@ model Unit {
   payments              Payment[]
   billingResults        BillingResult[]
   personMonths          PersonMonth[]
+  parameters            UnitParameter[]
 
   @@unique([buildingId, unitNumber])
   @@map("units")
+}
+
+model UnitParameter {
+  id        String   @id @default(cuid())
+  unitId    String
+  name      String   // Název parametru (např. "Počet radiátorů", "Plocha balkonu")
+  value     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  unit      Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([unitId, name])
+  @@map("unit_parameters")
 }
 
 enum UnitType {
@@ -186,6 +213,8 @@ model Service {
   measurementUnit     String?             // jednotka měření (m³, kWh, osobo-měsíc)
   unitPrice           Float?              // cena za jednotku
   fixedAmountPerUnit  Float?              // fixní částka na jednotku (např. Kč/byt)
+  divisor             Float?              // ruční dělitel (např. pro Rovným dílem - místo počtu jednotek)
+  customFormula       String?             // vlastní vzorec pro výpočet
   advancePaymentColumn String?            // odkaz na sloupec v předpisu záloh
   order               Int                 @default(0)
   isActive            Boolean             @default(true)
@@ -214,6 +243,7 @@ enum CalculationMethod {
   EQUAL_SPLIT      // Rovním dílem
   NO_BILLING       // Nevyúčtovávat (např. Fond oprav)
   CUSTOM           // Vlastní vzorec
+  UNIT_PARAMETER   // Podle parametru jednotky (z Excelu)
 }
 
 // NOVÉ ENUMY PRO DYNAMICKÝ ENGINE
@@ -298,6 +328,8 @@ model MeterReading {
   endValue        Float?   // konečný stav v období (import)
   period          Int      // rok vyúčtování
   consumption     Float?   // vypočtená spotřeba
+  dateStart       DateTime? // začátek období odečtu
+  dateEnd         DateTime? // konec období odečtu
   precalculatedCost Float? // předvypočítaný náklad z importu (např. pro Teplo)
   note            String?
   createdAt       DateTime @default(now())
@@ -392,6 +424,7 @@ model BillingPeriod {
   buildingId      String
   year            Int
   status          BillingStatus @default(DRAFT)
+  note            String?       // Poznámka k vyúčtování (např. text do patičky)
   calculatedAt    DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -421,6 +454,8 @@ model BillingResult {
   totalAdvancePaid      Float          // celkem uhrazeno
   repairFund            Float          @default(0) // fond oprav
   result                Float          // přeplatek (kladné) / nedoplatek (záporné)
+  monthlyPrescriptions  Json?          // Pole 12 čísel - předpisy po měsících
+  monthlyPayments       Json?          // Pole 12 čísel - platby po měsících
   isPaid                Boolean        @default(false) // stav úhrady
   pdfGenerated          Boolean        @default(false)
   pdfUrl                String?
@@ -464,4 +499,21 @@ model BillingServiceCost {
 
   @@unique([billingResultId, serviceId])
   @@map("billing_service_costs")
+}
+
+// Uložené konfigurace výpočtů (verzování nastavení)
+model CalculationConfig {
+  id          String   @id @default(cuid())
+  buildingId  String
+  name        String   // Název verze (např. "Nastavení 2024 - verze 1")
+  description String?
+  createdAt   DateTime @default(now())
+  
+  // Uložená konfigurace jako JSON
+  // Obsahuje pole objektů: { serviceCode: string, methodology: string, unitPrice: number, ... }
+  config      Json     
+
+  building    Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@map("calculation_configs")
 }

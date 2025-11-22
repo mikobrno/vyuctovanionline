@@ -143,3 +143,46 @@ export async function DELETE(
     )
   }
 }
+
+// PATCH - Částečná aktualizace domu (včetně globálních parametrů)
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+
+    if (!session) {
+      return NextResponse.json({ error: 'Nepřihlášen' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { id } = await params
+
+    // Filtrovat pouze povolené pole pro update
+    const allowedFields = [
+      'name', 'address', 'city', 'zip', 'ico', 'bankAccount', 'managerName',
+      'totalArea', 'chargeableArea', 'chimneysCount', 'totalPeople', 'unitCountOverride'
+    ]
+
+    const dataToUpdate: Record<string, unknown> = {}
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        dataToUpdate[field] = body[field]
+      }
+    }
+
+    const building = await prisma.building.update({
+      where: { id },
+      data: dataToUpdate,
+    })
+
+    return NextResponse.json(building)
+  } catch (error) {
+    console.error('Error updating building:', error)
+    return NextResponse.json(
+      { error: 'Chyba při aktualizaci domu' },
+      { status: 500 }
+    )
+  }
+}

@@ -71,6 +71,7 @@ export default function BillingGenerator({ buildingId, buildingName, services, c
       
       // Refresh stránky po úspěšném generování
       setTimeout(() => {
+        router.push(`/buildings/${buildingId}?tab=results`)
         router.refresh()
       }, 2000)
     } catch (err) {
@@ -274,10 +275,16 @@ export default function BillingGenerator({ buildingId, buildingName, services, c
               </div>
             </div>
 
-            <div className="mt-4 pt-4 border-t border-green-300">
+            <div className="mt-4 pt-4 border-t border-green-300 flex flex-col gap-3">
               <p className="text-sm text-green-800">
-                ℹ️ Stránka se za chvíli automaticky obnoví. Pak můžete zobrazit detaily vyúčtování na záložce &ldquo;📊 Vyúčtování&rdquo;.
+                ℹ️ Vyúčtování bylo úspěšně vytvořeno. Pro zobrazení detailní tabulky po jednotkách klikněte na tlačítko níže.
               </p>
+              <button
+                onClick={() => router.push(`/buildings/${buildingId}?tab=results`)}
+                className="w-full bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition-colors text-center"
+              >
+                📋 Zobrazit detailní tabulku výsledků
+              </button>
             </div>
           </div>
         </div>

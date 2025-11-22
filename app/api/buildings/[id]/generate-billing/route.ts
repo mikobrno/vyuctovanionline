@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { calculateBillingForBuilding } from '@/lib/billingEngine'
+import { prisma } from '@/lib/prisma'
 
 /**
  * API endpoint pro generování kompletního vyúčtování
@@ -34,12 +35,49 @@ export async function POST(
     // Generovat vyúčtování pomocí billing enginu
     const result = await calculateBillingForBuilding(buildingId, period)
 
+    // Načíst agregované výsledky pro odpověď
+    const billingResults = await prisma.billingResult.findMany({
+      where: { billingPeriodId: result.billingPeriod.id }
+    });
+
+    const serviceCosts = await prisma.billingServiceCost.findMany({
+      where: { billingPeriodId: result.billingPeriod.id },
+      include: { service: true }
+    });
+
+    const totalCosts = billingResults.reduce((sum, r) => sum + r.totalCost, 0);
+    const totalAdvances = billingResults.reduce((sum, r) => sum + r.totalAdvancePaid, 0);
+    const totalBalance = billingResults.reduce((sum, r) => sum + r.result, 0);
+
+    // Seskupit náklady podle služeb
+    const serviceMap = new Map<string, { name: string, code: string, totalCost: number }>();
+    
+    for (const sc of serviceCosts) {
+      const existing = serviceMap.get(sc.serviceId) || { 
+        name: sc.service.name, 
+        code: sc.service.code || '', 
+        totalCost: 0 
+      };
+      existing.totalCost += sc.unitCost;
+      serviceMap.set(sc.serviceId, existing);
+    }
+
+    const servicesSummary = Array.from(serviceMap.values());
+
     return NextResponse.json({
       success: true,
       message: `Vyúčtování pro rok ${period} bylo úspěšně vygenerováno`,
       data: {
-        billingPeriodId: result.billingPeriod.id,
+        summary: {
+          totalCosts: totalCosts,
+          totalDistributed: totalCosts,
+          totalAdvances: totalAdvances,
+          totalBalance: totalBalance
+        },
         numberOfUnits: result.processedUnits,
+        numberOfServices: servicesSummary.length,
+        services: servicesSummary,
+        billingPeriodId: result.billingPeriod.id,
         generatedAt: new Date()
       }
     })

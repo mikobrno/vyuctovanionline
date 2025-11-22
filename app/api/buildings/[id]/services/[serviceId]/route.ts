@@ -48,6 +48,8 @@ export async function PATCH(
         measurementUnit: body.measurementUnit,
         unitPrice: body.unitPrice,
         fixedAmountPerUnit: body.fixedAmountPerUnit,
+        divisor: body.divisor,
+        customFormula: body.customFormula,
         advancePaymentColumn: body.advancePaymentColumn,
         showOnStatement: body.showOnStatement,
         isActive: body.isActive,

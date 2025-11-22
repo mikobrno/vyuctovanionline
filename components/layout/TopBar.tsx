@@ -1,6 +1,9 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import { signOut } from 'next-auth/react';
+import { useParams, useRouter, usePathname, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 interface TopBarProps {
   user?: {
@@ -10,7 +13,65 @@ interface TopBarProps {
   };
 }
 
+interface Building {
+  id: string;
+  name: string;
+}
+
 export default function TopBar({ user }: TopBarProps) {
+  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const params = useParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const currentBuildingId = (params?.id as string) || searchParams.get('buildingId');
+  const currentBuilding = buildings.find(b => b.id === currentBuildingId);
+
+  const filteredBuildings = buildings.filter(b =>
+    b.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  useEffect(() => {
+    fetch('/api/buildings')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setBuildings(data);
+        }
+      })
+      .catch(err => console.error('Failed to load buildings', err));
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [isOpen]);
+
+  const toggleDropdown = () => {
+    if (isOpen) {
+      setIsOpen(false);
+      setSearchQuery('');
+    } else {
+      setIsOpen(true);
+    }
+  };
+
   return (
     <header className="h-16 bg-white border-b border-gray-200 fixed top-0 right-0 left-0 lg:left-64 z-20 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
       <div className="flex items-center gap-4 flex-1">
@@ -20,11 +81,78 @@ export default function TopBar({ user }: TopBarProps) {
           </svg>
         </button>
 
-        <div className="hidden md:flex items-center gap-2 text-sm text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
-          <span className="font-medium text-gray-900">Kníničky 318 - Neptun</span>
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+        <div className="hidden md:block relative" ref={dropdownRef}>
+          <button
+            onClick={toggleDropdown}
+            className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors min-w-[200px] justify-between"
+          >
+            <span className={`font-medium truncate max-w-[200px] ${currentBuilding ? 'text-gray-900' : 'text-gray-500'}`}>
+              {currentBuilding ? currentBuilding.name : 'Vyberte dům...'}
+            </span>
+            <svg className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {isOpen && (
+            <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 max-h-96 overflow-y-auto">
+              <div className="px-2 py-2 sticky top-0 bg-white border-b border-gray-100">
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  className="w-full px-2 py-1 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-teal-500"
+                  placeholder="Hledat..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+              {filteredBuildings.length > 0 ? (
+                filteredBuildings.map(building => (
+                  <button
+                    key={building.id}
+                    onClick={() => {
+                      setIsOpen(false);
+                      // Pokud jsme na stránce, která podporuje filtrování podle buildingId (dashboard, units, billing)
+                      // tak jen aktualizujeme URL parametr.
+                      // Pokud jsme na detailu budovy (/buildings/[id]), tak přesměrujeme na nový detail.
+                      // Jinak (např. seznam budov) taky aktualizujeme parametr.
+                      
+                      if (pathname?.startsWith('/buildings/') && pathname !== '/buildings' && pathname !== '/buildings/new') {
+                         router.push(`/buildings/${building.id}`);
+                      } else {
+                         // Pro ostatní stránky (dashboard, units, billing, buildings list) použijeme query parametr
+                         const newSearchParams = new URLSearchParams(searchParams?.toString());
+                         newSearchParams.set('buildingId', building.id);
+                         router.push(`${pathname}?${newSearchParams.toString()}`);
+                      }
+                    }}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
+                      building.id === currentBuildingId ? 'bg-teal-50 text-teal-700' : 'text-gray-700'
+                    }`}
+                  >
+                    <span className="truncate">{building.name}</span>
+                    {building.id === currentBuildingId && (
+                      <svg className="w-4 h-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                ))
+              ) : (
+                <div className="px-4 py-2 text-sm text-gray-500">Žádné domy nenalezeny</div>
+              )}
+              <div className="border-t border-gray-100 mt-1 pt-1">
+                <Link
+                  href="/buildings/new"
+                  onClick={() => setIsOpen(false)}
+                  className="block w-full text-left px-4 py-2 text-sm text-primary hover:bg-gray-50 font-medium"
+                >
+                  + Přidat nový dům
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="hidden md:flex items-center max-w-md flex-1 ml-4">

@@ -6,6 +6,8 @@ import AppLayout from '@/components/layout/AppLayout'
 import BuildingCard from '@/components/buildings/BuildingCard'
 import { prisma } from '@/lib/prisma'
 
+import BuildingsImport from '@/components/buildings/BuildingsImport'
+
 export default async function BuildingsPage() {
   const session = await getServerSession(authOptions)
 
@@ -38,15 +40,18 @@ export default async function BuildingsPage() {
             Správa bytových domů a jejich jednotek
           </p>
         </div>
-        <Link
-          href="/buildings/new"
-          className="bg-primary text-white px-6 py-3 rounded-lg font-semibold hover:bg-primary-hover transition-colors shadow-sm flex items-center gap-2"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Přidat dům
-        </Link>
+        <div className="flex gap-3">
+          <BuildingsImport />
+          <Link
+            href="/buildings/new"
+            className="bg-primary text-white px-6 py-3 rounded-lg font-semibold hover:bg-primary-hover transition-colors shadow-sm flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Přidat dům
+          </Link>
+        </div>
       </div>
 
       {buildings.length === 0 ? (

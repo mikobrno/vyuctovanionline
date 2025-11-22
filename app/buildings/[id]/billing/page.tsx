@@ -26,17 +26,37 @@ export default async function BillingDashboardPage({ params, searchParams }: Pag
 
   if (!building) return notFound();
 
+  // 1b. Načtení statusu období (pro zámek)
+  const billingPeriod = await prisma.billingPeriod.findUnique({
+    where: { buildingId_year: { buildingId: id, year: currentYear } }
+  });
+
   // 2. Načtení výsledků vyúčtování pro daný rok
   // Hledáme BillingResult, které patří k jednotkám v této budově a mají správný rok
   const billingResults = await prisma.billingResult.findMany({
     where: {
-      year: currentYear,
+      billingPeriod: {
+        year: currentYear
+      },
       unit: {
         buildingId: id
       }
     },
     include: {
-      unit: true // Potřebujeme číslo jednotky a jméno vlastníka
+      unit: {
+        include: {
+          ownerships: {
+            include: {
+              owner: true
+            },
+            // Můžeme zkusit seřadit podle platnosti, abychom vzali nejnovějšího
+            orderBy: {
+              validFrom: 'desc'
+            },
+            take: 1
+          }
+        }
+      }
     },
     orderBy: {
       unit: {
@@ -49,36 +69,58 @@ export default async function BillingDashboardPage({ params, searchParams }: Pag
   const summary = billingResults.reduce(
     (acc, curr) => ({
       totalCost: acc.totalCost + curr.totalCost,
-      totalAdvance: acc.totalAdvance + curr.totalAdvance,
-      balance: acc.balance + curr.balance,
+      totalAdvance: acc.totalAdvance + curr.totalAdvancePrescribed,
+      balance: acc.balance + curr.result,
     }),
     { totalCost: 0, totalAdvance: 0, balance: 0 }
   );
 
   // 4. Příprava dat pro tabulku (Flat structure)
-  const tableData = billingResults.map(r => ({
-    id: r.id,
-    unitNumber: r.unit.unitNumber,
-    ownerName: r.unit.ownerName,
-    totalCost: r.totalCost,
-    totalAdvance: r.totalAdvance,
-    balance: r.balance
-  }));
+  const tableData = billingResults.map(r => {
+    const owner = r.unit.ownerships[0]?.owner;
+    const ownerName = owner ? `${owner.lastName} ${owner.firstName}` : "Neznámý";
+
+    return {
+      id: r.id,
+      unitNumber: r.unit.unitNumber,
+      ownerName: ownerName,
+      totalCost: r.totalCost,
+      totalAdvance: r.totalAdvancePrescribed,
+      balance: r.result
+    };
+  });
 
   return (
     <div className="container mx-auto py-10 px-4 max-w-7xl">
       {/* Hlavička stránky */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
+          <div className="mb-2">
+            <a href={`/buildings/${id}`} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
+              ← Zpět na detail budovy
+            </a>
+          </div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Vyúčtování služeb</h1>
           <p className="text-muted-foreground mt-1">
             {building.name} • Rok {currentYear}
           </p>
         </div>
+        <div>
+          <a 
+            href={`/buildings/${id}?tab=results`} 
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-blue-600 text-white hover:bg-blue-700 h-10 px-4 py-2"
+          >
+            Přehled výsledků
+          </a>
+        </div>
       </div>
 
       {/* Ovládací prvky */}
-      <BillingControls buildingId={id} year={currentYear} />
+      <BillingControls 
+        buildingId={id} 
+        year={currentYear} 
+        status={billingPeriod?.status || 'DRAFT'} 
+      />
 
       {/* Karty s přehledem */}
       <BillingSummaryCards 

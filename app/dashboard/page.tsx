@@ -5,12 +5,31 @@ import AppLayout from '@/components/layout/AppLayout'
 import StatsCards from '@/components/dashboard/StatsCards'
 import CompleteImport from '@/components/buildings/CompleteImport'
 import Link from 'next/link'
+import { prisma } from '@/lib/prisma'
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
   const session = await getServerSession(authOptions)
 
   if (!session) {
     redirect('/login')
+  }
+
+  const resolvedSearchParams = await searchParams
+  const buildingId = typeof resolvedSearchParams.buildingId === 'string' ? resolvedSearchParams.buildingId : undefined
+  
+  let buildingName = ''
+  if (buildingId) {
+    const building = await prisma.building.findUnique({
+      where: { id: buildingId },
+      select: { name: true }
+    })
+    if (building) {
+      buildingName = building.name
+    }
   }
 
   return (
@@ -22,13 +41,13 @@ export default async function DashboardPage() {
             Vítejte, {session.user.name || session.user.email}
           </h1>
           <p className="mt-2 text-gray-600">
-            Přehled systému pro vyúčtování služeb. Stav k {new Date().toLocaleDateString('cs-CZ')}.
+            Přehled systému pro vyúčtování služeb{buildingName ? ` - ${buildingName}` : ''}. Stav k {new Date().toLocaleDateString('cs-CZ')}.
           </p>
         </div>
       </div>
 
       <div className="mb-8">
-        <StatsCards />
+        <StatsCards buildingId={buildingId} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
@@ -40,7 +59,7 @@ export default async function DashboardPage() {
               <p className="text-sm text-gray-500">Nahrajte Excel soubor pro hromadné zpracování.</p>
             </div>
           </div>
-          <CompleteImport />
+          <CompleteImport buildingId={buildingId} />
         </div>
 
         {/* Rychlé akce */}

@@ -1,19 +1,37 @@
 import { prisma } from '@/lib/prisma'
 
-export default async function StatsCards() {
+interface StatsCardsProps {
+  buildingId?: string
+}
+
+export default async function StatsCards({ buildingId }: StatsCardsProps) {
   // Načteme základní statistiky
   const [buildingsCount, unitsCount, ownersCount, billingPeriodsCount] = await Promise.all([
-    prisma.building.count(),
-    prisma.unit.count(),
-    prisma.owner.count(),
-    prisma.billingPeriod.count(),
+    buildingId ? 1 : prisma.building.count(),
+    prisma.unit.count({
+      where: buildingId ? { buildingId } : undefined
+    }),
+    prisma.owner.count({
+      where: buildingId ? {
+        ownerships: {
+          some: {
+            unit: {
+              buildingId
+            }
+          }
+        }
+      } : undefined
+    }),
+    prisma.billingPeriod.count({
+      where: buildingId ? { buildingId } : undefined
+    }),
   ])
 
   const stats = [
     {
       name: 'BYTOVÉ DOMY',
       value: buildingsCount,
-      description: 'Spravované objekty',
+      description: buildingId ? 'Vybraný objekt' : 'Spravované objekty',
       trend: 'Aktivní',
       trendColor: 'text-teal-500',
       progress: 100,

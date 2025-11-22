@@ -38,6 +38,13 @@ function parseNumberCell(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
+function stripUnitPrefixes(value: string) {
+  return value
+    .replace(/^(jednotka|byt|nebytový prostor|nebyt\.|ateliér|atelier|garáž|garaz|sklep|bazén|bazen)\s*(č\.?|c\.?)?\s*/gi, '')
+    .replace(/^(č\.?|c\.?)\s*/gi, '')
+    .trim()
+}
+
 interface ImportSummary {
   building: {
     id: string
@@ -110,6 +117,7 @@ export async function POST(req: NextRequest) {
       const formData = await req.formData()
       const file = formData.get('file')
       const buildingName = (formData.get('buildingName') as string) || ''
+      const buildingId = (formData.get('buildingId') as string) || ''
       const year = (formData.get('year') as string) || ''
 
       if (!file) {
@@ -167,8 +175,6 @@ export async function POST(req: NextRequest) {
       // 1. NAJÍT NEBO VYTVOŘIT DŮM
       await send({ type: 'progress', percentage: 10, step: 'Zpracovávám budovu...' })
       
-      const finalBuildingName = buildingName || 'Importovaná budova ' + new Date().toLocaleDateString('cs-CZ')
-      
       let buildingAddress = 'Adresu upravte v detailu budovy'
       let billingPeriod = year || String(new Date().getFullYear())
       
@@ -204,21 +210,34 @@ export async function POST(req: NextRequest) {
         }
       }
       
-      let building = await prisma.building.findFirst({
-        where: { name: { contains: finalBuildingName, mode: 'insensitive' } }
-      })
+      let building;
 
-      if (!building) {
-        building = await prisma.building.create({
-          data: {
-            name: finalBuildingName,
-            address: buildingAddress,
-            city: 'Nezadáno',
-            zip: '00000',
-            managerName: managerName,
-          }
+      if (buildingId) {
+        building = await prisma.building.findUnique({
+          where: { id: buildingId }
         })
-        summary.building.created = true
+        if (!building) {
+           throw new Error(`Budova s ID ${buildingId} nebyla nalezena.`)
+        }
+      } else {
+        const finalBuildingName = buildingName || 'Importovaná budova ' + new Date().toLocaleDateString('cs-CZ')
+        
+        building = await prisma.building.findFirst({
+          where: { name: { contains: finalBuildingName, mode: 'insensitive' } }
+        })
+
+        if (!building) {
+          building = await prisma.building.create({
+            data: {
+              name: finalBuildingName,
+              address: buildingAddress,
+              city: 'Nezadáno',
+              zip: '00000',
+              managerName: managerName,
+            }
+          })
+          summary.building.created = true
+        }
       }
 
       summary.building.id = building.id
@@ -230,6 +249,9 @@ export async function POST(req: NextRequest) {
         create: { buildingId: building.id, year: parseInt(billingPeriod, 10) }
       })
       await log(`[Import] BillingPeriod ID: ${billingPeriodRecord.id}`)
+
+      // Inicializace mapy jednotek pro pozdější použití
+      const unitMap = new Map<string, UnitLite>()
 
       // 2. IMPORT VLASTNÍKŮ
       await send({ type: 'progress', percentage: 20, step: 'Importuji vlastníky a jednotky...' })
@@ -288,19 +310,43 @@ export async function POST(req: NextRequest) {
             if (!row || row.length === 0 || !row[1]) continue
 
             const unitCellRaw = String(row[0] || '').trim()
+            // Použijeme plný název z Excelu (např. "Jednotka č. 318/01" nebo "Bazén č. ...")
             const unitNumber = unitCellRaw
-              .replace(/jednotka\s*č\.?\s*/i, '')
-              .replace(/^byt\s*/i, '')
-              .replace(/^č\.?\s*/i, '')
-              .trim()
+            const strippedUnitNumber = stripUnitPrefixes(unitNumber)
 
-            const fullName = String(row[1] || '').trim()
+                        const fullName = String(row[1] || '').trim()
             const address = String(row[2] || '').trim()
             const email = String(row[3] || '').trim()
             const phone = String(row[4] || '').trim()
             const areaRaw = String(row[6] || '').trim()
             const variableSymbol = String(row[9] || '').trim()
-            const ownershipShareRaw = String(row[8] || '').trim()
+            const ownershipShareRaw = String(row[13] || '').trim()
+            
+            // Načtení datumu "V evidenci od" (sloupec P = index 15) a "V evidenci do" (sloupec Q = index 16)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const parseExcelDate = (val: any): Date | null => {
+              if (!val) return null
+              if (val instanceof Date) return val
+              const num = parseFloat(val)
+              if (!isNaN(num) && num > 20000) {
+                // Excel date serial number conversion
+                return new Date(Math.round((num - 25569) * 86400 * 1000))
+              }
+              // Try parsing string date "1.1.2024"
+              if (typeof val === 'string') {
+                const parts = val.split('.')
+                if (parts.length === 3) {
+                  return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))
+                }
+              }
+              return null
+            }
+
+            const validFromRaw = row[15]
+            const validToRaw = row[16]
+            
+            const validFromDate = parseExcelDate(validFromRaw)
+            const validToDate = parseExcelDate(validToRaw)
 
             const totalArea = (() => {
               const num = parseFloat(areaRaw.replace(',', '.'))
@@ -349,7 +395,16 @@ export async function POST(req: NextRequest) {
             }
             summary.owners.total++
 
-            let unit = await prisma.unit.findUnique({ where: { buildingId_unitNumber: { buildingId: building.id, unitNumber } } })
+            let unit = await prisma.unit.findFirst({ 
+              where: { 
+                buildingId: building.id, 
+                OR: [
+                  { unitNumber: unitNumber },
+                  { unitNumber: strippedUnitNumber }
+                ]
+              } 
+            })
+
             if (!unit) {
               unit = await prisma.unit.create({
                 data: {
@@ -364,6 +419,15 @@ export async function POST(req: NextRequest) {
               })
               summary.units.created++
             } else {
+              // Pokud se název liší (např. v DB je "318/01" a v Excelu "Jednotka č. 318/01"), aktualizujeme na plný název
+              if (unit.unitNumber !== unitNumber) {
+                await prisma.unit.update({
+                  where: { id: unit.id },
+                  data: { unitNumber: unitNumber }
+                })
+                unit.unitNumber = unitNumber
+              }
+
               await prisma.unit.update({
                 where: { id: unit.id },
                 data: {
@@ -377,11 +441,23 @@ export async function POST(req: NextRequest) {
             }
             summary.units.total++
 
+            // Uložíme do mapy pod oběma klíči pro snadnější vyhledávání
+            unitMap.set(unitNumber, { id: unit.id, variableSymbol: unit.variableSymbol || undefined })
+            unitMap.set(strippedUnitNumber, { id: unit.id, variableSymbol: unit.variableSymbol || undefined })
+
             const yearStart = new Date(parseInt(billingPeriod, 10), 0, 1)
+            const effectiveValidFrom = validFromDate || yearStart
+            const effectiveValidTo = validToDate || null
+
             const existingOwnership = await prisma.ownership.findFirst({ where: { unitId: unit.id, ownerId: owner.id } })
             if (!existingOwnership) {
               await prisma.ownership.create({
-                data: { unitId: unit.id, ownerId: owner.id, validFrom: yearStart, sharePercent: 100 }
+                data: { unitId: unit.id, ownerId: owner.id, validFrom: effectiveValidFrom, validTo: effectiveValidTo, sharePercent: 100 }
+              })
+            } else {
+              await prisma.ownership.update({
+                where: { id: existingOwnership.id },
+                data: { validFrom: effectiveValidFrom, validTo: effectiveValidTo }
               })
             }
             ownerMap.set(unitNumber, { id: owner.id, firstName, lastName })
@@ -395,6 +471,14 @@ export async function POST(req: NextRequest) {
 
       // 3. IMPORT FAKTUR
       await send({ type: 'progress', percentage: 40, step: 'Importuji faktury a náklady...' })
+
+      // Smazání existujících nákladů a plateb pro tento rok před importem, aby nedocházelo k duplicitám
+      const pYear = parseInt(billingPeriod);
+      if (!isNaN(pYear)) {
+        await prisma.cost.deleteMany({ where: { buildingId: building.id, period: pYear } });
+        await prisma.payment.deleteMany({ where: { unit: { buildingId: building.id }, period: pYear } });
+        await log(`[Cleanup] Smazány staré náklady a platby pro rok ${pYear}`);
+      }
       
       const invoicesSheetName = workbook.SheetNames.find(name => 
         name.toLowerCase().includes('faktur') || name.toLowerCase().includes('invoice')
@@ -493,7 +577,7 @@ export async function POST(req: NextRequest) {
       // 4. IMPORT ODEČTŮ
       await send({ type: 'progress', percentage: 60, step: 'Importuji odečty měřidel...' })
       
-      const unitMap = new Map<string, UnitLite>()
+      // unitMap je již inicializována nahoře
       for (const sheetName of workbook.SheetNames) {
         const normalizedSheetName = sheetName.toLowerCase().trim()
         const meterType = SHEET_TO_METER_TYPE[normalizedSheetName]
@@ -514,7 +598,9 @@ export async function POST(req: NextRequest) {
         for (let i = 0; i < dataRows.length; i++) {
           const row = dataRows[i]
           if (!row || row.length === 0 || !row[0]) continue
-          const unitNumber = String(row[0] || '').trim()
+          const rawUnitNumber = String(row[0] || '').trim()
+          const strippedUnitNumber = stripUnitPrefixes(rawUnitNumber)
+          
           const ownerName = String(row[1] || '').trim()
           const serialNumber = String(row[5] || '').trim()
           const startValue = parseNumberCell(String(row[6] || '')) ?? 0
@@ -524,25 +610,33 @@ export async function POST(req: NextRequest) {
           const externalId = String(row[11] || '').trim()
           
           if (consumption === 0 && endValue > startValue) consumption = endValue - startValue
-          if (!unitNumber || unitNumber === 'Bazén' || unitNumber.toLowerCase().includes('celkem')) continue
+          if (!rawUnitNumber || rawUnitNumber === 'Bazén' || rawUnitNumber.toLowerCase().includes('celkem')) continue
           if (consumption <= 0) continue
 
-          let unit = unitMap.get(unitNumber)
+          let unit = unitMap.get(rawUnitNumber) || unitMap.get(strippedUnitNumber)
+          
           if (!unit) {
-            const found = await prisma.unit.findFirst({ where: { buildingId: building.id, unitNumber }, include: { meters: true } })
+            const found = await prisma.unit.findFirst({ 
+              where: { 
+                buildingId: building.id, 
+                OR: [
+                  { unitNumber: rawUnitNumber },
+                  { unitNumber: strippedUnitNumber }
+                ]
+              }, 
+              include: { meters: true } 
+            })
+            
             if (!found) {
-              const created = await prisma.unit.create({
-                data: { buildingId: building.id, unitNumber, type: 'APARTMENT', shareNumerator: 100, shareDenominator: 10000, totalArea: 50, variableSymbol: unitNumber.replace(/[^0-9]/g, '') },
-                include: { meters: true }
-              })
-              unit = { id: created.id, meters: created.meters, variableSymbol: created.variableSymbol || undefined }
-              summary.units.created++
+              summary.warnings.push(`Odečty: Jednotka '${rawUnitNumber}' nebyla nalezena v evidenci.`)
+              continue
             } else {
               unit = { id: found.id, meters: found.meters }
+              unitMap.set(rawUnitNumber, unit)
+              unitMap.set(strippedUnitNumber, unit)
               summary.units.existing++
             }
             summary.units.total++
-            if (unit) unitMap.set(unitNumber, unit)
           }
 
           let service = await prisma.service.findFirst({ where: { buildingId: building.id, name: METER_TYPE_LABELS[meterType] } })
@@ -554,7 +648,7 @@ export async function POST(req: NextRequest) {
             summary.services.total++
           }
 
-          const effectiveSerial = serialNumber || `${unitNumber}-${meterType}`
+          const effectiveSerial = serialNumber || `${rawUnitNumber}-${meterType}`
           const meter = await prisma.meter.upsert({
             where: { unitId_serialNumber: { unitId: unit.id, serialNumber: effectiveSerial } },
             update: { type: meterType as MeterType, isActive: true },
@@ -562,23 +656,35 @@ export async function POST(req: NextRequest) {
           })
 
           const existingReading = await prisma.meterReading.findFirst({ where: { meterId: meter.id, period: parseInt(billingPeriod, 10) } })
+          
+          const readingData = {
+            readingDate: new Date(`${billingPeriod}-12-31`), 
+            dateStart: new Date(`${billingPeriod}-01-01`),
+            dateEnd: new Date(`${billingPeriod}-12-31`),
+            value: endValue, 
+            startValue, 
+            endValue, 
+            consumption, 
+            precalculatedCost: cost ?? null,
+            note: externalId || `Import z ${sheetName} - ${ownerName}` 
+          }
+
           if (!existingReading) {
             await prisma.meterReading.create({
               data: { 
                 meterId: meter.id, 
-                readingDate: new Date(`${billingPeriod}-12-31`), 
-                value: endValue, 
-                startValue, 
-                endValue, 
-                consumption, 
-                precalculatedCost: cost,
                 period: parseInt(billingPeriod, 10), 
-                note: `Import z ${sheetName} - ${ownerName}${externalId ? ` (ID: ${externalId})` : ''}` 
+                ...readingData
               }
             })
             summary.readings.created++
-            summary.readings.total++
+          } else {
+            await prisma.meterReading.update({
+              where: { id: existingReading.id },
+              data: readingData
+            })
           }
+          summary.readings.total++
         }
       }
 
@@ -601,23 +707,33 @@ export async function POST(req: NextRequest) {
           for (let i = 0; i < dataRows.length; i++) {
             const row = dataRows[i]
             if (!row || row.length === 0 || !row[0]) continue
-            const unitNumber = String(row[0] || '').trim()
-            if (!unitNumber || unitNumber === 'Bazén' || unitNumber.toLowerCase().includes('celkem')) continue
+            const rawUnitNumber = String(row[0] || '').trim()
+            const strippedUnitNumber = stripUnitPrefixes(rawUnitNumber)
+            
+            if (!rawUnitNumber || rawUnitNumber === 'Bazén' || rawUnitNumber.toLowerCase().includes('celkem')) continue
 
-            let unit = unitMap.get(unitNumber)
+            let unit = unitMap.get(rawUnitNumber) || unitMap.get(strippedUnitNumber)
+            
             if (!unit) {
-              const foundUnit = await prisma.unit.findFirst({ where: { buildingId: building.id, unitNumber } })
+              const foundUnit = await prisma.unit.findFirst({ 
+                where: { 
+                  buildingId: building.id, 
+                  OR: [
+                    { unitNumber: rawUnitNumber },
+                    { unitNumber: strippedUnitNumber }
+                  ]
+                } 
+              })
+              
               if (!foundUnit) {
-                const createdUnit = await prisma.unit.create({
-                  data: { buildingId: building.id, unitNumber, type: 'APARTMENT', shareNumerator: 100, shareDenominator: 10000, totalArea: 50, variableSymbol: unitNumber.replace(/[^0-9]/g, '') }
-                })
-                unit = { id: createdUnit.id, variableSymbol: createdUnit.variableSymbol || undefined }
-                summary.units.created++
+                summary.warnings.push(`Platby: Jednotka '${rawUnitNumber}' nebyla nalezena v evidenci.`)
+                continue
               } else {
                 unit = { id: foundUnit.id, variableSymbol: foundUnit.variableSymbol || undefined }
+                unitMap.set(rawUnitNumber, unit)
+                unitMap.set(strippedUnitNumber, unit)
                 summary.units.existing++
               }
-              if (unit) unitMap.set(unitNumber, unit)
             }
 
             for (let month = 1; month <= 12; month++) {
@@ -627,7 +743,8 @@ export async function POST(req: NextRequest) {
 
               const paymentDate = new Date(parseInt(billingPeriod), month - 1, 15)
               const unitLite = unit as UnitLite
-              const vs = unitLite.variableSymbol || unitNumber.replace(/[^0-9]/g, '') || `U${unitLite.id.slice(-6)}`
+              // Použijeme VS z jednotky, nebo vygenerujeme z čísla (pokud je to číslo)
+              const vs = unitLite.variableSymbol || strippedUnitNumber.replace(/[^0-9]/g, '') || `U${unitLite.id.slice(-6)}`
               await prisma.payment.create({
                 data: { unitId: unitLite.id, amount, paymentDate, variableSymbol: vs, period: parseInt(billingPeriod), description: `Úhrada záloh ${month.toString().padStart(2, '0')}/${billingPeriod}` }
               })
@@ -652,14 +769,28 @@ export async function POST(req: NextRequest) {
           for (let i = 0; i < dataRows.length; i++) {
             const row = dataRows[i]
             if (!row || row.length === 0 || !row[0]) continue
-            const unitNumber = String(row[0] || '').trim()
+            const rawUnitNumber = String(row[0] || '').trim()
+            const strippedUnitNumber = stripUnitPrefixes(rawUnitNumber)
             const personCount = parseInt(String(row[13] || '0')) || 0
-            if (!unitNumber || personCount === 0) continue
+            if (!rawUnitNumber || personCount === 0) continue
 
-            let unit = unitMap.get(unitNumber)
+            let unit = unitMap.get(rawUnitNumber) || unitMap.get(strippedUnitNumber)
+            
             if (!unit) {
-              const found = await prisma.unit.findFirst({ where: { buildingId: building.id, unitNumber } })
-              if (found) { unit = { id: found.id }; unitMap.set(unitNumber, unit) }
+              const found = await prisma.unit.findFirst({ 
+                where: { 
+                  buildingId: building.id, 
+                  OR: [
+                    { unitNumber: rawUnitNumber },
+                    { unitNumber: strippedUnitNumber }
+                  ]
+                } 
+              })
+              if (found) { 
+                unit = { id: found.id }
+                unitMap.set(rawUnitNumber, unit)
+                unitMap.set(strippedUnitNumber, unit)
+              }
             }
             if (!unit) continue
 
@@ -732,7 +863,14 @@ export async function POST(req: NextRequest) {
             }
 
             for (const unit of units) {
-              const possibleNames = [unit.unitNumber, `Jednotka č. ${unit.unitNumber}`, `Bazén č. ${unit.unitNumber}`]
+              const stripped = stripUnitPrefixes(unit.unitNumber)
+              const possibleNames = [
+                unit.unitNumber,
+                stripped,
+                `Jednotka č. ${stripped}`,
+                `Bazén č. ${stripped}`,
+                `Byt č. ${stripped}`
+              ]
               let unitRow = null
               for (let rowIndex = 0; rowIndex < rawData.length; rowIndex++) {
                 const cellValue = String(rawData[rowIndex]?.[0] ?? '').trim()
@@ -747,28 +885,57 @@ export async function POST(req: NextRequest) {
               for (const colIndexStr of Object.keys(headerMap)) {
                 const celkemColIndex = Number(colIndexStr)
                 const mapping = headerMap[celkemColIndex]
-                let totalAmount = 0
-                for (let monthOffset = 12; monthOffset >= 1; monthOffset--) {
-                  const monthColIndex = celkemColIndex - monthOffset
-                  if (monthColIndex >= 0 && monthColIndex < unitRow.length) {
-                    totalAmount += parseFloat(String(unitRow[monthColIndex] ?? '').replace(',', '.').replace(/\s/g, '')) || 0
-                  }
+                
+                // Smazat starý souhrnný záznam (month=0), pokud existuje, abychom neměli duplicity
+                try {
+                  await prisma.advanceMonthly.delete({
+                    where: { unitId_serviceId_year_month: { unitId: unit.id, serviceId: mapping.serviceId, year: periodYear, month: 0 } }
+                  })
+                } catch (e) {
+                  // Ignorovat chybu, pokud záznam neexistuje
                 }
 
-                if (totalAmount <= 0) continue
+                for (let month = 1; month <= 12; month++) {
+                  // Měsíce jsou před sloupcem Celkem.
+                  // Leden (1) je o 12 sloupců zpět (offset 12)
+                  // Prosinec (12) je o 1 sloupec zpět (offset 1)
+                  const monthOffset = 13 - month
+                  const monthColIndex = celkemColIndex - monthOffset
+                  
+                  let amount = 0
+                  if (monthColIndex >= 0 && monthColIndex < unitRow.length) {
+                    amount = parseFloat(String(unitRow[monthColIndex] ?? '').replace(',', '.').replace(/\s/g, '')) || 0
+                  }
 
-                const existing = await prisma.advanceMonthly.findUnique({
-                  where: { unitId_serviceId_year_month: { unitId: unit.id, serviceId: mapping.serviceId, year: periodYear, month: 0 } }
-                }).catch(() => null)
+                  if (amount > 0) {
+                    const existing = await prisma.advanceMonthly.findUnique({
+                      where: { unitId_serviceId_year_month: { unitId: unit.id, serviceId: mapping.serviceId, year: periodYear, month } }
+                    }).catch(() => null)
 
-                if (!existing) {
-                  await prisma.advanceMonthly.create({
-                    data: { unitId: unit.id, serviceId: mapping.serviceId, year: periodYear, month: 0, amount: totalAmount }
-                  })
-                  summary.advances.created++
-                } else {
-                  await prisma.advanceMonthly.update({ where: { id: existing.id }, data: { amount: totalAmount } })
-                  summary.advances.updated++
+                    if (!existing) {
+                      await prisma.advanceMonthly.create({
+                        data: { unitId: unit.id, serviceId: mapping.serviceId, year: periodYear, month, amount }
+                      })
+                      summary.advances.created++
+                    } else {
+                      await prisma.advanceMonthly.update({ where: { id: existing.id }, data: { amount } })
+                      summary.advances.updated++
+                    }
+                  } else {
+                     // Pokud je částka 0, ale existuje záznam, měli bychom ho smazat nebo nastavit na 0?
+                     // Raději nastavíme na 0, aby bylo jasné, že tam nic není.
+                     // Nebo smažeme, aby to nezabíralo místo.
+                     // Pro konzistenci s "upsert" logikou výše, pokud je 0, neděláme nic (nebo bychom mohli smazat).
+                     // Ale pokud uživatel opravuje import a změnil částku na 0, měli bychom to reflektovat.
+                     const existing = await prisma.advanceMonthly.findUnique({
+                      where: { unitId_serviceId_year_month: { unitId: unit.id, serviceId: mapping.serviceId, year: periodYear, month } }
+                    }).catch(() => null)
+                    
+                    if (existing) {
+                       await prisma.advanceMonthly.delete({ where: { id: existing.id } })
+                       summary.advances.updated++
+                    }
+                  }
                 }
               }
             }
@@ -807,6 +974,79 @@ export async function POST(req: NextRequest) {
             }
             summary.costs = { created, updated, skipped, total: created + updated }
           }
+        }
+      }
+
+      // 9. IMPORT PARAMETRŮ
+      await send({ type: 'progress', percentage: 98, step: 'Importuji parametry jednotek...' })
+      
+      const paramsSheetName = workbook.SheetNames.find(name => 
+        name.toLowerCase().includes('parametry') || name.toLowerCase().includes('parameters')
+      )
+
+      if (paramsSheetName) {
+        const paramsSheet = workbook.Sheets[paramsSheetName]
+        const rawData = utils.sheet_to_json<unknown[]>(paramsSheet, { header: 1, defval: '' })
+        
+        // Find header row (row with "Jednotka" or similar)
+        const headerRowIndex = rawData.findIndex(row => row.some((cell: unknown) => {
+           const s = String(cell).toLowerCase()
+           return s.includes('jednotka') || s.includes('byt')
+        }))
+
+        if (headerRowIndex !== -1) {
+           const headerRow = rawData[headerRowIndex] as string[]
+           const dataRows = rawData.slice(headerRowIndex + 1)
+           
+           // Identify parameter columns (all columns except the unit column)
+           const unitColIndex = headerRow.findIndex(c => String(c).toLowerCase().includes('jednotka') || String(c).toLowerCase().includes('byt'))
+           
+           if (unitColIndex !== -1) {
+              const paramCols = headerRow.map((col, idx) => ({ name: String(col).trim(), index: idx })).filter(c => c.index !== unitColIndex && c.name)
+              
+              await log(`[Parametry] Nalezeno ${paramCols.length} parametrů: ${paramCols.map(c => c.name).join(', ')}`)
+
+              for (const row of dataRows) {
+                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 const r = row as any[]
+                 const rawUnitNumber = String(r[unitColIndex] || '').trim()
+                 const strippedUnitNumber = stripUnitPrefixes(rawUnitNumber)
+                 if (!rawUnitNumber) continue
+
+                 let unit = unitMap.get(rawUnitNumber) || unitMap.get(strippedUnitNumber)
+                 
+                 if (!unit) {
+                    const found = await prisma.unit.findFirst({ 
+                      where: { 
+                        buildingId: building.id, 
+                        OR: [
+                          { unitNumber: rawUnitNumber },
+                          { unitNumber: strippedUnitNumber }
+                        ]
+                      } 
+                    })
+                    if (found) { 
+                      unit = { id: found.id }
+                      unitMap.set(rawUnitNumber, unit)
+                      unitMap.set(strippedUnitNumber, unit)
+                    }
+                 }
+                 if (!unit) continue
+
+                 for (const col of paramCols) {
+                    const valStr = String(r[col.index] || '').replace(',', '.').replace(/\s/g, '')
+                    const val = parseFloat(valStr)
+                    
+                    if (!isNaN(val)) {
+                       await prisma.unitParameter.upsert({
+                          where: { unitId_name: { unitId: (unit as UnitLite).id, name: col.name } },
+                          update: { value: val },
+                          create: { unitId: (unit as UnitLite).id, name: col.name, value: val }
+                       })
+                    }
+                 }
+              }
+           }
         }
       }
 

@@ -35,6 +35,7 @@ interface BillingResultsViewerProps {
       serviceCosts: Array<{
         serviceId: string
         unitCost: number
+        buildingTotalCost: number
         calculationBasis: string | null
         service: {
           name: string
@@ -65,6 +66,24 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
   } | null>(null)
 
   const currentPeriod = billingPeriods.find(p => p.id === selectedPeriod)
+
+  // Seřadit výsledky podle čísla jednotky
+  const sortedResults = currentPeriod ? [...currentPeriod.results].sort((a, b) => {
+    return a.unit.unitNumber.localeCompare(b.unit.unitNumber, undefined, { numeric: true })
+  }) : []
+
+  // Získat všechny unikátní služby pro hlavičku tabulky
+  const allServicesMap = new Map<string, string>()
+  if (currentPeriod) {
+    currentPeriod.results.forEach(r => {
+      r.serviceCosts.forEach(sc => {
+        allServicesMap.set(sc.serviceId, sc.service.name)
+      })
+    })
+  }
+  const services = Array.from(allServicesMap.entries())
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   const handleSendAll = async () => {
     if (!currentPeriod) return
@@ -303,113 +322,185 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
             </div>
 
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-2 py-3 text-left font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 z-10 border-r border-gray-200 min-w-[150px]">
                       Jednotka
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Vlastník
+                    {services.map(service => (
+                      <th key={service.id} className="px-2 py-3 text-right font-medium text-gray-500 uppercase min-w-[100px]">
+                        {service.name}
+                      </th>
+                    ))}
+                    <th className="px-2 py-3 text-right font-bold text-gray-900 uppercase bg-gray-100 border-l border-gray-200">
+                      Náklady celkem
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                      Náklady
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-2 py-3 text-right font-bold text-gray-900 uppercase bg-gray-100">
                       Zálohy
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                      Bilance
+                    <th className="px-2 py-3 text-right font-bold text-gray-900 uppercase bg-gray-100">
+                      Přeplatek / Nedoplatek
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                      Stav
+                    <th className="px-2 py-3 text-center font-medium text-gray-500 uppercase">
+                      Kontrola
                     </th>
-                    <th className="px-4 py-3"></th>
+                    <th className="px-2 py-3"></th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {currentPeriod.results.map((result) => {
-                    const owner = result.unit.ownerships[0]?.owner
+                  {/* Řádek se součty */}
+                  <tr className="bg-gray-100 font-bold">
+                    <td className="px-2 py-3 text-gray-900 sticky left-0 bg-gray-100 z-10 border-r border-gray-200">
+                      CELKEM (Rozúčtováno)
+                    </td>
+                    {services.map(service => {
+                      const serviceTotal = currentPeriod.results.reduce((sum, r) => {
+                        const sc = r.serviceCosts.find(c => c.serviceId === service.id)
+                        return sum + (sc?.unitCost || 0)
+                      }, 0)
+                      return (
+                        <td key={service.id} className="px-2 py-3 text-right text-gray-900">
+                          {serviceTotal.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </td>
+                      )
+                    })}
+                    <td className="px-2 py-3 text-right text-gray-900 border-l border-gray-200">
+                      {currentPeriod.results.reduce((sum, r) => sum + r.totalCost, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-2 py-3 text-right text-gray-900">
+                      {currentPeriod.results.reduce((sum, r) => sum + r.totalAdvancePrescribed, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-2 py-3 text-right text-gray-900">
+                      {currentPeriod.results.reduce((sum, r) => sum + r.result, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-2 py-3 text-center text-gray-500">
+                      OK
+                    </td>
+                    <td></td>
+                  </tr>
+
+                  {/* Řádek Skutečná suma */}
+                  <tr className="bg-blue-50 font-bold border-t border-blue-200">
+                    <td className="px-2 py-3 text-blue-900 sticky left-0 bg-blue-50 z-10 border-r border-blue-200">
+                      SKUTEČNÁ SUMA (Faktury)
+                    </td>
+                    {services.map(service => {
+                      // Najdeme náklad na budovu pro tuto službu z prvního výsledku, který tuto službu má
+                      const serviceCost = currentPeriod.results
+                        .flatMap(r => r.serviceCosts)
+                        .find(sc => sc.serviceId === service.id)
+                      
+                      const buildingTotal = serviceCost?.buildingTotalCost || 0
+
+                      return (
+                        <td key={service.id} className="px-2 py-3 text-right text-blue-900">
+                          {buildingTotal.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </td>
+                      )
+                    })}
+                    <td className="px-2 py-3 text-right text-blue-900 border-l border-blue-200">
+                      {(() => {
+                         const totalRealCost = services.reduce((sum, service) => {
+                            const sc = currentPeriod.results
+                              .flatMap(r => r.serviceCosts)
+                              .find(c => c.serviceId === service.id)
+                            return sum + (sc?.buildingTotalCost || 0)
+                         }, 0)
+                         return totalRealCost.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                      })()}
+                    </td>
+                    <td colSpan={4}></td>
+                  </tr>
+
+                  {/* Řádek Rozdíl */}
+                  <tr className="bg-orange-50 font-bold border-b-2 border-orange-200">
+                    <td className="px-2 py-3 text-gray-900 sticky left-0 bg-orange-50 z-10 border-r border-orange-200">
+                      ROZDÍL (Kontrola)
+                    </td>
+                    {services.map(service => {
+                      const serviceTotal = currentPeriod.results.reduce((sum, r) => {
+                        const sc = r.serviceCosts.find(c => c.serviceId === service.id)
+                        return sum + (sc?.unitCost || 0)
+                      }, 0)
+                      
+                      const serviceCost = currentPeriod.results
+                        .flatMap(r => r.serviceCosts)
+                        .find(sc => sc.serviceId === service.id)
+                      const buildingTotal = serviceCost?.buildingTotalCost || 0
+                      
+                      const diff = serviceTotal - buildingTotal
+
+                      return (
+                        <td key={service.id} className={`px-2 py-3 text-right ${Math.abs(diff) > 1 ? 'text-red-600' : 'text-green-600'}`}>
+                          {diff.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </td>
+                      )
+                    })}
+                    <td className="px-2 py-3 text-right border-l border-orange-200">
+                       {(() => {
+                         const totalCalculated = currentPeriod.results.reduce((sum, r) => sum + r.totalCost, 0)
+                         const totalReal = services.reduce((sum, service) => {
+                            const sc = currentPeriod.results
+                              .flatMap(r => r.serviceCosts)
+                              .find(c => c.serviceId === service.id)
+                            return sum + (sc?.buildingTotalCost || 0)
+                         }, 0)
+                         const diff = totalCalculated - totalReal
+                         return (
+                           <span className={Math.abs(diff) > 1 ? 'text-red-600' : 'text-green-600'}>
+                             {diff.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                           </span>
+                         )
+                       })()}
+                    </td>
+                    <td colSpan={4}></td>
+                  </tr>
+
+                  {/* Jednotlivé řádky */}
+                  {sortedResults.map((result) => {
+                    const check = Math.round(result.totalAdvancePrescribed - result.totalCost - result.result)
+                    const isCheckOk = Math.abs(check) < 1
 
                     return (
                       <tr key={result.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-gray-900">
-                            {result.unit.name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {result.unit.unitNumber}
-                            {result.unit.variableSymbol && ` • VS: ${result.unit.variableSymbol}`}
-                          </div>
+                        <td className="px-2 py-2 whitespace-nowrap font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 z-10 border-r border-gray-200">
+                          {result.unit.unitNumber}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          {owner ? (
-                            <div>
-                              <div>{owner.firstName} {owner.lastName}</div>
-                              {owner.email && (
-                                <div className="text-xs text-gray-500">{owner.email}</div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">Bez vlastníka</span>
-                          )}
+                        {services.map(service => {
+                          const sc = result.serviceCosts.find(c => c.serviceId === service.id)
+                          return (
+                            <td key={service.id} className="px-2 py-2 text-right text-gray-900 whitespace-nowrap">
+                              {sc ? sc.unitCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00'}
+                            </td>
+                          )
+                        })}
+                        <td className="px-2 py-2 text-right font-semibold text-gray-900 bg-gray-50 border-l border-gray-200 whitespace-nowrap">
+                          {result.totalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                          {result.totalCost.toLocaleString('cs-CZ')} Kč
-                          {result.repairFund > 0 && (
-                            <div className="text-xs text-gray-500">
-                              (+{result.repairFund.toLocaleString('cs-CZ')} fond)
-                            </div>
-                          )}
+                        <td className="px-2 py-2 text-right text-gray-900 bg-gray-50 whitespace-nowrap">
+                          {result.totalAdvancePrescribed.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-900">
-                          {result.totalAdvancePrescribed.toLocaleString('cs-CZ')} Kč
+                        <td className={`px-2 py-2 text-right font-bold bg-gray-50 whitespace-nowrap ${
+                          result.result > 0 ? 'text-red-600' : result.result < 0 ? 'text-green-600' : 'text-gray-900'
+                        }`}>
+                          {result.result.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={`font-semibold ${
-                            result.result > 0 ? 'text-red-600' : result.result < 0 ? 'text-green-600' : 'text-gray-900'
-                          }`}>
-                            {result.result.toLocaleString('cs-CZ')} Kč
-                          </span>
+                        <td className={`px-2 py-2 text-center text-xs font-bold ${isCheckOk ? 'text-green-600' : 'text-red-600'}`}>
+                          {isCheckOk ? 'OK' : `${check} Kč`}
                         </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                            result.isPaid
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {result.isPaid ? '✓ Zaplaceno' : '⏳ Čeká'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-2 py-2 text-right">
                           <Link
                             href={`/buildings/${buildingId}/billing/${result.id}`}
-                            className="text-primary hover:text-primary-hover text-sm font-medium"
+                            className="text-primary hover:text-primary-hover text-xs font-medium"
                           >
-                            📄 Zobrazit
+                            Detail
                           </Link>
                         </td>
                       </tr>
                     )
                   })}
                 </tbody>
-                <tfoot className="bg-gray-50">
-                  <tr>
-                    <td colSpan={2} className="px-4 py-3 text-sm font-bold text-gray-900">
-                      Celkem
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-gray-900">
-                      {currentPeriod.results.reduce((sum, r) => sum + r.totalCost, 0).toLocaleString('cs-CZ')} Kč
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-gray-900">
-                      {currentPeriod.results.reduce((sum, r) => sum + r.totalAdvancePrescribed, 0).toLocaleString('cs-CZ')} Kč
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-gray-900">
-                      {currentPeriod.results.reduce((sum, r) => sum + r.result, 0).toLocaleString('cs-CZ')} Kč
-                    </td>
-                    <td colSpan={2}></td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
 

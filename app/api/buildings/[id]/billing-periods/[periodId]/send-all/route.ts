@@ -31,9 +31,11 @@ export async function POST(
             unit: {
               include: {
                 ownerships: {
-                  where: { validTo: null },
                   include: {
                     owner: true
+                  },
+                  orderBy: {
+                    validFrom: 'desc'
                   }
                 }
               }
@@ -57,6 +59,10 @@ export async function POST(
       return NextResponse.json({ error: 'Billing period not found' }, { status: 404 })
     }
 
+    const year = billingPeriod.year;
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year, 11, 31);
+
     const results = {
       sent: 0,
       failed: 0,
@@ -66,7 +72,13 @@ export async function POST(
 
     // Procházet všechny výsledky a odesílat emaily
     for (const billingResult of billingPeriod.results) {
-      const owner = billingResult.unit.ownerships[0]?.owner
+      const activeOwner = billingResult.unit.ownerships.find(o => {
+        const start = o.validFrom;
+        const end = o.validTo || new Date(9999, 11, 31);
+        return start <= yearEnd && end >= yearStart;
+      }) || billingResult.unit.ownerships[0];
+
+      const owner = activeOwner?.owner
 
       if (!owner || !owner.email) {
         results.skipped++

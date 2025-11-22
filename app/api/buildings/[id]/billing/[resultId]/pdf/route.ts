@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { renderToStream } from '@react-pdf/renderer';
 import QRCode from 'qrcode';
+import path from 'path';
 import { getBillingPdfData } from '@/lib/billing-pdf-data';
 import { BillingDocument } from '@/components/pdf/BillingDocument';
 import React from 'react';
@@ -36,9 +37,14 @@ export async function GET(
       }
     }
 
+    // 2.5 Logo path
+    const isBrnoReal = data.building?.managerName?.toLowerCase().includes('brnoreal');
+    const logoFilename = isBrnoReal ? 'brnoreal.png' : 'adminreal.png';
+    const logoPath = path.join(process.cwd(), 'public', logoFilename);
+
     // 3. Renderování PDF do streamu
     const stream = await renderToStream(
-      React.createElement(BillingDocument, { data, qrCodeUrl })
+      React.createElement(BillingDocument, { data, qrCodeUrl, logoPath })
     );
 
     // 4. Odeslání odpovědi

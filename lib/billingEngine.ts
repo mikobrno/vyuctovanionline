@@ -1,6 +1,5 @@
 import { PrismaClient, CalculationMethod } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 interface ServiceCalculationResult {
   serviceId: string;
@@ -36,10 +35,19 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
     create: { buildingId, year }
   });
 
+  // Načtení budovy pro globální parametry
+  const building = await prisma.building.findUnique({
+    where: { id: buildingId }
+  });
+
+  if (!building) throw new Error(`Building ${buildingId} not found`);
+
   // B. Načtení jednotek včetně měřidel a náměrů
   const units = await prisma.unit.findMany({
     where: { buildingId },
     include: {
+      ownerships: true,
+      parameters: true,
       meters: {
         where: { isActive: true },
         include: {
@@ -57,6 +65,43 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
       }
     }
   });
+
+  // Pre-kalkulace měsíců v evidenci pro každou jednotku
+  const unitMonthsMap = new Map<string, number>();
+  let totalUnitMonths = 0;
+
+  for (const unit of units) {
+    let months = 0;
+    const relevantOwnerships = unit.ownerships.filter(o => {
+       const start = o.validFrom;
+       const end = o.validTo || new Date('2100-01-01');
+       const yearStart = new Date(year, 0, 1);
+       const yearEnd = new Date(year, 11, 31);
+       return start <= yearEnd && end >= yearStart;
+    });
+
+    if (relevantOwnerships.length === 0) {
+      months = 12; // Default plný rok, pokud není záznam
+    } else {
+      const coveredMonths = new Set<number>();
+      for (const o of relevantOwnerships) {
+        const start = o.validFrom < new Date(year, 0, 1) ? new Date(year, 0, 1) : o.validFrom;
+        const end = (!o.validTo || o.validTo > new Date(year, 11, 31)) ? new Date(year, 11, 31) : o.validTo;
+        
+        if (start > end) continue;
+
+        const startMonth = start.getMonth();
+        const endMonth = end.getMonth();
+        
+        for (let m = startMonth; m <= endMonth; m++) {
+          coveredMonths.add(m);
+        }
+      }
+      months = coveredMonths.size;
+    }
+    unitMonthsMap.set(unit.id, months);
+    totalUnitMonths += months;
+  }
 
   // C. Načtení služeb a nákladů
   const services = await prisma.service.findMany({
@@ -77,24 +122,40 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
   });
 
   // E. Globální sumy pro rozpočítání
-  const totalShare = safeNumber(units.reduce((sum, u) => sum + (u.share || 0), 0));
-  const totalUnitsCount = units.length;
-  // TODO: Zde by se měl načíst reálný počet osob, pokud je v DB.
-  const totalPeople = units.length; 
+  const totalShare = safeNumber(units.reduce((sum, u) => sum + (u.shareNumerator || 0), 0));
+  const totalUnitsCount = building.unitCountOverride || units.length;
+  
+  // Počet osob - priorita: 1. Globální nastavení budovy, 2. Součet osob v jednotkách, 3. Počet jednotek (fallback)
+  const totalPeople = building.totalPeople || units.reduce((sum, u) => sum + (u.residents || 0), 0) || units.length; 
 
-  // F. PŘEDVÝPOČET SPOTŘEB (Pro BY_METER)
+  // Plochy
+  const totalArea = building.totalArea || units.reduce((sum, u) => sum + (u.totalArea || 0), 0);
+  const totalChargeableArea = building.chargeableArea || units.reduce((sum, u) => sum + (u.floorArea || 0), 0); 
+
+  // F. PŘEDVÝPOČET SPOTŘEB (Pro BY_METER a CUSTOM)
   // Musíme znát celkovou spotřebu domu PRO KAŽDOU SLUŽBU, abychom spočítali cenu za jednotku.
   const serviceTotalConsumptions = new Map<string, number>();
 
   for (const service of services) {
-    if (service.calculationMethod === 'BY_METER') {
+    if (service.methodology === 'METER_READING' || service.methodology === 'CUSTOM') {
       let totalCons = 0;
       
-      // Najdeme typ měřidla pro tuto službu
-      const isWater = service.name.toLowerCase().includes('vod') || service.name.includes('SV') || service.name.includes('TUV');
+      // Pokud je explicitně určen typ měřidla (dataSourceName), použijeme ho.
+      // Jinak fallback na hádání podle názvu.
+      let targetMeterTypes: string[] = [];
+      
+      if (service.dataSourceName) {
+        targetMeterTypes = [service.dataSourceName];
+      } else {
+        const isWater = service.name.toLowerCase().includes('vod') || service.name.includes('SV') || service.name.includes('TUV');
+        if (isWater) targetMeterTypes = ['COLD_WATER', 'HOT_WATER'];
+        if (service.name.toLowerCase().includes('teplo')) targetMeterTypes.push('HEATING');
+        if (service.name.toLowerCase().includes('elek')) targetMeterTypes.push('ELECTRICITY');
+      }
       
       for (const u of units) {
-         const uMeters = u.meters.filter(m => isWater && (m.type === 'COLD_WATER' || m.type === 'HOT_WATER'));
+         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         const uMeters = u.meters.filter((m: any) => targetMeterTypes.includes(m.type));
          for (const m of uMeters) {
            const r = m.readings[0];
            if (r) {
@@ -104,7 +165,9 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
         }
       }
       serviceTotalConsumptions.set(service.id, safeNumber(totalCons));
-      console.log(`💧 Celková spotřeba pro službu ${service.name}: ${totalCons}`);
+      if (totalCons > 0) {
+        console.log(`💧 Celková spotřeba pro službu ${service.name}: ${totalCons}`);
+      }
     }
   }
 
@@ -142,69 +205,197 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
         basisText = "Převzato z externího rozúčtování";
         
         if (externalReading.consumption !== null) {
-          consumption = externalReading.consumption;
-          assignedUnits = consumption;
-          if (consumption > 0) {
-            unitPrice = calculatedCost / consumption;
+          unitConsumption = externalReading.consumption;
+          if (unitConsumption > 0) {
+            pricePerUnit = calculatedCost / unitConsumption;
           }
         }
       } else {
       switch (service.methodology) {
         
-        case 'BY_SHARE': // Podle podílu
+        case 'OWNERSHIP_SHARE': // Podle podílu
           if (totalShare > 0) {
-            calculatedCost = safeNumber(serviceBuildingCost * (safeNumber(unit.share) / totalShare));
-            basisText = `Podíl ${safeNumber(unit.share).toFixed(4)} / ${totalShare.toFixed(4)}`;
+            calculatedCost = safeNumber(serviceBuildingCost * (safeNumber(unit.shareNumerator) / totalShare));
+            basisText = `Podíl ${safeNumber(unit.shareNumerator).toFixed(4)} / ${totalShare.toFixed(4)}`;
           } else {
             basisText = "Chyba: Celkový podíl je 0";
           }
           break;
 
-        case 'BY_UNIT': // Na byt
-          if (totalUnitsCount > 0) {
+        case 'FIXED_PER_UNIT': // Na byt
+          const monthsInEvidence = unitMonthsMap.get(unit.id) ?? 12;
+          
+          if (service.fixedAmountPerUnit) {
+            // Fixní částka * (měsíce / 12)
+            calculatedCost = service.fixedAmountPerUnit * (monthsInEvidence / 12);
+            basisText = `Fixní částka ${service.fixedAmountPerUnit} Kč * (${monthsInEvidence}/12 měs.)`;
+          } else if (totalUnitMonths > 0) {
+            // Rozpočítání celkového nákladu podle měsíců (aby se rozdělilo 100%)
+            calculatedCost = safeNumber(serviceBuildingCost * (monthsInEvidence / totalUnitMonths));
+            basisText = `Podíl měsíců: ${monthsInEvidence} / ${totalUnitMonths} (z celku)`;
+          } else if (totalUnitsCount > 0) {
             calculatedCost = safeNumber(serviceBuildingCost / totalUnitsCount);
             basisText = `1 / ${totalUnitsCount} jednotek`;
           }
           break;
 
-        case 'BY_PEOPLE': // Na osoby
-          const unitPeople = 1; // Placeholder
+        case 'EQUAL_SPLIT':    // Rovným dílem
+          const uMonths = unitMonthsMap.get(unit.id) ?? 12;
+          const divisor = service.divisor || totalUnitsCount;
+          
+          if (service.divisor) {
+            // Pokud je zadán ruční dělitel: (Náklad / Dělitel) * (Měsíce / 12)
+            const costPerUnitFullYear = serviceBuildingCost / divisor;
+            calculatedCost = safeNumber(costPerUnitFullYear * (uMonths / 12));
+            basisText = `(Náklad / ${divisor}) * (${uMonths}/12 měs.)`;
+          } else if (totalUnitMonths > 0) {
+            // Pokud není dělitel, rozpočítáme podle měsíců (jako FIXED_PER_UNIT)
+            calculatedCost = safeNumber(serviceBuildingCost * (uMonths / totalUnitMonths));
+            basisText = `Podíl měsíců: ${uMonths} / ${totalUnitMonths}`;
+          } else {
+            basisText = "Chyba: Žádné měsíce v evidenci";
+          }
+          break;
+
+        case 'AREA': // Podle plochy
+          const unitArea = unit.totalArea || 0;
+          if (totalArea > 0) {
+            calculatedCost = safeNumber(serviceBuildingCost * (unitArea / totalArea));
+            basisText = `${unitArea.toFixed(2)} m² / ${totalArea.toFixed(2)} m²`;
+          }
+          break;
+
+        case 'PERSON_MONTHS': // Na osoby
+          const unitPeople = unit.residents || 0;
           if (totalPeople > 0) {
             calculatedCost = safeNumber(serviceBuildingCost * (unitPeople / totalPeople));
             basisText = `${unitPeople} / ${totalPeople} osob`;
           }
           break;
 
-        case 'EXTERNAL': // Externí (Teplo)
-          // Najdeme náklad přímo u měřidla
-          const externalReading = unit.meters
-            .flatMap(m => m.readings)
-            .find(r => r.precalculatedCost !== null && r.precalculatedCost > 0);
+        case 'CUSTOM': // Vlastní vzorec
+          if (service.customFormula) {
+            try {
+              // Proměnné pro vzorec
+              const variables = {
+                TOTAL_COST: serviceBuildingCost,
+                UNIT_SHARE: unit.shareDenominator ? (unit.shareNumerator / unit.shareDenominator) : 0,
+                UNIT_AREA: unit.totalArea || 0,
+                UNIT_PEOPLE: unit.residents || 0,
+                UNIT_CONSUMPTION: 0, // Bude doplněno níže pokud existuje
+                TOTAL_CONSUMPTION: safeNumber(serviceTotalConsumptions.get(service.id))
+              };
 
-          if (externalReading && externalReading.precalculatedCost) {
-            calculatedCost = safeNumber(externalReading.precalculatedCost);
-            basisText = "Externí náklad (převzato)";
+              // Pokus o získání spotřeby pro vzorec
+              const isWater = service.name.toLowerCase().includes('vod') || service.name.includes('SV') || service.name.includes('TUV');
+              if (isWater) {
+                const unitMeters = unit.meters.filter(m => (m.type === 'COLD_WATER' || m.type === 'HOT_WATER'));
+                for (const m of unitMeters) {
+                  const r = m.readings[0];
+                  if (r) variables.UNIT_CONSUMPTION += safeNumber(r.consumption ?? r.value);
+                }
+              }
+
+              // Vyhodnocení vzorce
+              // Nahrazení proměnných hodnotami
+              let formula = service.customFormula;
+              Object.entries(variables).forEach(([key, val]) => {
+                formula = formula.replace(new RegExp(key, 'g'), String(val));
+              });
+              
+              // Bezpečnější eval
+              calculatedCost = safeNumber(new Function('return ' + formula)());
+              basisText = `Vzorec: ${service.customFormula}`;
+            } catch (e) {
+              calculatedCost = 0;
+              basisText = `Chyba vzorce: ${e instanceof Error ? e.message : 'Unknown'}`;
+            }
+          } else {
+            // Fallback na externí náklad (stará logika)
+            const externalReading = unit.meters
+              .flatMap(m => m.readings)
+              .find(r => r.precalculatedCost !== null && r.precalculatedCost > 0);
+
+            if (externalReading && externalReading.precalculatedCost) {
+              calculatedCost = safeNumber(externalReading.precalculatedCost);
+              basisText = "Externí náklad (převzato)";
+            }
           }
           break;
 
-        case 'BY_METER': // Voda
+        case 'UNIT_PARAMETER':
+          const paramName = service.unitAttributeName;
+          if (paramName) {
+             // Calculate total for this parameter across all units
+             // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             const totalParamValue = units.reduce((sum, u: any) => {
+                const p = u.parameters?.find((p: any) => p.name === paramName);
+                return sum + (p ? p.value : 0);
+             }, 0);
+
+             // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             const unitParam = (unit as any).parameters?.find((p: any) => p.name === paramName);
+             const unitValue = unitParam ? unitParam.value : 0;
+
+             if (totalParamValue > 0) {
+               calculatedCost = safeNumber(serviceBuildingCost * (unitValue / totalParamValue));
+               basisText = `${paramName}: ${unitValue} / ${totalParamValue}`;
+             } else {
+               basisText = `Chyba: Celková hodnota parametru ${paramName} je 0`;
+             }
+          } else {
+             basisText = "Chyba: Není vybrán parametr";
+          }
+          break;
+
+        case 'METER_READING': // Voda
           const totalServiceCons = safeNumber(serviceTotalConsumptions.get(service.id));
           
           // Spotřeba jednotky
-          const isWater = service.name.toLowerCase().includes('vod') || service.name.includes('SV') || service.name.includes('TUV');
-          const unitMeters = unit.meters.filter(m => isWater && (m.type === 'COLD_WATER' || m.type === 'HOT_WATER'));
-          
-          for (const m of unitMeters) {
-            const r = m.readings[0];
-            if (r) unitConsumption += safeNumber(r.consumption ?? r.value);
+          let targetMeterTypes: string[] = [];
+          if (service.dataSourceName) {
+            targetMeterTypes = [service.dataSourceName];
+          } else {
+            const isWater = service.name.toLowerCase().includes('vod') || service.name.includes('SV') || service.name.includes('TUV');
+            if (isWater) targetMeterTypes = ['COLD_WATER', 'HOT_WATER'];
+            if (service.name.toLowerCase().includes('teplo')) targetMeterTypes.push('HEATING');
+            if (service.name.toLowerCase().includes('elek')) targetMeterTypes.push('ELECTRICITY');
           }
 
-          if (totalServiceCons > 0) {
-            pricePerUnit = safeNumber(serviceBuildingCost / totalServiceCons);
-            calculatedCost = safeNumber(unitConsumption * pricePerUnit);
-            basisText = `${unitConsumption.toFixed(2)} m3 * ${pricePerUnit.toFixed(2)} Kč/m3`;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const unitMeters = unit.meters.filter((m: any) => targetMeterTypes.includes(m.type));
+          
+          if (service.dataSourceType === 'FIXED_AMOUNT') {
+             // Varianta "Náklad" - sčítáme precalculatedCost z měřidel
+             let totalCost = 0;
+             for (const m of unitMeters) {
+                const r = m.readings[0];
+                if (r && r.precalculatedCost) {
+                   totalCost += safeNumber(r.precalculatedCost);
+                }
+             }
+             calculatedCost = totalCost;
+             basisText = `Součet nákladů z měřidel (${targetMeterTypes.join(', ')})`;
           } else {
-             basisText = "Žádná celková spotřeba";
+             // Varianta "Náměr" - sčítáme spotřebu a násobíme cenou
+             for (const m of unitMeters) {
+               const r = m.readings[0];
+               if (r) unitConsumption += safeNumber(r.consumption ?? r.value);
+             }
+
+             if (service.unitPrice) {
+               // Pokud je zadána jednotková cena, použijeme ji prioritně
+               pricePerUnit = service.unitPrice;
+               calculatedCost = safeNumber(unitConsumption * pricePerUnit);
+               basisText = `${unitConsumption.toFixed(2)} m3 * ${pricePerUnit.toFixed(2)} Kč/m3 (fixní cena)`;
+             } else if (totalServiceCons > 0) {
+               // Jinak dopočítáme z celkového nákladu
+               pricePerUnit = safeNumber(serviceBuildingCost / totalServiceCons);
+               calculatedCost = safeNumber(unitConsumption * pricePerUnit);
+               basisText = `${unitConsumption.toFixed(2)} m3 * ${pricePerUnit.toFixed(2)} Kč/m3`;
+             } else {
+                basisText = "Žádná celková spotřeba ani fixní cena";
+             }
           }
           break;
           
@@ -228,7 +419,7 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
       serviceResults.push({
         serviceId: service.id,
         serviceName: service.name,
-        method: service.calculationMethod,
+        method: service.methodology,
         totalBuildingCost: serviceBuildingCost,
         unitCost: calculatedCost,
         unitConsumption: unitConsumption > 0 ? unitConsumption : undefined,
@@ -245,14 +436,32 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
     // Finální zaokrouhlení na celé Kč (jako v PDF)
     const finalBalance = Math.round(safeNumber(unitTotalAdvance - unitTotalCost));
 
+    // Výpočet měsíčních předpisů pro uložení do JSON
+    const monthlyPrescriptions = new Array(12).fill(0);
+    const unitAdvances = advances.filter(a => a.unitId === unit.id);
+    
+    for (const adv of unitAdvances) {
+       if (adv.month >= 1 && adv.month <= 12) {
+          monthlyPrescriptions[adv.month - 1] += adv.amount;
+       }
+    }
+
+    // Fallback pro stará data (pokud existují jen záznamy s month=0)
+    const sumMonthly = monthlyPrescriptions.reduce((a, b) => a + b, 0);
+    if (sumMonthly === 0 && unitTotalAdvance > 0) {
+       const monthlyAvg = unitTotalAdvance / 12;
+       for (let i = 0; i < 12; i++) monthlyPrescriptions[i] = monthlyAvg;
+    }
+
     const billingResult = await prisma.billingResult.create({
       data: {
         billingPeriodId: billingPeriod.id,
         unitId: unit.id,
-        year: year,
         totalCost: safeNumber(unitTotalCost),
-        totalAdvance: safeNumber(unitTotalAdvance),
-        balance: finalBalance,
+        totalAdvancePrescribed: safeNumber(unitTotalAdvance),
+        totalAdvancePaid: safeNumber(unitTotalAdvance),
+        result: finalBalance,
+        monthlyPrescriptions: monthlyPrescriptions,
       }
     });
 

@@ -45,9 +45,10 @@ interface ImportResult {
 
 interface CompleteImportProps {
   year?: number
+  buildingId?: string
 }
 
-export default function CompleteImport({ year = new Date().getFullYear() }: CompleteImportProps) {
+export default function CompleteImport({ year = new Date().getFullYear(), buildingId }: CompleteImportProps) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [dragActive, setDragActive] = useState(false)
@@ -83,7 +84,11 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
 
       const formData = new FormData()
       formData.append('file', file)
-      formData.append('buildingName', buildingName)
+      if (buildingId) {
+        formData.append('buildingId', buildingId)
+      } else {
+        formData.append('buildingName', buildingName)
+      }
       formData.append('year', year.toString())
 
       setProgress(prev => [...prev, '📤 Odesílám data na server...'])
@@ -203,7 +208,7 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
       setUploading(false)
       resetInput()
     }
-  }, [buildingName, year, router])
+  }, [buildingName, year, router, buildingId])
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) {
@@ -236,22 +241,24 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
     <div className="bg-white rounded-lg shadow p-6">
       <h2 className="text-xl font-semibold text-gray-900 mb-4">📊 Nahrát kompletní vyúčtování</h2>
       
-      <div className="mb-6">
-        <label htmlFor="buildingName" className="block text-sm font-medium text-gray-500 mb-2">
-          Název domu (volitelné)
-        </label>
-        <input
-          type="text"
-          id="buildingName"
-          value={buildingName}
-          onChange={(e) => setBuildingName(e.target.value)}
-          placeholder="Např. Bytový dům č.p. 318, Brno"
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-gray-900"
-        />
-        <p className="mt-1 text-sm text-gray-500">
-          Pokud dům s tímto názvem už existuje, použije se. Jinak se vytvoří nový. Pokud necháte prázdné, vytvoří se &quot;Importovaná budova&quot;.
-        </p>
-      </div>
+      {!buildingId && (
+        <div className="mb-6">
+          <label htmlFor="buildingName" className="block text-sm font-medium text-gray-500 mb-2">
+            Název domu (volitelné)
+          </label>
+          <input
+            type="text"
+            id="buildingName"
+            value={buildingName}
+            onChange={(e) => setBuildingName(e.target.value)}
+            placeholder="Např. Bytový dům č.p. 318, Brno"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-gray-900"
+          />
+          <p className="mt-1 text-sm text-gray-500">
+            Pokud dům s tímto názvem už existuje, použije se. Jinak se vytvoří nový. Pokud necháte prázdné, vytvoří se &quot;Importovaná budova&quot;.
+          </p>
+        </div>
+      )}
 
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-500 mb-2">

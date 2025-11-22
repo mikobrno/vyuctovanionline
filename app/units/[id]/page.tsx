@@ -52,7 +52,7 @@ export default async function UnitDetailPage({ params }: { params: Promise<{ id:
     notFound()
   }
 
-  const currentOwnership = unit.ownerships.find((o: typeof unit.ownerships[number]) => !o.validTo)
+  const currentOwnership = unit.ownerships.find((o: typeof unit.ownerships[number]) => !o.validTo) || unit.ownerships[0]
 
   return (
     <div className="min-h-screen bg-gray-50">

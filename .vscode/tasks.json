@@ -13,6 +13,18 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "none"
+		},
+		{
+			"label": "prisma-push",
+			"type": "shell",
+			"command": "npx prisma",
+			"args": [
+				"db",
+				"push"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "db"
 		}
 	]
 }

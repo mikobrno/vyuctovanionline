@@ -121,23 +121,54 @@ async function main() {
     return;
   }
 
-  // 2. Získání seznamu jednotek
-  console.log('📋 Načítám seznam jednotek...');
-  const units: string[] = [];
+  // 2. Získání seznamu jednotek a vlastníků
+  console.log('📋 Načítám seznam jednotek a vlastníků...');
+  const units: Array<{
+    name: string;
+    ownerName: string;
+    address: string;
+    email: string;
+    phone: string;
+    bankAccount: string;
+  }> = [];
   const evidenceDims = hf.getSheetDimensions(evidenceSheetId);
-  // Předpokládáme, že jednotky jsou ve sloupci A (index 0) od řádku 2
+  
+  // Sloupce v Evidence (0-indexed): A=0 (Jednotka), B=1 (Jméno), C=2 (Adresa), D=3 (Email), E=4 (Telefon), K=10 (Účet)
   for (let row = 1; row < evidenceDims.height; row++) {
-    const cellValue = hf.getCellValue({ sheet: evidenceSheetId, col: 0, row: row });
-    if (cellValue && typeof cellValue === 'string' && cellValue.trim() !== '') {
-      units.push(cellValue.toString());
+    const unitName = hf.getCellValue({ sheet: evidenceSheetId, col: 0, row: row });
+    if (unitName && typeof unitName === 'string' && unitName.trim() !== '') {
+      const ownerName = hf.getCellValue({ sheet: evidenceSheetId, col: 1, row: row })?.toString() || '';
+      const address = hf.getCellValue({ sheet: evidenceSheetId, col: 2, row: row })?.toString() || '';
+      const email = hf.getCellValue({ sheet: evidenceSheetId, col: 3, row: row })?.toString() || '';
+      const phone = hf.getCellValue({ sheet: evidenceSheetId, col: 4, row: row })?.toString() || '';
+      const bankAccount = hf.getCellValue({ sheet: evidenceSheetId, col: 10, row: row })?.toString() || '';
+
+      units.push({
+        name: unitName.toString(),
+        ownerName,
+        address,
+        email,
+        phone,
+        bankAccount
+      });
     }
   }
   console.log(`   -> Nalezeno ${units.length} jednotek.`);
 
   // 3. Příprava DB (najdeme budovu a období)
   // Pro zjednodušení bereme první budovu a rok 2024
-  const building = await prisma.building.findFirst({ where: { name: 'Kníničky 318' } });
+  const building = await prisma.building.findFirst({ where: { name: 'Kníničky 318 - Neptun' } });
   if (!building) throw new Error('Budova nenalezena');
+
+  // Načtení čísla účtu SVJ z Vstupní data B22 (col 1, row 21)
+  const svjBankAccount = hf.getCellValue({ sheet: inputSheetId, col: 1, row: 21 })?.toString();
+  if (svjBankAccount) {
+    console.log(`🏦 Aktualizuji účet SVJ: ${svjBankAccount}`);
+    await prisma.building.update({
+      where: { id: building.id },
+      data: { bankAccount: svjBankAccount }
+    });
+  }
 
   const period = await prisma.billingPeriod.upsert({
     where: { buildingId_year: { buildingId: building.id, year: 2024 } },
@@ -153,7 +184,8 @@ async function main() {
   const controlData: Record<string, { excelTotal: number, calculatedSum: number }> = {};
 
   // 4. Hlavní smyčka přes jednotky
-  for (const unitName of units) {
+  for (const unitData of units) {
+    const unitName = unitData.name;
     console.log(`🔄 Zpracovávám: ${unitName}`);
 
     // A. Nastavit jednotku v Excelu
@@ -161,19 +193,63 @@ async function main() {
     hf.setCellContents({ sheet: inputSheetId, col: 1, row: 3 }, [[unitName]]);
 
     // B. Najít jednotku v DB
+    const cleanUnitName = unitName.replace('Jednotka č. ', '').trim();
     const dbUnit = await prisma.unit.findFirst({
       where: { 
         buildingId: building.id,
         OR: [
           { unitNumber: unitName },
-          { unitNumber: `Jednotka č. ${unitName}` } // Zkusíme i s prefixem
+          { unitNumber: `Jednotka č. ${unitName}` },
+          { unitNumber: cleanUnitName }
         ]
-      }
+      },
+      include: { ownerships: { include: { owner: true } } }
     });
 
     if (!dbUnit) {
       console.warn(`   ⚠️ Jednotka ${unitName} nenalezena v DB, přeskakuji.`);
       continue;
+    }
+
+    // Aktualizace vlastníka
+    if (dbUnit.ownerships.length > 0) {
+      const owner = dbUnit.ownerships[0].owner;
+      // Rozdělení jména na First/Last pokud je v jednom stringu
+      // Předpoklad: "Příjmení Jméno" nebo "Firma"
+      // Pro jednoduchost uložíme celé do lastName pokud není mezera, jinak rozdělíme
+      let firstName = '';
+      let lastName = unitData.ownerName;
+      if (unitData.ownerName.includes(' ')) {
+        const parts = unitData.ownerName.split(' ');
+        lastName = parts[0]; // První slovo je obvykle příjmení
+        firstName = parts.slice(1).join(' ');
+      }
+
+      await prisma.owner.update({
+        where: { id: owner.id },
+        data: {
+          firstName: firstName || owner.firstName, // Zachovat pokud je prázdné
+          lastName: lastName || owner.lastName,
+          address: unitData.address,
+          email: unitData.email,
+          phone: unitData.phone,
+          bankAccount: unitData.bankAccount
+        }
+      });
+    }
+
+    // Načtení měsíčních dat (Platby a Předpisy)
+    // Platby: Řádek 40 (index 39), sloupce A-L (0-11)
+    // Předpisy: Řádek 45 (index 44), sloupce A-L (0-11)
+    const monthlyPayments: number[] = [];
+    const monthlyPrescriptions: number[] = [];
+
+    for (let m = 0; m < 12; m++) {
+      const payVal = hf.getCellValue({ sheet: outputSheetId, col: m, row: 39 }); // Řádek 40
+      const presVal = hf.getCellValue({ sheet: outputSheetId, col: m, row: 44 }); // Řádek 45
+      
+      monthlyPayments.push(typeof payVal === 'number' ? payVal : 0);
+      monthlyPrescriptions.push(typeof presVal === 'number' ? presVal : 0);
     }
 
     // C. Vytvořit BillingResult
@@ -184,7 +260,9 @@ async function main() {
         totalCost: 0, // Dopočítáme později nebo vezmeme z Excelu
         totalAdvancePrescribed: 0,
         totalAdvancePaid: 0,
-        result: 0
+        result: 0,
+        monthlyPayments: monthlyPayments,
+        monthlyPrescriptions: monthlyPrescriptions
       }
     });
 

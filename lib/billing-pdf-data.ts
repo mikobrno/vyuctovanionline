@@ -46,6 +46,15 @@ export async function getBillingPdfData(billingResultId: string) {
     orderBy: { month: 'asc' }
   });
 
+  // 2b. Načtení historie plateb
+  const payments = await prisma.payment.findMany({
+    where: {
+      unitId: unitId,
+      period: year
+    },
+    orderBy: { paymentDate: 'asc' }
+  });
+
   // 3. Načtení náměrů (pro sekci Měřené služby)
   // Hledáme měřidla jednotky a jejich odečty v daném roce
   const metersWithReadings = await prisma.meter.findMany({
@@ -84,6 +93,7 @@ export async function getBillingPdfData(billingResultId: string) {
   return {
     result,
     advances,
+    payments,
     readings: processedReadings,
     building: result.billingPeriod?.building,
     unit: result.unit,

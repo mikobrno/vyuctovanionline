@@ -1,17 +1,6 @@
 "use client";
 
-import React from 'react';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { FileText } from "lucide-react";
+import Link from 'next/link';
 
 interface BillingResultItem {
   id: string;
@@ -32,60 +21,61 @@ export function BillingUnitTable({ buildingId, results }: Props) {
     new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(val);
 
   const handleDownloadPdf = (resultId: string) => {
-    // Otevře API endpoint pro generování PDF v novém okně
     window.open(`/api/buildings/${buildingId}/billing/${resultId}/pdf`, '_blank');
   };
 
   return (
-    <div className="rounded-md border bg-white shadow-sm">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[100px]">Jednotka</TableHead>
-            <TableHead>Vlastník</TableHead>
-            <TableHead className="text-right">Náklad</TableHead>
-            <TableHead className="text-right">Zálohy</TableHead>
-            <TableHead className="text-right">Výsledek</TableHead>
-            <TableHead className="text-right">Akce</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+    <div className="rounded-md border bg-white shadow-sm overflow-hidden">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jednotka</th>
+            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vlastník</th>
+            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Náklad</th>
+            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Zálohy</th>
+            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Výsledek</th>
+            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Akce</th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
           {results.map((row) => (
-            <TableRow key={row.id}>
-              <TableCell className="font-medium">{row.unitNumber}</TableCell>
-              <TableCell>{row.ownerName || "Neznámý"}</TableCell>
-              <TableCell className="text-right">{formatCurrency(row.totalCost)}</TableCell>
-              <TableCell className="text-right">{formatCurrency(row.totalAdvance)}</TableCell>
-              <TableCell className="text-right">
-                <Badge 
-                  variant={row.balance >= 0 ? "default" : "destructive"} 
-                  className={row.balance >= 0 ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}
-                >
+            <tr key={row.id}>
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                <Link href={`/buildings/${buildingId}/billing/${row.id}`} className="text-blue-600 hover:underline hover:text-blue-800">
+                  {row.unitNumber}
+                </Link>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.ownerName || "Neznámý"}</td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(row.totalCost)}</td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(row.totalAdvance)}</td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  row.balance >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                }`}>
                   {row.balance >= 0 ? "Přeplatek" : "Nedoplatek"} {formatCurrency(Math.abs(row.balance))}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-right">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => handleDownloadPdf(row.id)}
-                  title="Stáhnout PDF"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  PDF
-                </Button>
-              </TableCell>
-            </TableRow>
+                </span>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <div className="flex justify-end gap-2">
+                  <button 
+                    onClick={() => handleDownloadPdf(row.id)}
+                    className="text-gray-700 hover:text-gray-900 bg-white border border-gray-300 px-3 py-1 rounded-md text-sm"
+                  >
+                    PDF
+                  </button>
+                </div>
+              </td>
+            </tr>
           ))}
           {results.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+            <tr>
+              <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500">
                 Zatím nebylo provedeno žádné vyúčtování. Spusťte výpočet tlačítkem výše.
-              </TableCell>
-            </TableRow>
+              </td>
+            </tr>
           )}
-        </TableBody>
-      </Table>
+        </tbody>
+      </table>
     </div>
   );
 }

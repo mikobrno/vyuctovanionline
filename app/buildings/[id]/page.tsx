@@ -28,8 +28,8 @@ export default async function BuildingDetailPage({
       units: {
         include: {
           ownerships: {
-            where: { validTo: null },
             include: { owner: true },
+            orderBy: { validFrom: 'desc' }
           },
           meters: {
             include: {
@@ -53,7 +53,8 @@ export default async function BuildingDetailPage({
                 }
               }
             }
-          }
+          },
+          parameters: true
         },
         orderBy: { unitNumber: 'asc' },
       },
@@ -226,6 +227,16 @@ export default async function BuildingDetailPage({
                 }`}
               >
                 🏠 Jednotky
+              </Link>
+              <Link
+                href={`/buildings/${building.id}?tab=overview`}
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
+                  tab === 'overview'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
+                }`}
+              >
+                🏢 Přehled
               </Link>
               <Link
                 href={`/buildings/${building.id}?tab=owners`}

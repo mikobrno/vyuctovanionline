@@ -1,6 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
+import QRCode from 'qrcode'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import DashboardNav from '@/components/dashboard/DashboardNav'
 import { BillingStatement } from '@/components/buildings/BillingStatement'
@@ -31,9 +32,11 @@ export default async function BillingResultDetailPage({
       unit: {
         include: {
           ownerships: {
-            where: { validTo: null },
             include: {
               owner: true
+            },
+            orderBy: {
+              validFrom: 'desc'
             }
           }
         }
@@ -58,6 +61,17 @@ export default async function BillingResultDetailPage({
   const building = billingResult.billingPeriod.building
   const year = billingResult.billingPeriod.year
 
+  // Find the relevant owner for the billing year
+  const yearStart = new Date(year, 0, 1);
+  const yearEnd = new Date(year, 11, 31);
+  
+  const activeOwner = billingResult.unit.ownerships.find(o => {
+    const start = o.validFrom;
+    const end = o.validTo || new Date(9999, 11, 31);
+    // Check for overlap with the billing year
+    return start <= yearEnd && end >= yearStart;
+  }) || billingResult.unit.ownerships[0]; // Fallback to most recent
+
   // Načíst další data pro zobrazení (měřidla, platby)
   // Poznámka: V "Black Box" režimu zatím tato data nemusí být v DB kompletní,
   // ale připravíme strukturu pro BillingStatement.
@@ -75,20 +89,59 @@ export default async function BillingResultDetailPage({
     orderBy: { paymentDate: 'asc' }
   });
 
+  // Použití JSON polí pro měsíční data (pokud existují)
+  const monthlyPaymentsJson = (billingResult.monthlyPayments as number[]) || [];
+  const monthlyPrescriptionsJson = (billingResult.monthlyPrescriptions as number[]) || [];
+
+  // Pokud máme JSON data, použijeme je, jinak fallback na DB tabulku payments
+  const paymentsData = monthlyPaymentsJson.length > 0 
+    ? Array.from({ length: 12 }, (_, i) => ({
+        month: i + 1,
+        prescribed: monthlyPrescriptionsJson[i] || 0,
+        paid: monthlyPaymentsJson[i] || 0
+      }))
+    : payments.map(p => ({
+        month: p.paymentDate.getMonth() + 1,
+        prescribed: 0,
+        paid: p.amount
+      }));
+
+  // Generování QR kódu pro nedoplatek
+  let qrCodeUrl = undefined;
+  if (billingResult.result < 0) {
+    const amount = Math.abs(billingResult.result);
+    const account = building.bankAccount;
+    const vs = billingResult.unit.variableSymbol;
+    
+    if (account && vs) {
+       const msg = `Vyuctovani ${year} - ${billingResult.unit.unitNumber}`;
+       const spayString = `SPD*1.0*ACC:${account}*AM:${amount.toFixed(2)}*CC:CZK*X-VS:${vs}*MSG:${msg.substring(0, 60)}`;
+       try {
+         qrCodeUrl = await QRCode.toDataURL(spayString);
+       } catch (e) {
+         console.error('Failed to generate QR code', e);
+       }
+    }
+  }
+
   // Transformace dat pro komponentu BillingStatement
   const statementData = {
     building: {
       name: building.name,
       address: `${building.address}, ${building.city}`,
       accountNumber: building.bankAccount || '',
-      variableSymbol: billingResult.unit.variableSymbol || ''
+      variableSymbol: billingResult.unit.variableSymbol || '',
+      managerName: building.managerName || undefined
     },
     unit: {
       name: billingResult.unit.unitNumber,
-      owner: billingResult.unit.ownerships[0]?.owner 
-        ? `${billingResult.unit.ownerships[0].owner.lastName} ${billingResult.unit.ownerships[0].owner.firstName}` 
+      owner: activeOwner 
+        ? `${activeOwner.owner.lastName} ${activeOwner.owner.firstName}` 
         : 'Neznámý vlastník',
-      share: `${billingResult.unit.shareNumerator}/${billingResult.unit.shareDenominator}`
+      share: `${billingResult.unit.shareNumerator}/${billingResult.unit.shareDenominator}`,
+      address: activeOwner?.owner?.address || '',
+      email: activeOwner?.owner?.email || '',
+      phone: activeOwner?.owner?.phone || ''
     },
     period: {
       year: year,
@@ -119,11 +172,8 @@ export default async function BillingResultDetailPage({
       endValue: r.endValue || r.value,
       consumption: r.consumption || (r.value - (r.startValue || 0))
     }))),
-    payments: payments.map(p => ({
-      month: p.paymentDate.getMonth() + 1,
-      prescribed: 0, // TODO: Načíst předpis
-      paid: p.amount
-    }))
+    payments: paymentsData,
+    qrCodeUrl
   };
 
   return (
@@ -141,13 +191,25 @@ export default async function BillingResultDetailPage({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </Link>
-            <div className="flex-1">
-              <h1 className="text-3xl font-bold text-gray-900">
-                Vyúčtování {billingResult.unit.unitNumber}
-              </h1>
-              <p className="mt-2 text-gray-900">
-                {building.name} - Rok {billingResult.billingPeriod.year}
-              </p>
+            <div className="flex-1 flex justify-between items-start">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">
+                  Vyúčtování {billingResult.unit.unitNumber}
+                </h1>
+                <p className="mt-2 text-gray-900">
+                  {building.name} - Rok {billingResult.billingPeriod.year}
+                </p>
+              </div>
+              <a 
+                href={`/api/buildings/${buildingId}/billing/${resultId}/pdf`}
+                target="_blank"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <svg className="mr-2 -ml-1 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Stáhnout PDF
+              </a>
             </div>
           </div>
         </div>
