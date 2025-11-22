@@ -520,6 +520,8 @@ export async function POST(req: NextRequest) {
           const startValue = parseNumberCell(String(row[6] || '')) ?? 0
           const endValue = parseNumberCell(String(row[7] || '')) ?? 0
           let consumption = parseNumberCell(String(row[8] || '')) ?? (endValue > startValue ? endValue - startValue : 0)
+          const cost = parseNumberCell(String(row[9] || ''))
+          const externalId = String(row[11] || '').trim()
           
           if (consumption === 0 && endValue > startValue) consumption = endValue - startValue
           if (!unitNumber || unitNumber === 'Bazén' || unitNumber.toLowerCase().includes('celkem')) continue
@@ -562,7 +564,17 @@ export async function POST(req: NextRequest) {
           const existingReading = await prisma.meterReading.findFirst({ where: { meterId: meter.id, period: parseInt(billingPeriod, 10) } })
           if (!existingReading) {
             await prisma.meterReading.create({
-              data: { meterId: meter.id, readingDate: new Date(`${billingPeriod}-12-31`), value: endValue, startValue, endValue, consumption, period: parseInt(billingPeriod, 10), note: `Import z ${sheetName} - ${ownerName}` }
+              data: { 
+                meterId: meter.id, 
+                readingDate: new Date(`${billingPeriod}-12-31`), 
+                value: endValue, 
+                startValue, 
+                endValue, 
+                consumption, 
+                precalculatedCost: cost,
+                period: parseInt(billingPeriod, 10), 
+                note: `Import z ${sheetName} - ${ownerName}${externalId ? ` (ID: ${externalId})` : ''}` 
+              }
             })
             summary.readings.created++
             summary.readings.total++
