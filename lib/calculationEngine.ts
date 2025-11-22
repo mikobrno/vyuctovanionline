@@ -9,12 +9,12 @@ import { prisma } from './prisma'
 
 interface Unit {
   id: string
-  name: string
+  unitNumber: string
   shareNumerator: number
   shareDenominator: number
   totalArea: number
-  floorArea: number
-  residents: number
+  floorArea: number | null
+  residents: number | null
 }
 
 interface CalculationResult {
@@ -71,9 +71,9 @@ async function getMeterValue(
     case 'consumption':
       return reading.consumption || 0
     case 'currentReading':
-      return reading.currentReading || 0
+      return reading.endValue ?? reading.value ?? 0
     case 'previousReading':
-      return reading.previousReading || 0
+      return reading.startValue ?? 0
     default:
       return reading.consumption || 0
   }
@@ -90,9 +90,9 @@ function getUnitAttributeValue(unit: Unit, attributeName: string): number {
     case 'CELKOVA_VYMERA':
       return unit.totalArea
     case 'PODLAHOVA_VYMERA':
-      return unit.floorArea
+      return unit.floorArea ?? 0
     case 'POCET_OBYVATEL':
-      return unit.residents
+      return unit.residents ?? 0
     default:
       return 0
   }
@@ -111,11 +111,7 @@ async function getPersonMonths(unitId: string, period: number): Promise<number> 
 
   // Součet všech měsíců
   return personMonths.reduce((sum: number, pm) => {
-    return sum + 
-      (pm.month1 || 0) + (pm.month2 || 0) + (pm.month3 || 0) +
-      (pm.month4 || 0) + (pm.month5 || 0) + (pm.month6 || 0) +
-      (pm.month7 || 0) + (pm.month8 || 0) + (pm.month9 || 0) +
-      (pm.month10 || 0) + (pm.month11 || 0) + (pm.month12 || 0)
+    return sum + pm.personCount
   }, 0)
 }
 
@@ -176,7 +172,7 @@ export async function calculateServiceDistribution(
         // Pokud není žádná spotřeba, vrátit nuly
         return units.map((unit: Unit) => ({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: 0,
           formula: 'Žádná spotřeba',
           breakdown: { totalCost, divisor: 0, unitValue: 0, pricePerUnit: 0 },
@@ -191,7 +187,7 @@ export async function calculateServiceDistribution(
         const amount = value * pricePerUnit
         results.push({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: Math.round(amount * 100) / 100,
           formula: `${value.toFixed(2)} × ${pricePerUnit.toFixed(2)} Kč/${service.measurementUnit || 'j'}`,
           breakdown: {

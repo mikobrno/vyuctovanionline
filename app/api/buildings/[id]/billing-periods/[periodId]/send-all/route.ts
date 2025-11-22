@@ -4,6 +4,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
 import { generateBillingPDFBase64 } from '@/lib/pdfGenerator'
 import { sendBillingEmail } from '@/lib/microsoftGraph'
+import { getBillingPdfData } from '@/lib/billing-pdf-data'
 
 export async function POST(
   request: NextRequest,
@@ -37,16 +38,6 @@ export async function POST(
                   orderBy: {
                     validFrom: 'desc'
                   }
-                }
-              }
-            },
-            serviceCosts: {
-              include: {
-                service: true
-              },
-              orderBy: {
-                service: {
-                  order: 'asc'
                 }
               }
             }
@@ -87,45 +78,15 @@ export async function POST(
       }
 
       try {
+        // Načíst data pro PDF
+        const pdfData = await getBillingPdfData(billingResult.id)
+        
+        if (!pdfData) {
+           throw new Error('Failed to load PDF data')
+        }
+
         // Vygenerovat PDF
-        const pdfBase64 = await generateBillingPDFBase64({
-          building: {
-            name: billingPeriod.building.name,
-            address: billingPeriod.building.address,
-            city: billingPeriod.building.city
-          },
-          period: billingPeriod.year,
-          unit: {
-            name: billingResult.unit.unitNumber,
-            unitNumber: billingResult.unit.unitNumber,
-            variableSymbol: billingResult.unit.variableSymbol
-          },
-          owner: {
-            firstName: owner.firstName,
-            lastName: owner.lastName,
-            address: owner.address,
-            email: owner.email
-          },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          serviceCosts: billingResult.serviceCosts.map((sc: any) => ({
-            service: {
-              name: sc.service.name,
-              code: sc.service.code
-            },
-            buildingTotalCost: sc.buildingTotalCost,
-            buildingConsumption: sc.buildingConsumption,
-            unitConsumption: sc.unitConsumption,
-            unitCost: sc.unitCost,
-            unitAdvance: sc.unitAdvance,
-            unitBalance: sc.unitBalance,
-            unitPricePerUnit: sc.unitPricePerUnit,
-            distributionBase: sc.distributionBase
-          })),
-          totalCost: billingResult.totalCost,
-          totalAdvancePrescribed: billingResult.totalAdvancePrescribed,
-          repairFund: billingResult.repairFund,
-          result: billingResult.result
-        })
+        const pdfBase64 = await generateBillingPDFBase64(pdfData)
 
         // Odeslat email
         await sendBillingEmail({

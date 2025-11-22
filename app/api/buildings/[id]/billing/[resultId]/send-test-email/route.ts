@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { prisma } from '@/lib/prisma'
 import { generateBillingPDFBase64 } from '@/lib/pdfGenerator'
 import { sendBillingEmail } from '@/lib/microsoftGraph'
 import { getBillingPdfData } from '@/lib/billing-pdf-data'
@@ -18,55 +17,32 @@ export async function POST(
     }
 
     const { resultId } = params
+    const body = await request.json()
+    const email = body.email || 'kost@onlinepsrava.cz'
 
-    // Načíst data pro PDF
     const pdfData = await getBillingPdfData(resultId)
-    
     if (!pdfData) {
-       return NextResponse.json({ error: 'Billing data not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Billing data not found' }, { status: 404 })
     }
 
-    const owner = pdfData.owner
-
-    if (!owner || !owner.email) {
-      return NextResponse.json(
-        { error: 'Owner email not found' },
-        { status: 400 }
-      )
-    }
-
-    // Vygenerovat PDF
     const pdfBase64 = await generateBillingPDFBase64(pdfData)
 
-    // Odeslat email
     await sendBillingEmail({
-      to: owner.email,
-      salutation: owner.salutation,
+      to: email,
+      salutation: pdfData.owner?.salutation || (pdfData.owner?.firstName ? `Vážený/á ${pdfData.owner.firstName} ${pdfData.owner.lastName}` : 'Vážený vlastníce'),
       unitName: pdfData.unit.unitNumber,
       buildingAddress: pdfData.building.address,
       year: pdfData.result.billingPeriod.year,
       balance: pdfData.result.result,
-      managerName: pdfData.building.managerName,
+      managerName: pdfData.building.managerName || 'Správa',
       pdfBase64
     })
 
-    // Označit jako odesláno
-    await prisma.billingResult.update({
-      where: { id: resultId },
-      data: {
-        emailSent: true,
-        emailSentAt: new Date()
-      }
-    })
-
-    return NextResponse.json({
-      success: true,
-      message: `Email odeslán na ${owner.email}`
-    })
+    return NextResponse.json({ success: true, message: `Test email sent to ${email}` })
   } catch (error) {
-    console.error('Error sending email:', error)
+    console.error('Error sending test email:', error)
     return NextResponse.json(
-      { error: 'Failed to send email', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to send test email', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

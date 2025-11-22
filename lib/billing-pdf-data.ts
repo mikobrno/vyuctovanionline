@@ -9,12 +9,10 @@ export async function getBillingPdfData(billingResultId: string) {
     include: {
       unit: {
         include: {
-          // Načteme vlastníka (předpokládáme vazbu přes Ownership nebo přímo na Unit, dle vašeho schématu)
-          // Zde pro jednoduchost bereme data přímo z Unit, pokud tam jsou, nebo první aktivní ownership
+          // Načteme všechny vlastníky pro nalezení toho správného pro daný rok
           ownerships: {
-            where: { validTo: null },
             include: { owner: true },
-            take: 1
+            orderBy: { validFrom: 'desc' }
           }
         }
       },
@@ -33,7 +31,7 @@ export async function getBillingPdfData(billingResultId: string) {
 
   if (!result) throw new Error("Billing result not found");
 
-  const year = result.year;
+  const year = result.billingPeriod.year;
   const unitId = result.unitId;
 
   // 2. Načtení historie záloh (pro tabulku měsíců)
@@ -90,6 +88,17 @@ export async function getBillingPdfData(billingResultId: string) {
     };
   }).filter(r => r.consumption > 0 || r.endValue > 0); // Skrýt prázdné
 
+  // Find the relevant owner for the billing year
+  const yearStart = new Date(year, 0, 1);
+  const yearEnd = new Date(year, 11, 31);
+  
+  const activeOwner = result.unit.ownerships.find(o => {
+    const start = o.validFrom;
+    const end = o.validTo || new Date(9999, 11, 31);
+    // Check for overlap with the billing year
+    return start <= yearEnd && end >= yearStart;
+  })?.owner || result.unit.ownerships[0]?.owner;
+
   return {
     result,
     advances,
@@ -97,10 +106,18 @@ export async function getBillingPdfData(billingResultId: string) {
     readings: processedReadings,
     building: result.billingPeriod?.building,
     unit: result.unit,
-    owner: result.unit.ownerships[0]?.owner || { 
-      firstName: result.unit.ownerName || '', 
-      lastName: '', 
-      address: '' 
+    owner: activeOwner || { 
+      id: 'unknown',
+      firstName: 'Neznámý', 
+      lastName: 'Vlastník', 
+      address: '',
+      email: null,
+      phone: null,
+      bankAccount: null,
+      salutation: null,
+      userId: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
     }
   };
 }

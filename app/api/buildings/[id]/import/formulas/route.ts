@@ -6,8 +6,9 @@ import { CalculationMethod } from '@prisma/client';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params;
   try {
     const searchParams = request.nextUrl.searchParams;
     const fileName = searchParams.get('file');

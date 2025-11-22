@@ -52,14 +52,8 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
   )
   const [sendingAll, setSendingAll] = useState(false)
   const [sendResult, setSendResult] = useState<{
-    sent: number
-    failed: number
-    skipped: number
-    errors: string[]
-  } | null>(null)
-  const [sendingAllSms, setSendingAllSms] = useState(false)
-  const [smsResult, setSmsResult] = useState<{
-    sent: number
+    sentEmail: number
+    sentSms: number
     failed: number
     skipped: number
     errors: string[]
@@ -85,10 +79,10 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
     .map(([id, name]) => ({ id, name }))
     .sort((a, b) => a.name.localeCompare(b.name))
 
-  const handleSendAll = async () => {
+  const handleSendAllNotifications = async () => {
     if (!currentPeriod) return
     
-    if (!confirm(`Opravdu chcete odeslat vyúčtování pro všechny jednotky v období ${currentPeriod.year}?`)) {
+    if (!confirm(`Opravdu chcete odeslat notifikace (Email + SMS) všem vlastníkům v období ${currentPeriod.year}?`)) {
       return
     }
 
@@ -96,14 +90,14 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
       setSendingAll(true)
       setSendResult(null)
 
-      const response = await fetch(`/api/buildings/${buildingId}/billing-periods/${currentPeriod.id}/send-all`, {
+      const response = await fetch(`/api/buildings/${buildingId}/billing-periods/${currentPeriod.id}/send-all-notifications`, {
         method: 'POST'
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.details || 'Nepodařilo se odeslat emaily')
+        throw new Error(data.details || 'Nepodařilo se odeslat notifikace')
       }
 
       setSendResult(data.details)
@@ -113,43 +107,39 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
         window.location.reload()
       }, 3000)
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Nepodařilo se odeslat emaily')
+      alert(error instanceof Error ? error.message : 'Nepodařilo se odeslat notifikace')
     } finally {
       setSendingAll(false)
     }
   }
 
-  const handleSendAllSms = async () => {
-    if (!currentPeriod) return
-    
-    if (!confirm(`Opravdu chcete odeslat SMS notifikaci všem vlastníkům v období ${currentPeriod.year}?`)) {
-      return
-    }
-
+  const handleTestEmail = async (resultId: string) => {
     try {
-      setSendingAllSms(true)
-      setSmsResult(null)
-
-      const response = await fetch(`/api/buildings/${buildingId}/billing-periods/${currentPeriod.id}/send-all-sms`, {
-        method: 'POST'
+      const response = await fetch(`/api/buildings/${buildingId}/billing/${resultId}/send-test-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'kost@onlinepsrava.cz' })
       })
-
       const data = await response.json()
+      if (!response.ok) throw new Error(data.details || data.error)
+      alert('Testovací email odeslán na kost@onlinepsrava.cz!')
+    } catch (e) {
+      alert('Chyba: ' + (e instanceof Error ? e.message : String(e)))
+    }
+  }
 
-      if (!response.ok) {
-        throw new Error(data.details || 'Nepodařilo se odeslat SMS')
-      }
-
-      setSmsResult(data.details)
-      
-      // Obnovit stránku za 3 sekundy
-      setTimeout(() => {
-        window.location.reload()
-      }, 3000)
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Nepodařilo se odeslat SMS')
-    } finally {
-      setSendingAllSms(false)
+  const handleTestSms = async (resultId: string) => {
+    try {
+      const response = await fetch(`/api/buildings/${buildingId}/billing/${resultId}/send-test-sms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: '777338203' })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.details || data.error)
+      alert('Testovací SMS odeslána na 777338203!')
+    } catch (e) {
+      alert('Chyba: ' + (e instanceof Error ? e.message : String(e)))
     }
   }
 
@@ -197,25 +187,29 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
           <div className="bg-white rounded-lg shadow p-4">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Hromadné akce - E-mail</h3>
+                <h3 className="font-semibold text-gray-900 mb-1">Hromadné odeslání</h3>
                 <p className="text-sm text-gray-600">
-                  Odeslat vyúčtování emailem všem vlastníkům najednou
+                  Odeslat vyúčtování všem vlastníkům (Email + SMS)
                 </p>
               </div>
               <button
-                onClick={handleSendAll}
+                onClick={handleSendAllNotifications}
                 disabled={sendingAll}
                 className="bg-primary text-white px-6 py-3 rounded-lg font-semibold hover:bg-primary-hover transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
-                {sendingAll ? '⏳ Odesílám...' : '📧 Odeslat všem e-mailem'}
+                {sendingAll ? '⏳ Odesílám...' : '🚀 Odeslat vše (Email + SMS)'}
               </button>
             </div>
             {sendResult && (
               <div className="mt-4 p-4 bg-teal-50 rounded border border-teal-200">
-                <div className="grid grid-cols-3 gap-4 mb-3">
+                <div className="grid grid-cols-4 gap-4 mb-3">
                   <div>
-                    <span className="text-sm text-gray-600">Odesláno:</span>
-                    <span className="ml-2 font-bold text-green-600">{sendResult.sent}</span>
+                    <span className="text-sm text-gray-600">Emailů:</span>
+                    <span className="ml-2 font-bold text-green-600">{sendResult.sentEmail}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-600">SMS:</span>
+                    <span className="ml-2 font-bold text-purple-600">{sendResult.sentSms}</span>
                   </div>
                   <div>
                     <span className="text-sm text-gray-600">Přeskočeno:</span>
@@ -231,50 +225,6 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                     <p className="text-sm font-semibold text-gray-700 mb-2">Chyby:</p>
                     <ul className="text-xs text-gray-600 space-y-1">
                       {sendResult.errors.map((error, idx) => (
-                        <li key={idx}>• {error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between mt-6 pt-6 border-t">
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Hromadné akce - SMS</h3>
-                <p className="text-sm text-gray-600">
-                  Odeslat SMS notifikaci všem vlastníkům s telefonním číslem
-                </p>
-              </div>
-              <button
-                onClick={handleSendAllSms}
-                disabled={sendingAllSms}
-                className="bg-purple-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-purple-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {sendingAllSms ? '⏳ Odesílám...' : '📱 Odeslat všem SMS'}
-              </button>
-            </div>
-            {smsResult && (
-              <div className="mt-4 p-4 bg-purple-50 rounded border border-purple-200">
-                <div className="grid grid-cols-3 gap-4 mb-3">
-                  <div>
-                    <span className="text-sm text-gray-600">Odesláno:</span>
-                    <span className="ml-2 font-bold text-green-600">{smsResult.sent}</span>
-                  </div>
-                  <div>
-                    <span className="text-sm text-gray-600">Přeskočeno:</span>
-                    <span className="ml-2 font-bold text-yellow-600">{smsResult.skipped}</span>
-                  </div>
-                  <div>
-                    <span className="text-sm text-gray-600">Selhalo:</span>
-                    <span className="ml-2 font-bold text-red-600">{smsResult.failed}</span>
-                  </div>
-                </div>
-                {smsResult.errors.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-sm font-semibold text-gray-700 mb-2">Chyby:</p>
-                    <ul className="text-xs text-gray-600 space-y-1">
-                      {smsResult.errors.map((error, idx) => (
                         <li key={idx}>• {error}</li>
                       ))}
                     </ul>
@@ -490,12 +440,28 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                           {isCheckOk ? 'OK' : `${check} Kč`}
                         </td>
                         <td className="px-2 py-2 text-right">
-                          <Link
-                            href={`/buildings/${buildingId}/billing/${result.id}`}
-                            className="text-primary hover:text-primary-hover text-xs font-medium"
-                          >
-                            Detail
-                          </Link>
+                          <div className="flex justify-end gap-2 items-center">
+                            <button
+                              onClick={() => handleTestEmail(result.id)}
+                              className="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 rounded hover:bg-blue-50"
+                              title="Odeslat testovací email na kost@onlinepsrava.cz"
+                            >
+                              Test Email
+                            </button>
+                            <button
+                              onClick={() => handleTestSms(result.id)}
+                              className="text-purple-600 hover:text-purple-800 text-xs font-medium px-2 py-1 rounded hover:bg-purple-50"
+                              title="Odeslat testovací SMS na 777338203"
+                            >
+                              Test SMS
+                            </button>
+                            <Link
+                              href={`/buildings/${buildingId}/billing/${result.id}`}
+                              className="text-primary hover:text-primary-hover text-xs font-medium px-2 py-1 rounded hover:bg-gray-50"
+                            >
+                              Detail
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     )

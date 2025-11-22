@@ -18,13 +18,13 @@ export async function GET(
     
     // 2. Příprava QR kódu (pokud je nedoplatek)
     let qrCodeUrl: string | undefined = undefined;
-    const balance = Math.round(data.result.balance);
+    const balance = Math.round(data.result.result);
     
     if (balance < 0) {
       const amount = Math.abs(balance);
       const account = data.building?.bankAccount || ''; // Formát IBAN by byl ideální
       const vs = data.unit.variableSymbol || '';
-      const msg = `Vyuctovani ${data.result.year} - ${data.unit.unitNumber}`;
+      const msg = `Vyuctovani ${data.result.billingPeriod.year} - ${data.unit.unitNumber}`;
       
       // SPAY formát (Short Payment Descriptor)
       // Poznámka: Pro reálné použití by měl být účet ve formátu IBAN.
@@ -44,6 +44,7 @@ export async function GET(
 
     // 3. Renderování PDF do streamu
     const stream = await renderToStream(
+      // @ts-expect-error - ReactPDF types mismatch
       React.createElement(BillingDocument, { data, qrCodeUrl, logoPath })
     );
 
@@ -51,7 +52,7 @@ export async function GET(
     return new NextResponse(stream as unknown as BodyInit, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="Vyuctovani_${data.result.year}_${data.unit.unitNumber}.pdf"`,
+        'Content-Disposition': `attachment; filename="Vyuctovani_${data.result.billingPeriod.year}_${data.unit.unitNumber}.pdf"`,
       },
     });
 

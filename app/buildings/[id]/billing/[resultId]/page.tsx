@@ -151,7 +151,7 @@ export default async function BillingResultDetailPage({
     services: billingResult.serviceCosts.map(cost => ({
       name: cost.service.name,
       unit: cost.service.measurementUnit || '',
-      share: 0, // TODO: Dopočítat podíl pokud je potřeba
+      share: activeOwner?.sharePercent ?? 100,
       buildingCost: cost.buildingTotalCost,
       buildingUnits: cost.buildingConsumption || 0,
       pricePerUnit: cost.unitPricePerUnit || 0,
