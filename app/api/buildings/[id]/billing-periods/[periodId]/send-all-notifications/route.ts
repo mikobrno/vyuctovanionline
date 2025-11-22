@@ -127,9 +127,13 @@ export async function POST(
                 const smsResult = await sendBillingSms({
                     to: phone,
                     ownerName: owner.lastName,
+                    salutation: owner.salutation,
                     unitName: billingResult.unit.unitNumber,
                     year: billingPeriod.year,
-                    balance: billingResult.result
+                    balance: billingResult.result,
+                    buildingName: billingPeriod.building.name || billingPeriod.building.address,
+                    email: owner.email,
+                    template: billingPeriod.building.smsTemplateBody
                 })
 
                 if (smsResult.success) {

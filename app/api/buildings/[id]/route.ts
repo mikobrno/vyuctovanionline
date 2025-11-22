@@ -163,7 +163,7 @@ export async function PATCH(
     const allowedFields = [
       'name', 'address', 'city', 'zip', 'ico', 'bankAccount', 'managerName',
       'totalArea', 'chargeableArea', 'chimneysCount', 'totalPeople', 'unitCountOverride',
-      'emailTemplateSubject', 'emailTemplateBody'
+      'emailTemplateSubject', 'emailTemplateBody', 'smsTemplateBody'
     ]
 
     const dataToUpdate: Record<string, unknown> = {}

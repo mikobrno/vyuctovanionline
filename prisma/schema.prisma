@@ -99,10 +99,11 @@ model Building {
   unitCountOverride Int?     // Ruční přepsání počtu jednotek (pokud se liší od DB)
 
   // Nastavení šablon
-  emailTemplateSubject String? // Předmět emailu
-  emailTemplateBody    String? // Tělo emailu
+  emailTemplateSubject String?   @db.Text
+  emailTemplateBody    String?   @db.Text
+  smsTemplateBody      String?   @db.Text
 
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
   updatedAt     DateTime @updatedAt
 
   units         Unit[]

@@ -8,9 +8,9 @@ import { ClientSecretCredential } from '@azure/identity'
 import 'isomorphic-fetch'
 
 const credential = new ClientSecretCredential(
-  process.env.AZURE_TENANT_ID!,
-  process.env.AZURE_CLIENT_ID!,
-  process.env.AZURE_CLIENT_SECRET!
+  process.env.GRAPH_TENANT_ID || process.env.AZURE_TENANT_ID!,
+  process.env.GRAPH_CLIENT_ID || process.env.AZURE_CLIENT_ID!,
+  process.env.GRAPH_CLIENT_SECRET || process.env.AZURE_CLIENT_SECRET!
 )
 
 const getGraphClient = () => {
@@ -50,7 +50,7 @@ export async function sendEmail({
   attachments = []
 }: SendEmailParams): Promise<void> {
   const client = getGraphClient()
-  const mailboxUser = process.env.AZURE_MAILBOX_USER!
+  const mailboxUser = process.env.GRAPH_SENDER_UPN || process.env.AZURE_MAILBOX_USER!
 
   const message = {
     subject,

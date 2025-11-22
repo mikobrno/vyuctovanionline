@@ -27,9 +27,13 @@ export async function POST(
     const result = await sendBillingSms({
       to: phone,
       ownerName: pdfData.owner?.lastName || 'Vlastník',
+      salutation: pdfData.owner?.salutation,
       unitName: pdfData.unit.unitNumber,
       year: pdfData.result.billingPeriod.year,
-      balance: pdfData.result.result
+      balance: pdfData.result.result,
+      buildingName: pdfData.building.name || pdfData.building.address,
+      email: pdfData.owner?.email,
+      template: pdfData.building.smsTemplateBody
     })
 
     if (!result.success) {

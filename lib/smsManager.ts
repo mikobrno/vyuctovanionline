@@ -4,8 +4,11 @@
  * API Reference: https://api-ref.smsmanager.com/openapi/en/json/jsonapi_v2
  */
 
-const SMS_API_URL = 'https://api.smsmngr.com/v2/simple/message';
-const SMS_API_KEY = process.env.SMS_API_KEY || 'hiSx4lipcGKgGfzSil4R9kndjgv2IY3u1DR9fRr2';
+const SMS_API_URL = process.env.SMSMANAGER_ENDPOINT || 'https://api.smsmngr.com/v2/simple/message';
+const SMS_API_KEY = process.env.SMSMANAGER_API_KEY || process.env.SMS_API_KEY || 'hiSx4lipcGKgGfzSil4R9kndjgv2IY3u1DR9fRr2';
+const SMS_SENDER = process.env.SMSMANAGER_SENDER;
+const SMS_TTL = process.env.SMSMANAGER_SMS_TTL ? parseInt(process.env.SMSMANAGER_SMS_TTL) : undefined;
+const SMS_TAG = process.env.SMSMANAGER_TAG;
 
 interface SendSmsParams {
   to: string; // Telefonní číslo ve formátu +420XXXXXXXXX
@@ -27,17 +30,40 @@ interface SmsResponse {
  */
 export async function sendSms(params: SendSmsParams): Promise<SmsResponse> {
   try {
+    // Rozhodnutí o formátu payloadu podle endpointu
+    const isAdvancedEndpoint = SMS_API_URL.includes('/v2/message') && !SMS_API_URL.includes('/simple/');
+    
+    let body: unknown;
+    
+    if (isAdvancedEndpoint) {
+      // Advanced endpoint payload
+      body = {
+        data: [
+          {
+            to: [params.to],
+            body: params.text,
+            sender: params.sender || SMS_SENDER,
+            ttl: SMS_TTL,
+            customRequestMetadata: SMS_TAG ? { tag: SMS_TAG } : undefined
+          }
+        ]
+      };
+    } else {
+      // Simple endpoint payload
+      body = {
+        number: params.to,
+        message: params.text,
+        sender: params.sender || SMS_SENDER,
+      };
+    }
+
     const response = await fetch(SMS_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': SMS_API_KEY,
       },
-      body: JSON.stringify({
-        number: params.to,
-        message: params.text,
-        ...(params.sender && { sender: params.sender }),
-      }),
+      body: JSON.stringify(body),
     });
 
     const data = await response.json();
@@ -50,11 +76,26 @@ export async function sendSms(params: SendSmsParams): Promise<SmsResponse> {
       };
     }
 
-    // SMS Manager API vrací ID zprávy jako UUID
-    return {
-      success: true,
-      messageId: data.id || data.messageId,
-    };
+    // Zpracování odpovědi
+    if (isAdvancedEndpoint) {
+      // Advanced endpoint vrací pole výsledků
+      const result = data.data?.[0];
+      if (result) {
+        return {
+          success: result.success,
+          messageId: result.id,
+          error: result.error,
+          details: result
+        };
+      }
+      return { success: true, details: data };
+    } else {
+      // Simple endpoint vrací ID zprávy jako UUID
+      return {
+        success: true,
+        messageId: data.id || data.messageId,
+      };
+    }
   } catch (error) {
     console.error('SMS send error:', error);
     return {
@@ -71,11 +112,15 @@ export async function sendSms(params: SendSmsParams): Promise<SmsResponse> {
 export async function sendBillingSms(params: {
   to: string;
   ownerName: string;
+  salutation?: string | null;
   unitName: string;
   year: number;
   balance: number;
+  buildingName?: string;
+  email?: string | null;
+  template?: string | null;
 }): Promise<SmsResponse> {
-  const { to, ownerName, unitName, year, balance } = params;
+  const { to, ownerName, salutation, unitName, year, balance, buildingName, email, template } = params;
 
   // Formátování bilance
   const balanceText = balance > 0
@@ -84,8 +129,31 @@ export async function sendBillingSms(params: {
     ? `nedoplatek ${Math.abs(balance).toFixed(2)} Kč`
     : 'vyrovnáno';
 
-  // Sestavení textu SMS (max 160 znaků pro 1 SMS, 306 znaků pro 2 SMS)
-  const text = `Vyúčtování ${year} - ${unitName}
+  let text = '';
+
+  if (template) {
+    // Použití šablony
+    // Mapování proměnných:
+    // #osloveni# -> salutation (pokud existuje) jinak ownerName
+    // #email# -> email
+    // #jednotka_cislo# -> unitName
+    // #bytovy_dum# -> buildingName
+    // #rok# -> year
+    // #vysledek# -> balanceText (přidáno navíc pro flexibilitu)
+    
+    const greeting = salutation || ownerName || 'Vlastníku';
+
+    text = template
+      .replace(/#osloveni#/g, greeting)
+      .replace(/#email#/g, email || 'váš email')
+      .replace(/#jednotka_cislo#/g, unitName)
+      .replace(/#bytovy_dum#/g, buildingName || 'domě')
+      .replace(/#rok#/g, year.toString())
+      .replace(/#vysledek#/g, balanceText);
+      
+  } else {
+    // Výchozí text
+    text = `Vyúčtování ${year} - ${unitName}
 
 Vážený/á ${ownerName},
 bylo vyhotoveno vyúčtování nákladů.
@@ -96,6 +164,7 @@ Detail obdržíte emailem.
 
 S pozdravem,
 Správa`;
+  }
 
   return sendSms({
     to,

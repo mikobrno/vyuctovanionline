@@ -1061,6 +1061,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
           buildingId={building.id}
           initialSubject={building.emailTemplateSubject}
           initialBody={building.emailTemplateBody}
+          initialSmsBody={building.smsTemplateBody}
         />
       )}
 

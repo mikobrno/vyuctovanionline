@@ -7,6 +7,7 @@ interface Props {
   buildingId: string;
   initialSubject: string | null;
   initialBody: string | null;
+  initialSmsBody: string | null;
 }
 
 const DEFAULT_SUBJECT = "vyúčtování #rok# | #jednotka_cislo# | #bytovy_dum#";
@@ -25,10 +26,13 @@ info@adminreal.cz
 www.adminreal.cz
 www.onlinesprava.cz`;
 
-export function BuildingTemplates({ buildingId, initialSubject, initialBody }: Props) {
+const DEFAULT_SMS_BODY = `#osloveni# dnes Vám bylo na email #email# zasláno vyúčtování za rok #rok# k Vaší bytové jednotce #jednotka_cislo# v bytovém domě na adrese #bytovy_dum#. AdminReal s.r.o.`;
+
+export function BuildingTemplates({ buildingId, initialSubject, initialBody, initialSmsBody }: Props) {
   const router = useRouter();
   const [subject, setSubject] = useState(initialSubject || DEFAULT_SUBJECT);
   const [body, setBody] = useState(initialBody || DEFAULT_BODY);
+  const [smsBody, setSmsBody] = useState(initialSmsBody || DEFAULT_SMS_BODY);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
@@ -39,13 +43,14 @@ export function BuildingTemplates({ buildingId, initialSubject, initialBody }: P
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           emailTemplateSubject: subject,
-          emailTemplateBody: body
+          emailTemplateBody: body,
+          smsTemplateBody: smsBody
         }),
       });
 
       if (!response.ok) throw new Error('Chyba při ukládání');
       
-      alert('Šablona byla uložena');
+      alert('Šablony byly uloženy');
       router.refresh();
     } catch (error) {
       console.error("Chyba ukládání:", error);
@@ -56,9 +61,10 @@ export function BuildingTemplates({ buildingId, initialSubject, initialBody }: P
   };
 
   const handleReset = () => {
-    if (confirm('Opravdu chcete obnovit výchozí šablonu?')) {
+    if (confirm('Opravdu chcete obnovit výchozí šablony?')) {
       setSubject(DEFAULT_SUBJECT);
       setBody(DEFAULT_BODY);
+      setSmsBody(DEFAULT_SMS_BODY);
     }
   };
 
@@ -100,6 +106,25 @@ export function BuildingTemplates({ buildingId, initialSubject, initialBody }: P
             </p>
           </div>
 
+          <div>
+            <label htmlFor="smsBody" className="block text-sm font-medium text-gray-700 mb-1">
+              Text SMS
+            </label>
+            <textarea
+              id="smsBody"
+              value={smsBody}
+              onChange={(e) => setSmsBody(e.target.value)}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Dostupné proměnné: #osloveni#, #email#, #jednotka_cislo#, #bytovy_dum#, #rok#, #vysledek#
+            </p>
+            <p className="mt-1 text-xs text-gray-400">
+              Pozor: Délka jedné SMS je 160 znaků. Delší text bude rozdělen do více zpráv.
+            </p>
+          </div>
+
           <div className="flex justify-between pt-4">
             <button
               onClick={handleReset}
@@ -127,6 +152,8 @@ export function BuildingTemplates({ buildingId, initialSubject, initialBody }: P
           <li><strong>#bytovy_dum#</strong> - Název bytového domu</li>
           <li><strong>#rok#</strong> - Rok vyúčtování (např. &quot;2024&quot;)</li>
           <li><strong>#spravce#</strong> - Jméno správce (např. &quot;AdminReal s.r.o.&quot;)</li>
+          <li><strong>#email#</strong> - Email vlastníka (pouze pro SMS)</li>
+          <li><strong>#vysledek#</strong> - Textový výsledek vyúčtování (např. &quot;přeplatek 123 Kč&quot;)</li>
         </ul>
       </div>
     </div>
