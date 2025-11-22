@@ -57,6 +57,12 @@ export async function sendSms(params: SendSmsParams): Promise<SmsResponse> {
       };
     }
 
+    console.log('Sending SMS:', {
+      url: SMS_API_URL,
+      isAdvanced: isAdvancedEndpoint,
+      body: JSON.stringify(body)
+    });
+
     const response = await fetch(SMS_API_URL, {
       method: 'POST',
       headers: {
@@ -67,6 +73,11 @@ export async function sendSms(params: SendSmsParams): Promise<SmsResponse> {
     });
 
     const data = await response.json();
+
+    console.log('SMS Response:', {
+      status: response.status,
+      data
+    });
 
     if (!response.ok) {
       return {
