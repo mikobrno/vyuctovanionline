@@ -1,423 +1,214 @@
-'use client'
-
-import { useState } from 'react'
+import React from 'react';
+import { format } from 'date-fns';
+import { cs } from 'date-fns/locale';
 
 interface BillingStatementProps {
-  billingResult: {
-    id: string
-    totalCost: number
-    totalAdvancePrescribed: number
-    totalAdvancePaid: number
-    repairFund: number
-    result: number
-    isPaid: boolean
+  data: {
+    building: {
+      name: string;
+      address: string;
+      accountNumber: string;
+      variableSymbol: string;
+    };
     unit: {
-      name: string
-      unitNumber: string
-      variableSymbol: string | null
-      ownerships: Array<{
-        owner: {
-          firstName: string
-          lastName: string
-          address: string | null
-          email: string | null
-          phone: string | null
-        }
-      }>
-    }
-    serviceCosts: Array<{
-      id: string
-      buildingTotalCost: number
-      buildingConsumption: number | null
-      unitConsumption: number | null
-      unitCost: number
-      unitAdvance: number
-      unitBalance: number
-      unitPricePerUnit: number | null
-      unitAssignedUnits: number | null
-      distributionBase: string | null
-      calculationBasis: string | null
-      service: {
-        name: string
-        code: string
-        measurementUnit: string | null
-      }
-    }>
-  }
-  period: number
-  buildingName: string
-  buildingAddress: string
-  buildingId: string
+      name: string;
+      owner: string;
+      share: string;
+    };
+    period: {
+      year: number;
+      startDate: string;
+      endDate: string;
+    };
+    services: Array<{
+      name: string;
+      unit: string;
+      share: number;
+      buildingCost: number;
+      buildingUnits: number;
+      pricePerUnit: number;
+      userUnits: number;
+      userCost: number;
+      advance: number;
+      result: number;
+    }>;
+    totals: {
+      cost: number;
+      advance: number;
+      result: number;
+    };
+    readings: Array<{
+      service: string;
+      meterId: string;
+      startValue: number;
+      endValue: number;
+      consumption: number;
+    }>;
+    payments: Array<{
+      month: number;
+      prescribed: number;
+      paid: number;
+    }>;
+  };
 }
 
-export default function BillingStatement({ billingResult, period, buildingName, buildingAddress, buildingId }: BillingStatementProps) {
-  const owner = billingResult.unit.ownerships[0]?.owner
-  const [sending, setSending] = useState(false)
-  const [sendSuccess, setSendSuccess] = useState(false)
-  const [sendError, setSendError] = useState<string | null>(null)
-  const [sendingSms, setSendingSms] = useState(false)
-  const [smsSuccess, setSmsSuccess] = useState(false)
-  const [smsError, setSmsError] = useState<string | null>(null)
+export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
+  const formatCurrency = (val: number) => 
+    new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(val);
 
-  const handleDownloadPDF = async () => {
-    window.open(`/api/buildings/${buildingId}/billing/${billingResult.id}/pdf`, '_blank')
-  }
-
-  const handleSendEmail = async () => {
-    if (!owner?.email) {
-      setSendError('Vlastník nemá vyplněný email')
-      return
-    }
-
-    try {
-      setSending(true)
-      setSendError(null)
-      
-      const response = await fetch(`/api/buildings/${buildingId}/billing/${billingResult.id}/send-email`, {
-        method: 'POST'
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.details || 'Nepodařilo se odeslat email')
-      }
-
-      setSendSuccess(true)
-      setTimeout(() => setSendSuccess(false), 3000)
-    } catch (error) {
-      setSendError(error instanceof Error ? error.message : 'Nepodařilo se odeslat email')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  const handleSendSms = async () => {
-    if (!owner?.phone) {
-      setSmsError('Vlastník nemá vyplněné telefonní číslo')
-      return
-    }
-
-    try {
-      setSendingSms(true)
-      setSmsError(null)
-      
-      const response = await fetch(`/api/buildings/${buildingId}/billing/${billingResult.id}/send-sms`, {
-        method: 'POST'
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Nepodařilo se odeslat SMS')
-      }
-
-      setSmsSuccess(true)
-      setTimeout(() => setSmsSuccess(false), 3000)
-    } catch (error) {
-      setSmsError(error instanceof Error ? error.message : 'Nepodařilo se odeslat SMS')
-    } finally {
-      setSendingSms(false)
-    }
-  }
+  const formatNumber = (val: number, decimals = 2) => 
+    new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(val);
 
   return (
-    <div className="bg-white p-8 max-w-5xl mx-auto shadow-lg">
-      {/* Hlavička */}
-      <div className="flex justify-between mb-8 border-b pb-4">
+    <div className="max-w-[210mm] mx-auto bg-white p-8 text-sm font-sans print:p-0">
+      {/* Header */}
+      <div className="flex justify-between items-start mb-8 border-b pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">{buildingName}</h1>
-          <p className="text-sm text-gray-600">{buildingAddress}</p>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">{data.unit.owner}</h1>
+          <div className="grid grid-cols-[120px_1fr] gap-1 text-gray-600">
+            <span>Adresa společenství:</span>
+            <span className="font-medium">{data.building.address}</span>
+            <span>Bankovní spojení:</span>
+            <span className="font-medium">{data.building.accountNumber}</span>
+            <span>Variabilní symbol:</span>
+            <span className="font-medium">{data.building.variableSymbol}</span>
+          </div>
         </div>
         <div className="text-right">
-          {owner && (
-            <>
-              <p className="font-semibold text-gray-900">{owner.firstName} {owner.lastName}</p>
-              {owner.address && <p className="text-sm text-gray-600">{owner.address}</p>}
-              {owner.email && <p className="text-sm text-gray-600">{owner.email}</p>}
-            </>
+          <div className="text-2xl font-bold text-orange-600 mb-1">adminreal</div>
+          <div className="text-xs text-gray-500">
+            č. prostoru: {data.unit.name}<br/>
+            zúčtovací období: {format(new Date(data.period.startDate), 'd.M.yyyy')} - {format(new Date(data.period.endDate), 'd.M.yyyy')}
+          </div>
+        </div>
+      </div>
+
+      <h2 className="text-center text-xl font-bold mb-6 border-b-2 border-gray-800 pb-2">
+        Vyúčtování služeb: {data.period.year}
+      </h2>
+
+      {/* Main Table */}
+      <div className="mb-8 overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-gray-100 border-b-2 border-gray-300">
+              <th className="p-2 text-left">Položka</th>
+              <th className="p-2 text-center">Jednotka</th>
+              <th className="p-2 text-center">Podíl</th>
+              <th className="p-2 text-right border-l">Náklad (dům)</th>
+              <th className="p-2 text-right">Jednotek</th>
+              <th className="p-2 text-right">Kč/jedn</th>
+              <th className="p-2 text-right border-l">Jednotek (uživatel)</th>
+              <th className="p-2 text-right font-bold">Náklad (uživatel)</th>
+              <th className="p-2 text-right">Záloha</th>
+              <th className="p-2 text-right font-bold">Přeplatek/Nedoplatek</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.services.map((service, idx) => (
+              <tr key={idx} className="border-b border-gray-200 hover:bg-gray-50">
+                <td className="p-2 font-medium">{service.name}</td>
+                <td className="p-2 text-center">{service.unit}</td>
+                <td className="p-2 text-center">{service.share}%</td>
+                <td className="p-2 text-right border-l">{formatCurrency(service.buildingCost)}</td>
+                <td className="p-2 text-right">{formatNumber(service.buildingUnits)}</td>
+                <td className="p-2 text-right">{formatNumber(service.pricePerUnit)}</td>
+                <td className="p-2 text-right border-l">{formatNumber(service.userUnits)}</td>
+                <td className="p-2 text-right font-bold">{formatCurrency(service.userCost)}</td>
+                <td className="p-2 text-right">{formatCurrency(service.advance)}</td>
+                <td className={`p-2 text-right font-bold ${service.result < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {formatCurrency(service.result)}
+                </td>
+              </tr>
+            ))}
+            <tr className="bg-gray-100 font-bold border-t-2 border-gray-800">
+              <td colSpan={3} className="p-3 text-left">Celkem náklady na odběrné místo</td>
+              <td className="p-3 text-right border-l">{formatCurrency(data.services.reduce((acc, s) => acc + s.buildingCost, 0))}</td>
+              <td colSpan={3} className="border-l"></td>
+              <td className="p-3 text-right">{formatCurrency(data.totals.cost)}</td>
+              <td className="p-3 text-right">{formatCurrency(data.totals.advance)}</td>
+              <td className={`p-3 text-right ${data.totals.result < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {formatCurrency(data.totals.result)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Result Box */}
+      <div className="flex justify-between items-center bg-gray-50 p-6 border border-gray-300 mb-8 rounded-lg">
+        <div>
+          <div className="grid grid-cols-2 gap-4 text-sm mb-2">
+            <span className="font-bold">Pevné platby:</span>
+            <span>Fond oprav: 11 928 Kč</span>
+          </div>
+          <div className="text-xs text-gray-500">
+            Není evidován v účtovaném období přeplatek ani nedoplatek<br/>
+            Není evidován v minulém období přeplatek ani nedoplatek
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-lg font-bold text-gray-600 mb-1">
+            {data.totals.result >= 0 ? 'PŘEPLATEK CELKEM' : 'NEDOPLATEK CELKEM'}
+          </div>
+          <div className={`text-3xl font-bold ${data.totals.result < 0 ? 'text-red-600' : 'text-green-600'}`}>
+            {formatCurrency(data.totals.result)}
+          </div>
+          {data.totals.result < 0 && (
+            <div className="mt-2 text-sm bg-red-100 text-red-800 p-2 rounded">
+              Nedoplatek uhraďte na účet číslo: <strong>{data.building.accountNumber}</strong><br/>
+              variabilní symbol <strong>{data.building.variableSymbol}</strong>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Info panel */}
-      <div className="grid grid-cols-3 gap-4 mb-6 bg-gray-50 p-4 rounded">
-        <div>
-          <span className="text-xs text-gray-500 uppercase">Jednotka</span>
-          <p className="font-semibold text-gray-900">{billingResult.unit.name}</p>
-        </div>
-        <div>
-          <span className="text-xs text-gray-500 uppercase">Variabilní symbol</span>
-          <p className="font-semibold text-gray-900">{billingResult.unit.variableSymbol || '-'}</p>
-        </div>
-        <div>
-          <span className="text-xs text-gray-500 uppercase">Období</span>
-          <p className="font-semibold text-gray-900">Rok {period}</p>
+      {/* Payment Schedule */}
+      <div className="mb-8">
+        <h3 className="font-bold bg-gray-200 p-2 text-sm mb-2">Přehled úhrad za rok {data.period.year}</h3>
+        <div className="grid grid-cols-12 gap-0 border text-xs">
+          {data.payments.map((p, i) => (
+            <div key={i} className="border-r last:border-r-0">
+              <div className="bg-gray-50 p-1 text-center border-b">{p.month}/{data.period.year}</div>
+              <div className="p-1 text-center font-medium">{formatNumber(p.paid, 0)} Kč</div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Nadpis vyúčtování */}
-      <h2 className="text-xl font-bold text-center mb-6 text-gray-900">
-        Vyúčtování služeb: {period}
-      </h2>
-
-      {/* Tabulka služeb */}
-      <div className="overflow-x-auto mb-6">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="bg-gray-100 border-b-2 border-gray-300">
-              <th className="text-left p-2 font-semibold text-gray-900">Položka</th>
-              <th className="text-left p-2 font-semibold text-gray-900">Jednotka</th>
-              <th className="text-right p-2 font-semibold text-gray-900">Náklad</th>
-              <th className="text-right p-2 font-semibold text-gray-900">Jednotek</th>
-              <th className="text-right p-2 font-semibold text-gray-900">Kč/jedn</th>
-              <th className="text-right p-2 font-semibold text-gray-900">Jednotek připadá</th>
-              <th className="text-right p-2 font-semibold text-gray-900">Náklad</th>
-              <th className="text-right p-2 font-semibold text-gray-900">Úhrada</th>
-              <th className="text-right p-2 font-semibold text-gray-900">Přeplatek/nedoplatek</th>
-            </tr>
-          </thead>
-          <tbody>
-            {billingResult.serviceCosts.map((sc) => (
-              <tr key={sc.id} className="border-b hover:bg-gray-50">
-                <td className="p-2 text-gray-900">{sc.service.name}</td>
-                <td className="p-2 text-gray-600">{sc.distributionBase || sc.service.measurementUnit || '-'}</td>
-                <td className="p-2 text-right font-semibold text-gray-900">
-                  {sc.buildingTotalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
-                </td>
-                <td className="p-2 text-right text-gray-600">
-                  {sc.buildingConsumption?.toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) || '-'}
-                </td>
-                <td className="p-2 text-right text-gray-600">
-                  {sc.unitPricePerUnit?.toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) || '-'}
-                </td>
-                <td className="p-2 text-right text-gray-600">
-                  {sc.unitConsumption?.toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) || 
-                   sc.unitAssignedUnits?.toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) || '-'}
-                </td>
-                <td className="p-2 text-right font-semibold text-gray-900">
-                  {sc.unitCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
-                </td>
-                <td className="p-2 text-right text-gray-600">
-                  {sc.unitAdvance.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
-                </td>
-                <td className={`p-2 text-right font-semibold ${
-                  sc.unitBalance > 0 ? 'text-green-600' : sc.unitBalance < 0 ? 'text-red-600' : 'text-gray-900'
-                }`}>
-                  {sc.unitBalance.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
-                </td>
-              </tr>
-            ))}
-            
-            {/* Fond oprav */}
-            {billingResult.repairFund > 0 && (
-              <tr className="border-b hover:bg-gray-50">
-                <td className="p-2 text-gray-900">Fond oprav</td>
-                <td className="p-2 text-gray-600">na byt</td>
-                <td className="p-2 text-right font-semibold text-gray-900">
-                  {billingResult.repairFund.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
-                </td>
-                <td className="p-2 text-right text-gray-600">100,00</td>
-                <td className="p-2 text-right text-gray-600">
-                  {(billingResult.repairFund / 100).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
-                </td>
-                <td className="p-2 text-right text-gray-600">100</td>
-                <td className="p-2 text-right font-semibold text-gray-900">
-                  {billingResult.repairFund.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
-                </td>
-                <td className="p-2 text-right text-gray-600">0,00</td>
-                <td className="p-2 text-right font-semibold text-red-600">
-                  {billingResult.repairFund.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
-                </td>
-              </tr>
-            )}
-
-            {/* Celkem */}
-            <tr className="bg-gray-100 font-bold">
-              <td className="p-2 text-gray-900">Celkem náklady na odbërná místa:</td>
-              <td className="p-2"></td>
-              <td className="p-2 text-right text-gray-900">
-                {billingResult.totalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
-              </td>
-              <td className="p-2"></td>
-              <td className="p-2"></td>
-              <td className="p-2"></td>
-              <td className="p-2"></td>
-              <td className="p-2"></td>
-              <td className="p-2"></td>
-            </tr>
-
-            {/* Přeplatek celkem */}
-            <tr className="bg-blue-50 font-bold">
-              <td className="p-2 text-gray-900" colSpan={8}>
-                {billingResult.result >= 0 ? 'PŘEPLATEK CELKEM' : 'NEDOPLATEK CELKEM'}
-              </td>
-              <td className={`p-2 text-right text-lg ${
-                billingResult.result >= 0 ? 'text-green-600' : 'text-red-600'
-              }`}>
-                {Math.abs(billingResult.result).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* Tabulka měsíčních úhrad */}
-      <div className="mb-6">
-        <h3 className="text-lg font-semibold mb-3 text-gray-900">Přehled úhrad za rok {period}</h3>
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="bg-gray-100">
-              {['1/'+period, '2/'+period, '3/'+period, '4/'+period, '5/'+period, '6/'+period, '7/'+period, '8/'+period, '9/'+period, '10/'+period, '11/'+period, '12/'+period].map(month => (
-                <th key={month} className="border p-2 text-center text-gray-900">{month}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              {Array.from({ length: 12 }, (_, i) => {
-                // TODO: Načíst skutečné zálohy z AdvancePaymentRecord
-                const monthlyAdvance = billingResult.totalAdvancePrescribed / 12
-                return (
-                  <td key={i} className="border p-2 text-center text-gray-900">
-                    {monthlyAdvance.toLocaleString('cs-CZ', { minimumFractionDigits: 0 })} Kč
-                  </td>
-                )
-              })}
-            </tr>
-            <tr className="bg-gray-50">
-              <td colSpan={12} className="border p-2 text-gray-900">
-                <strong>K uhradě od roku</strong>
-              </td>
-            </tr>
-            <tr>
-              {Array.from({ length: 12 }, (_, i) => {
-                const monthlyAdvance = billingResult.totalAdvancePrescribed / 12
-                return (
-                  <td key={i} className="border p-2 text-center text-gray-900">
-                    {monthlyAdvance.toLocaleString('cs-CZ', { minimumFractionDigits: 0 })} Kč
-                  </td>
-                )
-              })}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* Měřené služby */}
-      {billingResult.serviceCosts.some(sc => sc.unitConsumption !== null) && (
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold mb-3 text-gray-900">Měřené služby</h3>
-          <table className="w-full border-collapse text-sm">
+      {/* Meter Readings */}
+      {data.readings.length > 0 && (
+        <div>
+          <h3 className="font-bold bg-gray-200 p-2 text-sm mb-2">Měřené služby</h3>
+          <table className="w-full text-xs border border-gray-300">
             <thead>
-              <tr className="bg-gray-100">
-                <th className="border p-2 text-left text-gray-900">Služba</th>
-                <th className="border p-2 text-center text-gray-900">Období</th>
-                <th className="border p-2 text-center text-gray-900">Měřidlo</th>
-                <th className="border p-2 text-right text-gray-900">Poč.stav</th>
-                <th className="border p-2 text-right text-gray-900">Kon.stav</th>
-                <th className="border p-2 text-right text-gray-900">Spotřeba</th>
+              <tr className="bg-gray-50 border-b">
+                <th className="p-2 text-left">Služba</th>
+                <th className="p-2 text-left">Měřidlo</th>
+                <th className="p-2 text-right">Poč. stav</th>
+                <th className="p-2 text-right">Kon. stav</th>
+                <th className="p-2 text-right">Spotřeba</th>
               </tr>
             </thead>
             <tbody>
-              {billingResult.serviceCosts
-                .filter(sc => sc.unitConsumption !== null)
-                .map((sc) => (
-                  <tr key={sc.id}>
-                    <td className="border p-2 text-gray-900">{sc.service.name}</td>
-                    <td className="border p-2 text-center text-gray-600">
-                      1.1.{period} - 31.12.{period}
-                    </td>
-                    <td className="border p-2 text-center text-gray-600">
-                      {sc.service.measurementUnit || '-'}
-                    </td>
-                    <td className="border p-2 text-right text-gray-600">
-                      {/* TODO: Načíst skutečný počáteční stav */}
-                      0,00
-                    </td>
-                    <td className="border p-2 text-right text-gray-600">
-                      {/* TODO: Načíst skutečný koncový stav */}
-                      {sc.unitConsumption?.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="border p-2 text-right font-semibold text-gray-900">
-                      {sc.unitConsumption?.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                ))}
+              {data.readings.map((reading, idx) => (
+                <tr key={idx} className="border-b last:border-b-0">
+                  <td className="p-2">{reading.service}</td>
+                  <td className="p-2">{reading.meterId}</td>
+                  <td className="p-2 text-right">{formatNumber(reading.startValue)}</td>
+                  <td className="p-2 text-right">{formatNumber(reading.endValue)}</td>
+                  <td className="p-2 text-right font-bold">{formatNumber(reading.consumption)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       )}
-
-      {/* Upozornění o platbě */}
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-        <p className="text-sm text-yellow-800">
-          {billingResult.result < 0 ? (
-            <>
-              <strong>Přeplatek Vám bude vyplacen na číslo účtu {billingResult.unit.variableSymbol || 'registrované u správce'}.</strong>
-            </>
-          ) : (
-            <>
-              <strong>Případné reklamace uplatněte písemnou formou na adrese správce (viz. záhlaví) nejpozději do 30 dnů od doručení vyúčtování</strong>, 
-              jinak se vyúčtování považuje za akceptované a účinné rozhodné v uplaceném období.
-            </>
-          )}
-        </p>
-      </div>
-
-      {/* Poznámky */}
-      <div className="text-xs text-gray-600 space-y-1 mb-6">
-        <p>Přeplatky a nedoplatky z vyúčtování jsou splatné nejpozději do 7 (sedmi) měsíců od skončení zúčtovacího období.</p>
-        <p>Datum: {new Date().toLocaleDateString('cs-CZ')}</p>
-      </div>
-
-      {/* Tlačítka akcí */}
-      <div className="flex gap-4 pt-4 border-t print:hidden">
-        <button
-          onClick={() => window.print()}
-          className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-semibold"
-        >
-          🖨️ Vytisknout
-        </button>
-        <button
-          onClick={handleSendEmail}
-          disabled={sending || !owner?.email}
-          className="bg-gray-600 text-white px-6 py-2 rounded hover:bg-gray-700 font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed"
-        >
-          {sending ? '⏳ Odesílám...' : sendSuccess ? '✓ Odesláno' : '📧 Odeslat e-mailem'}
-        </button>
-        <button
-          onClick={handleSendSms}
-          disabled={sendingSms || !owner?.phone}
-          className="bg-purple-600 text-white px-6 py-2 rounded hover:bg-purple-700 font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed"
-        >
-          {sendingSms ? '⏳ Odesílám...' : smsSuccess ? '✓ Odesláno' : '📱 Odeslat SMS'}
-        </button>
-        <button
-          onClick={handleDownloadPDF}
-          className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 font-semibold"
-        >
-          📄 Stáhnout PDF
-        </button>
-        {sendError && (
-          <div className="ml-4 text-red-600 flex items-center">
-            ⚠️ {sendError}
-          </div>
-        )}
-        {sendSuccess && (
-          <div className="ml-4 text-green-600 flex items-center">
-            ✓ Email úspěšně odeslán
-          </div>
-        )}
-        {smsError && (
-          <div className="ml-4 text-red-600 flex items-center">
-            ⚠️ {smsError}
-          </div>
-        )}
-        {smsSuccess && (
-          <div className="ml-4 text-green-600 flex items-center">
-            ✓ SMS úspěšně odeslána
-          </div>
-        )}
+      
+      <div className="mt-8 text-xs text-gray-500 border-t pt-4">
+        <p>Jednotková cena za m3 vody činila v roce {data.period.year} dle ceníku BVaK 105,53 Kč.</p>
+        <p>Případné reklamace uplatněte výhradně písemnou formou na adrese správce nejpozději do 30 dnů.</p>
       </div>
     </div>
-  )
-}
+  );
+};

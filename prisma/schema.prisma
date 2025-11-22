@@ -298,6 +298,7 @@ model MeterReading {
   endValue        Float?   // konečný stav v období (import)
   period          Int      // rok vyúčtování
   consumption     Float?   // vypočtená spotřeba
+  precalculatedCost Float? // předvypočítaný náklad z importu (např. pro Teplo)
   note            String?
   createdAt       DateTime @default(now())
 

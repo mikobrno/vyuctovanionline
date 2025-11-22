@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { read, utils } from 'xlsx'
-import { prisma } from '@/lib/prisma'
-import { CalculationMethod, DataSourceType, MeterType } from '@prisma/client'
 
-export const runtime = 'nodejs'
+import { read, utils } from 'xlsx'
+import { prisma } from '../lib/prisma'
+import { CalculationMethod, DataSourceType, MeterType } from '@prisma/client'
+import fs from 'fs'
+import path from 'path'
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
 // Mapování názvů záložek na typy měřidel
@@ -105,47 +106,18 @@ interface ImportSummary {
 
 type UnitLite = { id: string; meters?: { id: string; type: MeterType; isActive: boolean }[]; variableSymbol?: string }
 
-export async function POST(req: NextRequest) {
+async function runImport() {
   try {
-    const formData = await req.formData()
-    const file = formData.get('file')
-    const buildingName = (formData.get('buildingName') as string) || ''
-    const year = (formData.get('year') as string) || ''
+    const fileName = 'vyuctovani2024 (20).xlsx'
+    const buildingName = 'Kníničky 318'
+    const filePath = path.join(process.cwd(), 'public', fileName)
 
-    if (!file) {
-      return NextResponse.json({
-        success: false,
-        message: 'Soubor s vyúčtováním nebyl přiložen. Nahrajte prosím XLS/XLSX soubor.'
-      }, { status: 400 })
+    if (!fs.existsSync(filePath)) {
+        console.error(`File not found: ${filePath}`)
+        return
     }
 
-    // Next.js může vrátit hodnotu jako Blob místo File – převedeme na File kvůli názvu/validaci
-    const fileObj = file instanceof File ? file : new File([file as unknown as Blob], 'upload.xlsx', { type: ((file as unknown) as Blob).type || 'application/octet-stream' })
-
-    // Rok lze odvodit z Excelu (Vstupní data!B12), proto není povinný v parametru
-
-    if (fileObj.size === 0) {
-      return NextResponse.json({ 
-        success: false, 
-        message: 'Nahraný soubor je prázdný. Zkontrolujte prosím, že v něm jsou data.' 
-      }, { status: 400 })
-    }
-
-    if (fileObj.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ 
-        success: false, 
-        message: 'Soubor je příliš velký (limit 10 MB). Rozdělte ho prosím na menší části.' 
-      }, { status: 413 })
-    }
-
-    if (!/\.xlsx?$/i.test(fileObj.name)) {
-      return NextResponse.json({ 
-        success: false, 
-        message: 'Nepodporovaný formát souboru. Nahrajte prosím soubor typu XLS nebo XLSX.' 
-      }, { status: 400 })
-    }
-
-    const buffer = Buffer.from(await fileObj.arrayBuffer())
+    const buffer = fs.readFileSync(filePath)
     const workbook = read(buffer, { type: 'buffer' })
 
     const summary: ImportSummary = {
@@ -171,7 +143,7 @@ export async function POST(req: NextRequest) {
     
     // Načíst adresu a období ze záložky "Vstupní data"
     let buildingAddress = 'Adresu upravte v detailu budovy'
-    let billingPeriod = year || String(new Date().getFullYear())
+    let billingPeriod = String(new Date().getFullYear())
     
     const inputDataSheetName = workbook.SheetNames.find(name => 
       name.toLowerCase().includes('vstupní') || name.toLowerCase().includes('vstupni') || name.toLowerCase().includes('input')
@@ -508,7 +480,7 @@ export async function POST(req: NextRequest) {
           })
 
           const m = methodology.toLowerCase()
-          const calculationMethod = m.includes('měřidl') || m.includes('odečet') ? 'METER_READING' :
+          const calculationMethod = m.includes('měřidl') || m.includes('odečet') || m.includes('extern') ? 'METER_READING' :
                                     (m.includes('plocha') || m.includes('výměr') || m.includes('vyměr')) ? 'AREA' :
                                     (m.includes('osob') || m.includes('osobo')) ? 'PERSON_MONTHS' :
                                     (m.includes('byt') || m.includes('jednotk')) ? 'FIXED_PER_UNIT' :
@@ -1397,35 +1369,12 @@ export async function POST(req: NextRequest) {
       log(`[Náklady] List 'Náklady na dům' nebyl nalezen.`)
     }
 
-    return NextResponse.json({
-      success: true,
-      message: `Úspěšně importováno kompletní vyúčtování pro rok ${billingPeriod}`,
-      summary,
-      logs
-    })
+    console.log('Import completed successfully')
+    console.log(JSON.stringify(summary, null, 2))
 
   } catch (error) {
     console.error('[Complete import]', error)
-    
-    let message = error instanceof Error ? error.message : String(error)
-    const stack = error instanceof Error ? error.stack : undefined
-
-    // Přeložit časté databázové chyby do češtiny
-    if (message.includes('Unique constraint failed')) {
-      if (message.includes('unitNumber')) {
-        message = 'V souboru jsou duplicitní čísla jednotek. Každá jednotka musí mít unikátní číslo v rámci domu (např. 318/01, 318/02). Zkontrolujte prosím sloupec "Byt" v Excelu.'
-      } else if (message.includes('code')) {
-        message = 'Duplicitní kód služby. Služba s tímto kódem již existuje v databázi.'
-      } else {
-        message = 'Duplicitní data v databázi. Zkontrolujte prosím, že importovaná data jsou unikátní.'
-      }
-    } else if (message.includes('Foreign key')) {
-      message = 'Chyba propojení dat – budova nebo související záznam nebyl nalezen v databázi.'
-    } else if (message.includes('Invalid')) {
-      message = 'Neplatný formát dat v Excelu. Zkontrolujte prosím, že všechny sloupce mají správný formát.'
-    }
-
-    return NextResponse.json({ success: false, message, debugStack: stack }, { status: 500 })
   }
 }
-export {}
+
+runImport()

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import prisma from '@/lib/prisma'
+import { prisma } from '@/lib/prisma'
 import { generateBillingPDF } from '@/lib/pdfGenerator'
 
 export async function GET(
@@ -64,9 +64,9 @@ export async function GET(
       },
       period: billingResult.billingPeriod.year,
       unit: {
-        name: billingResult.unit.name,
         unitNumber: billingResult.unit.unitNumber,
-        variableSymbol: billingResult.unit.variableSymbol
+        variableSymbol: billingResult.unit.variableSymbol || null,
+        totalArea: billingResult.unit.totalArea
       },
       owner: owner ? {
         firstName: owner.firstName,

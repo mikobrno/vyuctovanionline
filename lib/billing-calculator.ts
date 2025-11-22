@@ -112,6 +112,26 @@ export class BillingCalculator {
         personMonths: unit.personMonths.reduce((sum, pm) => sum + pm.personCount, 0),
       }
 
+      // Vytvořit prázdný výsledek vyúčtování (pro FK constraint)
+      await prisma.billingResult.upsert({
+        where: {
+          billingPeriodId_unitId: {
+            billingPeriodId: billingPeriod.id,
+            unitId: unit.id,
+          },
+        },
+        create: {
+          id: `${billingPeriod.id}_${unit.id}`,
+          billingPeriodId: billingPeriod.id,
+          unitId: unit.id,
+          totalCost: 0,
+          totalAdvancePrescribed: 0,
+          totalAdvancePaid: 0,
+          result: 0,
+        },
+        update: {},
+      })
+
       let totalUnitCost = 0
       const serviceCalculations: ServiceCalculation[] = []
 
@@ -315,7 +335,28 @@ export class BillingCalculator {
         const meterType = meterTypeMap[service.code] || 'HEATING'
         const meter = currentUnit.meters.find((m: { type: string; isActive: boolean }) => m.type === meterType && m.isActive)
         
-        if (meter && (meter as { readings: { consumption: number }[] }).readings.length > 0) {
+        // Zkontrolovat, zda existuje předvypočítaný náklad (z Excelu)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const readingWithPrecalc = meter?.readings.find((r: any) => r.precalculatedCost !== null && r.precalculatedCost !== undefined)
+
+        if (readingWithPrecalc) {
+          // POUŽÍT PŘEDVYPOČÍTANÝ NÁKLAD Z EXCELU
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          unitCost = (readingWithPrecalc as any).precalculatedCost
+          unitConsumption = readingWithPrecalc.consumption || 0
+          calculationBasis = `Převzato z externího výpočtu (Excel): ${unitCost.toFixed(2)} Kč`
+          
+          // Pro statistiku spočítáme celkovou spotřebu, i když ji nepoužíváme pro výpočet ceny
+          buildingConsumption = allUnits.reduce((sum, u) => {
+            const unitMeter = u.meters.find((m: { type: string; isActive: boolean }) => m.type === meterType && m.isActive)
+            if (unitMeter && (unitMeter as { readings: { consumption: number }[] }).readings.length > 0) {
+              return sum + ((unitMeter as { readings: { consumption: number }[] }).readings[0].consumption || 0)
+            }
+            return sum
+          }, 0)
+
+        } else if (meter && (meter as { readings: { consumption: number }[] }).readings.length > 0) {
+          // STANDARDNÍ VÝPOČET PODLE SPOTŘEBY
           const reading = (meter as { readings: { consumption: number }[] }).readings[0]
           unitConsumption = reading.consumption || 0
           
