@@ -36,18 +36,52 @@ export async function sendSms(params: SendSmsParams): Promise<SmsResponse> {
     let body: unknown;
     
     if (isAdvancedEndpoint) {
-      // Advanced endpoint payload
-      body = {
-        data: [
-          {
-            to: [params.to],
-            body: params.text,
-            sender: params.sender || SMS_SENDER,
-            ttl: SMS_TTL,
-            customRequestMetadata: SMS_TAG ? { tag: SMS_TAG } : undefined
-          }
+      // Advanced endpoint payload (JSON API v2)
+      // Dokumentace: https://api-ref.smsmanager.com/openapi/cs/json/jsonapi_v2
+      // Endpoint: /message (POST)
+      
+      interface SmsFlowConfig {
+        sender?: string;
+        ttl?: number;
+      }
+
+      interface MessagePayload {
+        body: string;
+        to: { phone_number: string }[];
+        tag?: string;
+        flow?: { sms: SmsFlowConfig }[];
+      }
+      
+      const messageData: MessagePayload = {
+        body: params.text,
+        to: [
+          { phone_number: params.to }
         ]
       };
+
+      if (SMS_TAG) {
+        messageData.tag = SMS_TAG;
+      }
+
+      // Konfigurace kanálu (SMS)
+      const smsConfig: SmsFlowConfig = {};
+      
+      if (params.sender || SMS_SENDER) {
+        smsConfig.sender = params.sender || SMS_SENDER;
+      }
+      
+      if (SMS_TTL) {
+        smsConfig.ttl = SMS_TTL;
+      }
+
+      // Pokud máme nějakou konfiguraci pro SMS, přidáme ji do flow
+      if (Object.keys(smsConfig).length > 0) {
+        messageData.flow = [
+          { sms: smsConfig }
+        ];
+      }
+
+      body = messageData;
     } else {
       // Simple endpoint payload
       body = {
@@ -89,16 +123,25 @@ export async function sendSms(params: SendSmsParams): Promise<SmsResponse> {
 
     // Zpracování odpovědi
     if (isAdvancedEndpoint) {
-      // Advanced endpoint vrací pole výsledků
+      // Advanced endpoint (/message) vrací přímo objekt MessageResponse s ID
+      if (data.id) {
+        return {
+          success: true,
+          messageId: String(data.id),
+          details: data
+        };
+      }
+
+      // Pokud by API vracelo data wrapper (např. batch endpoint)
       const result = data.data?.[0];
       if (result) {
         return {
-          success: result.success,
-          messageId: result.id,
-          error: result.error,
+          success: true, // Pokud jsme tady a status je 200/201, je to success
+          messageId: String(result.id),
           details: result
         };
       }
+      
       return { success: true, details: data };
     } else {
       // Simple endpoint vrací ID zprávy jako UUID
