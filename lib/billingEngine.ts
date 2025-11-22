@@ -1,406 +1,288 @@
-/**
- * BILLING ENGINE - Generování kompletního vyúčtování
- * 
- * Tento modul kombinuje výpočetní engine s daty ze záložky Faktury
- * a vytváří kompletní vyúčtování pro všechny jednotky v domě.
- */
+import { PrismaClient, CalculationMethod } from '@prisma/client';
 
-import { prisma } from './prisma'
-import { calculateServiceDistribution } from './calculationEngine'
+const prisma = new PrismaClient();
 
-interface BillingServiceResult {
-  serviceId: string
-  serviceName: string
-  serviceCode: string
-  totalCost: number
-  totalConsumption: number | null
-  pricePerUnit: number | null
-  distributionBase: string
-  distribution: Array<{
-    unitId: string
-    unitName: string
-    amount: number
-    consumption: number | null
-    advance: number
-    balance: number
-    formula: string
-  }>
+interface ServiceCalculationResult {
+  serviceId: string;
+  serviceName: string;
+  method: CalculationMethod;
+  totalBuildingCost: number; // Celkový náklad za dům
+  unitCost: number;          // Vypočítaný náklad na jednotku
+  unitConsumption?: number;  // Spotřeba (pokud existuje)
+  pricePerUnit?: number;     // Cena za měrnou jednotku
+  advancePaid: number;       // Zaplacené zálohy na tuto službu
+  balance: number;           // Přeplatek/Nedoplatek za tuto službu
+  calculationBasis: string;  // Textový popis pro kontrolu (např. "Podíl 50/1000 * 10000 Kč")
 }
 
-interface UnitBillingResult {
-  unitId: string
-  unitName: string
-  unitNumber: string
-  variableSymbol: string | null
-  owner: {
-    name: string
-    email: string | null
-  } | null
-  services: Array<{
-    serviceId: string
-    serviceName: string
-    serviceCode: string
-    amount: number
-    formula: string
-  }>
-  totalAmount: number
-  totalAdvances: number
-  balance: number
+// Pomocná funkce pro bezpečné číslo
+function safeNumber(value: number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  if (!Number.isFinite(value)) return 0; // Zachytí Infinity a NaN
+  if (Number.isNaN(value)) return 0;
+  return value;
 }
 
-interface CompleteBilling {
-  buildingId: string
-  buildingName: string
-  period: number
-  generatedAt: Date
-  services: BillingServiceResult[]
-  units: UnitBillingResult[]
-  summary: {
-    totalCosts: number
-    totalDistributed: number
-    totalAdvances: number
-    totalBalance: number
-    numberOfUnits: number
-    numberOfServices: number
-  }
-}
+export async function calculateBillingForBuilding(buildingId: string, year: number) {
+  console.log(`🚀 Spouštím výpočet vyúčtování pro budovu ${buildingId}, rok ${year}`);
 
-/**
- * HLAVNÍ FUNKCE - Generování kompletního vyúčtování
- */
-export async function generateCompleteBilling(
-  buildingId: string,
-  period: number
-): Promise<CompleteBilling> {
+  // 1. PŘÍPRAVA DAT
+  // ---------------------------------------------------------
   
-  console.log(`[Billing Engine] Generating billing for building ${buildingId}, period ${period}`)
+  // A. Získání nebo vytvoření BillingPeriod
+  const billingPeriod = await prisma.billingPeriod.upsert({
+    where: { buildingId_year: { buildingId, year } },
+    update: {},
+    create: { buildingId, year }
+  });
 
-  // 1. Načíst budovu se všemi daty
-  const building = await prisma.building.findUnique({
-    where: { id: buildingId },
+  // B. Načtení jednotek včetně měřidel a náměrů
+  const units = await prisma.unit.findMany({
+    where: { buildingId },
     include: {
-      units: {
-        include: {
-          ownerships: {
-            where: { validTo: null },
-            include: { owner: true }
-          }
-        },
-        orderBy: { unitNumber: 'asc' }
-      },
-      services: {
+      meters: {
         where: { isActive: true },
-        orderBy: { order: 'asc' }
-      },
-      costs: {
-        where: { period: period },
-        include: { service: true }
-      }
-    }
-  })
-
-  if (!building) {
-    throw new Error(`Building ${buildingId} not found`)
-  }
-
-  console.log(`[Billing Engine] Found ${building.services.length} services, ${building.costs.length} costs`)
-
-  // 2. Načíst zálohy z nového zdroje (AdvanceMonthly); fallback na staré AdvancePaymentRecord
-  const advancesMap = new Map<string, Map<string, number>>()
-
-  const monthlyAdvances = await prisma.advanceMonthly.findMany({
-    where: {
-      year: period,
-      unit: { buildingId },
-      service: { buildingId }
-    },
-    select: { unitId: true, serviceId: true, amount: true }
-  })
-
-  if (monthlyAdvances.length > 0) {
-    for (const row of monthlyAdvances) {
-      if (!advancesMap.has(row.unitId)) advancesMap.set(row.unitId, new Map())
-      const m = advancesMap.get(row.unitId)!
-      m.set(row.serviceId, (m.get(row.serviceId) || 0) + (row.amount || 0))
-    }
-  } else {
-    // Fallback: AdvancePayment + Records (monthlyAmount * 12)
-    const advancePayments = await prisma.advancePayment.findMany({
-      where: { service: { buildingId }, year: period },
-      include: { records: true }
-    })
-    for (const ap of advancePayments) {
-      for (const record of ap.records) {
-        if (!advancesMap.has(record.unitId)) advancesMap.set(record.unitId, new Map())
-        const unitAdvances = advancesMap.get(record.unitId)!
-        const yearlyAdvance = (record.monthlyAmount || 0) * 12
-        unitAdvances.set(ap.serviceId, (unitAdvances.get(ap.serviceId) || 0) + yearlyAdvance)
-      }
-    }
-  }
-
-  // 3. Pro každou službu vypočítat rozúčtování pomocí dynamického enginu
-  const serviceResults: BillingServiceResult[] = []
-
-  for (const service of building.services) {
-    // Sečíst náklady pro tuto službu
-    const serviceCosts = building.costs.filter((c: { serviceId: string }) => c.serviceId === service.id)
-    const totalCost = serviceCosts.reduce((sum: number, c: { amount: number }) => sum + c.amount, 0)
-
-    console.log(`[Billing Engine] Service ${service.name}: ${totalCost} Kč from ${serviceCosts.length} costs`)
-
-    if (totalCost === 0) {
-      console.log(`[Billing Engine] Skipping service ${service.name} - no costs`)
-      continue
-    }
-
-    try {
-      // POUŽITÍ DYNAMICKÉHO ENGINU!
-      const distribution = await calculateServiceDistribution(
-        service.id,
-        buildingId,
-        period,
-        totalCost
-      )
-
-      // Vypočítat celkovou spotřebu a cenu za jednotku
-      const totalConsumption = distribution.reduce((sum, d) => sum + (d.breakdown.unitValue || 0), 0)
-      const pricePerUnit = totalConsumption > 0 ? totalCost / totalConsumption : null
-
-      // Získat základ pro rozúčtování
-      let distributionBase = 'na byt'
-      if (service.dataSourceType === 'METER_DATA') {
-        distributionBase = service.dataSourceName || 'odečet'
-      } else if (service.dataSourceType === 'UNIT_ATTRIBUTE') {
-        distributionBase = service.unitAttributeName || 'vlastnický podíl'
-      } else if (service.dataSourceType === 'PERSON_MONTHS') {
-        distributionBase = 'osobo-měsíc'
-      }
-
-      // Přidat zálohy a bilance k distribuci
-      const distributionWithAdvances = distribution.map(d => {
-        const unitAdvancesMap = advancesMap.get(d.unitId)
-        const advance = unitAdvancesMap?.get(service.id) || 0
-        return {
-          unitId: d.unitId,
-          unitName: d.unitName,
-          amount: d.amount,
-          consumption: d.breakdown.unitValue,
-          advance,
-          balance: d.amount - advance,
-          formula: d.formula
+        include: {
+          readings: {
+            where: {
+              OR: [
+                { dateEnd: { gte: new Date(`${year}-01-01`), lte: new Date(`${year}-12-31`) } },
+                { readingDate: { gte: new Date(`${year}-01-01`), lte: new Date(`${year}-12-31`) } }
+              ]
+            },
+            orderBy: { readingDate: 'desc' },
+            take: 1 
+          }
         }
-      })
+      }
+    }
+  });
+
+  // C. Načtení služeb a nákladů
+  const services = await prisma.service.findMany({
+    where: { buildingId },
+    include: {
+      costs: {
+        where: { period: year }
+      }
+    }
+  });
+
+  // D. Načtení záloh
+  const advances = await prisma.advanceMonthly.findMany({
+    where: { 
+      unit: { buildingId },
+      year: year
+    }
+  });
+
+  // E. Globální sumy pro rozpočítání
+  const totalShare = safeNumber(units.reduce((sum, u) => sum + (u.share || 0), 0));
+  const totalUnitsCount = units.length;
+  // TODO: Zde by se měl načíst reálný počet osob, pokud je v DB.
+  const totalPeople = units.length; 
+
+  // F. PŘEDVÝPOČET SPOTŘEB (Pro BY_METER)
+  // Musíme znát celkovou spotřebu domu PRO KAŽDOU SLUŽBU, abychom spočítali cenu za jednotku.
+  const serviceTotalConsumptions = new Map<string, number>();
+
+  for (const service of services) {
+    if (service.calculationMethod === 'BY_METER') {
+      let totalCons = 0;
+      
+      // Najdeme typ měřidla pro tuto službu
+      const isWater = service.name.toLowerCase().includes('vod') || service.name.includes('SV') || service.name.includes('TUV');
+      
+      for (const u of units) {
+         const uMeters = u.meters.filter(m => isWater && (m.type === 'COLD_WATER' || m.type === 'HOT_WATER'));
+         for (const m of uMeters) {
+           const r = m.readings[0];
+           if (r) {
+             // Pokud máme consumption (rozdíl), použijeme. Jinak value (pokud je to roční spotřeba).
+             totalCons += safeNumber(r.consumption ?? r.value);
+           }
+        }
+      }
+      serviceTotalConsumptions.set(service.id, safeNumber(totalCons));
+      console.log(`💧 Celková spotřeba pro službu ${service.name}: ${totalCons}`);
+    }
+  }
+
+  // Smazání starých výsledků
+  await prisma.billingServiceCost.deleteMany({ where: { billingPeriodId: billingPeriod.id } });
+  await prisma.billingResult.deleteMany({ where: { billingPeriodId: billingPeriod.id } });
+
+  // 2. HLAVNÍ SMYČKA (Iterace přes jednotky)
+  // ---------------------------------------------------------
+
+  for (const unit of units) {
+    let unitTotalCost = 0;
+    let unitTotalAdvance = 0;
+    const serviceResults: ServiceCalculationResult[] = [];
+
+    for (const service of services) {
+      const serviceBuildingCost = safeNumber(service.costs.reduce((sum, c) => sum + c.amount, 0));
+      
+      let calculatedCost = 0;
+      let unitConsumption = 0;
+      let pricePerUnit = 0;
+      let basisText = "";
+
+      // --- NOVÁ LOGIKA: PRIORITA EXTERNÍHO NÁKLADU ---
+      // 1. Najít relevantní odečty pro tuto službu a jednotku
+      const unitReadings = unit.meters
+        .filter(m => m.serviceId === service.id || (service.name.includes('Teplo') && m.type === 'HEATING')) 
+        .flatMap(m => m.readings);
+
+      // Pokud existuje odečet s předvypočítaným nákladem (z Excelu), použijeme ho přímo
+      const externalReading = unitReadings.find(r => r.precalculatedCost !== null && r.precalculatedCost > 0);
+
+      if (externalReading && externalReading.precalculatedCost !== null) {
+        calculatedCost = externalReading.precalculatedCost;
+        basisText = "Převzato z externího rozúčtování";
+        
+        if (externalReading.consumption !== null) {
+          consumption = externalReading.consumption;
+          assignedUnits = consumption;
+          if (consumption > 0) {
+            unitPrice = calculatedCost / consumption;
+          }
+        }
+      } else {
+      switch (service.methodology) {
+        
+        case 'BY_SHARE': // Podle podílu
+          if (totalShare > 0) {
+            calculatedCost = safeNumber(serviceBuildingCost * (safeNumber(unit.share) / totalShare));
+            basisText = `Podíl ${safeNumber(unit.share).toFixed(4)} / ${totalShare.toFixed(4)}`;
+          } else {
+            basisText = "Chyba: Celkový podíl je 0";
+          }
+          break;
+
+        case 'BY_UNIT': // Na byt
+          if (totalUnitsCount > 0) {
+            calculatedCost = safeNumber(serviceBuildingCost / totalUnitsCount);
+            basisText = `1 / ${totalUnitsCount} jednotek`;
+          }
+          break;
+
+        case 'BY_PEOPLE': // Na osoby
+          const unitPeople = 1; // Placeholder
+          if (totalPeople > 0) {
+            calculatedCost = safeNumber(serviceBuildingCost * (unitPeople / totalPeople));
+            basisText = `${unitPeople} / ${totalPeople} osob`;
+          }
+          break;
+
+        case 'EXTERNAL': // Externí (Teplo)
+          // Najdeme náklad přímo u měřidla
+          const externalReading = unit.meters
+            .flatMap(m => m.readings)
+            .find(r => r.precalculatedCost !== null && r.precalculatedCost > 0);
+
+          if (externalReading && externalReading.precalculatedCost) {
+            calculatedCost = safeNumber(externalReading.precalculatedCost);
+            basisText = "Externí náklad (převzato)";
+          }
+          break;
+
+        case 'BY_METER': // Voda
+          const totalServiceCons = safeNumber(serviceTotalConsumptions.get(service.id));
+          
+          // Spotřeba jednotky
+          const isWater = service.name.toLowerCase().includes('vod') || service.name.includes('SV') || service.name.includes('TUV');
+          const unitMeters = unit.meters.filter(m => isWater && (m.type === 'COLD_WATER' || m.type === 'HOT_WATER'));
+          
+          for (const m of unitMeters) {
+            const r = m.readings[0];
+            if (r) unitConsumption += safeNumber(r.consumption ?? r.value);
+          }
+
+          if (totalServiceCons > 0) {
+            pricePerUnit = safeNumber(serviceBuildingCost / totalServiceCons);
+            calculatedCost = safeNumber(unitConsumption * pricePerUnit);
+            basisText = `${unitConsumption.toFixed(2)} m3 * ${pricePerUnit.toFixed(2)} Kč/m3`;
+          } else {
+             basisText = "Žádná celková spotřeba";
+          }
+          break;
+          
+        default:
+          calculatedCost = 0;
+          basisText = "Ruční/Neznámá metoda";
+          break;
+      }
+      } // End of else block
+
+      // 3. ZÁLOHY
+      const serviceAdvances = safeNumber(advances
+        .filter(a => a.unitId === unit.id && a.serviceId === service.id)
+        .reduce((sum, a) => sum + a.amount, 0));
+
+      const serviceBalance = safeNumber(serviceAdvances - calculatedCost);
+
+      unitTotalCost += calculatedCost;
+      unitTotalAdvance += serviceAdvances;
 
       serviceResults.push({
         serviceId: service.id,
         serviceName: service.name,
-        serviceCode: service.code,
-        totalCost,
-        totalConsumption: totalConsumption > 0 ? totalConsumption : null,
-        pricePerUnit,
-        distributionBase,
-        distribution: distributionWithAdvances
-      })
-
-      console.log(`[Billing Engine] Service ${service.name} distributed to ${distribution.length} units, total consumption: ${totalConsumption}`)
-    } catch (error) {
-      console.error(`[Billing Engine] Error calculating service ${service.name}:`, error)
-      // Pokračovat s dalšími službami
-    }
-  }
-
-  // 4. Sestavit výsledky pro jednotky
-  const unitResults: UnitBillingResult[] = []
-
-  // Najít službu "Fond oprav" pro výpočet
-  const repairFundService = building.services.find((s: { code: string; name: string }) => 
-    s.code.toLowerCase().includes('fond') || 
-    s.name.toLowerCase().includes('fond oprav')
-  )
-  const repairFundPerUnit = repairFundService?.fixedAmountPerUnit || 0
-
-  for (const unit of building.units) {
-    const owner = unit.ownerships[0]?.owner || null
-    const unitServices: UnitBillingResult['services'] = []
-    let totalAmount = 0
-    let totalAdvances = 0
-
-    // Pro každou službu získat částku pro tuto jednotku
-    for (const serviceResult of serviceResults) {
-      const unitDistribution = serviceResult.distribution.find(d => d.unitId === unit.id)
-      
-      if (unitDistribution) {
-        unitServices.push({
-          serviceId: serviceResult.serviceId,
-          serviceName: serviceResult.serviceName,
-          serviceCode: serviceResult.serviceCode,
-          amount: unitDistribution.amount,
-          formula: unitDistribution.formula
-        })
-        totalAmount += unitDistribution.amount
-      }
-
-      // Získat zálohy pro tuto službu
-      const unitAdvancesMap = advancesMap.get(unit.id)
-      if (unitAdvancesMap) {
-        const serviceAdvance = unitAdvancesMap.get(serviceResult.serviceId) || 0
-        totalAdvances += serviceAdvance
-      }
+        method: service.calculationMethod,
+        totalBuildingCost: serviceBuildingCost,
+        unitCost: calculatedCost,
+        unitConsumption: unitConsumption > 0 ? unitConsumption : undefined,
+        pricePerUnit: pricePerUnit > 0 ? pricePerUnit : undefined,
+        advancePaid: serviceAdvances,
+        balance: serviceBalance,
+        calculationBasis: basisText
+      });
     }
 
-    // Přidat fond oprav k celkovému nákladu
-    totalAmount += repairFundPerUnit
+    // 4. ULOŽENÍ VÝSLEDKU
+    // ---------------------------------------------------------
+    
+    // Finální zaokrouhlení na celé Kč (jako v PDF)
+    const finalBalance = Math.round(safeNumber(unitTotalAdvance - unitTotalCost));
 
-    unitResults.push({
-      unitId: unit.id,
-      unitName: unit.name,
-      unitNumber: unit.unitNumber,
-      variableSymbol: unit.variableSymbol,
-      owner: owner ? {
-        name: `${owner.firstName} ${owner.lastName}`,
-        email: owner.email
-      } : null,
-      services: unitServices,
-      totalAmount: Math.round(totalAmount * 100) / 100,
-      totalAdvances: Math.round(totalAdvances * 100) / 100,
-      balance: Math.round((totalAmount - totalAdvances) * 100) / 100
-    })
-  }
-
-  // 5. Vypočítat celkové statistiky
-  const totalCosts = serviceResults.reduce((sum, s) => sum + s.totalCost, 0)
-  const totalDistributed = unitResults.reduce((sum, u) => sum + u.totalAmount, 0)
-  const totalAdvancesSum = unitResults.reduce((sum, u) => sum + u.totalAdvances, 0)
-  const totalBalance = unitResults.reduce((sum, u) => sum + u.balance, 0)
-
-  console.log(`[Billing Engine] Complete! Total: ${totalCosts} Kč, Distributed: ${totalDistributed} Kč`)
-
-  return {
-    buildingId: building.id,
-    buildingName: building.name,
-    period,
-    generatedAt: new Date(),
-    services: serviceResults,
-    units: unitResults,
-    summary: {
-      totalCosts: Math.round(totalCosts * 100) / 100,
-      totalDistributed: Math.round(totalDistributed * 100) / 100,
-      totalAdvances: Math.round(totalAdvancesSum * 100) / 100,
-      totalBalance: Math.round(totalBalance * 100) / 100,
-      numberOfUnits: unitResults.length,
-      numberOfServices: serviceResults.length
-    }
-  }
-}
-
-/**
- * Uložení vyúčtování do databáze
- */
-export async function saveBillingToDatabase(billing: CompleteBilling) {
-  console.log(`[Billing Engine] Saving billing to database...`)
-
-  // Vytvořit nebo aktualizovat BillingPeriod
-  const billingPeriod = await prisma.billingPeriod.upsert({
-    where: {
-      buildingId_year: {
-        buildingId: billing.buildingId,
-        year: billing.period
-      }
-    },
-    update: {
-      status: 'CALCULATED',
-      calculatedAt: billing.generatedAt
-    },
-    create: {
-      buildingId: billing.buildingId,
-      year: billing.period,
-      status: 'CALCULATED',
-      calculatedAt: billing.generatedAt
-    }
-  })
-
-  console.log(`[Billing Engine] Created/updated billing period: ${billingPeriod.id}`)
-
-  // Smazat staré výsledky pro toto období
-  await prisma.billingResult.deleteMany({
-    where: { billingPeriodId: billingPeriod.id }
-  })
-
-  console.log(`[Billing Engine] Deleted old billing results`)
-
-  // Vytvořit nové výsledky pro jednotky
-  let createdCount = 0
-  for (const unitResult of billing.units) {
-    // Najít službu fondu oprav pro tuto jednotku
-    const repairFundService = await prisma.service.findFirst({
-      where: {
-        buildingId: billing.buildingId,
-        OR: [
-          { code: { contains: 'fond', mode: 'insensitive' } },
-          { name: { contains: 'fond oprav', mode: 'insensitive' } }
-        ]
-      }
-    })
-    const repairFundAmount = repairFundService?.fixedAmountPerUnit || 0
-
-    // Vytvořit hlavní záznam vyúčtování
     const billingResult = await prisma.billingResult.create({
       data: {
         billingPeriodId: billingPeriod.id,
-        unitId: unitResult.unitId,
-        totalCost: unitResult.totalAmount,
-        totalAdvancePrescribed: unitResult.totalAdvances,
-        totalAdvancePaid: unitResult.totalAdvances, // TODO: propojit s Payment
-        repairFund: repairFundAmount,
-        result: unitResult.balance,
-        isPaid: false
+        unitId: unit.id,
+        year: year,
+        totalCost: safeNumber(unitTotalCost),
+        totalAdvance: safeNumber(unitTotalAdvance),
+        balance: finalBalance,
       }
-    })
+    });
 
-    // Vytvořit záznamy pro každou službu
-    for (const service of unitResult.services) {
-      // Najít odpovídající serviceResult pro detaily
-      const serviceResult = billing.services.find(s => s.serviceId === service.serviceId)
-      const distribution = serviceResult?.distribution.find(d => d.unitId === unitResult.unitId)
-
+    // Uložení detailů (řádků vyúčtování)
+    for (const res of serviceResults) {
       await prisma.billingServiceCost.create({
         data: {
           billingPeriodId: billingPeriod.id,
           billingResultId: billingResult.id,
-          serviceId: service.serviceId,
-          unitId: unitResult.unitId,
-          buildingTotalCost: serviceResult?.totalCost || 0,
-          buildingConsumption: serviceResult?.totalConsumption,
-          unitConsumption: distribution?.consumption,
-          unitCost: service.amount,
-          unitAdvance: distribution?.advance || 0,
-          unitBalance: distribution?.balance || 0,
-          unitPricePerUnit: serviceResult?.pricePerUnit,
-          unitAssignedUnits: distribution?.consumption,
-          distributionBase: serviceResult?.distributionBase,
-          calculationBasis: service.formula
+          serviceId: res.serviceId,
+          unitId: unit.id,
+          
+          buildingTotalCost: res.totalBuildingCost,
+          unitCost: res.unitCost,
+          unitAdvance: res.advancePaid,
+          unitBalance: res.balance,
+          
+          unitConsumption: res.unitConsumption,
+          unitPricePerUnit: res.pricePerUnit,
+          
+          calculationBasis: res.calculationBasis
         }
-      })
+      });
     }
-
-    createdCount++
   }
 
-  console.log(`[Billing Engine] Created ${createdCount} billing results with service costs`)
-
-  return billingPeriod
-}
-
-/**
- * Kompletní proces: Vygenerovat a uložit vyúčtování
- */
-export async function generateAndSaveBilling(buildingId: string, period: number) {
-  const billing = await generateCompleteBilling(buildingId, period)
-  const billingPeriod = await saveBillingToDatabase(billing)
-  
-  return {
-    billing,
-    billingPeriod
-  }
+  console.log(`✅ Výpočet dokončen pro ${units.length} jednotek.`);
+  return { 
+    success: true, 
+    processedUnits: units.length,
+    billingPeriod: billingPeriod
+  };
 }

@@ -159,7 +159,7 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
               disabled={uploading}
               className={`p-4 text-left border-2 rounded-lg transition-colors ${
                 importType === type
-                  ? 'border-blue-600 bg-blue-50 text-blue-900'
+                  ? 'border-primary bg-teal-50 text-teal-900'
                   : 'border-gray-200 hover:border-gray-300 text-gray-900'
               } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -172,16 +172,16 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
 
       {/* Info box pro kompletní import */}
       {importType === 'all' && (
-        <div className="mb-4 bg-blue-50 border-l-4 border-blue-500 p-4">
+        <div className="mb-4 bg-teal-50 border-l-4 border-primary p-4">
           <div className="flex items-start">
             <div className="shrink-0">
-              <svg className="h-5 w-5 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+              <svg className="h-5 w-5 text-primary" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
               </svg>
             </div>
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-blue-800">Co bude importováno:</h3>
-              <div className="mt-2 text-sm text-blue-700">
+              <h3 className="text-sm font-medium text-teal-800">Co bude importováno:</h3>
+              <div className="mt-2 text-sm text-teal-700">
                 <ul className="list-disc list-inside space-y-1">
                   <li>Bytové domy a jejich údaje</li>
                   <li>Jednotky (byty, garáže, sklepy)</li>
@@ -216,7 +216,7 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          className={`block cursor-pointer ${dragActive ? 'text-blue-600' : ''}`}
+          className={`block cursor-pointer ${dragActive ? 'text-primary' : ''}`}
         >
           <div className="mx-auto h-16 w-16 text-gray-400 mb-4">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -245,11 +245,11 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
 
           {/* Souhrn pro kompletní import */}
           {result.summary && result.summary.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-blue-900 mb-3">📋 Souhrn importu</h3>
+            <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-teal-900 mb-3">📋 Souhrn importu</h3>
               <ul className="space-y-2">
                 {result.summary.map((item, index) => (
-                  <li key={index} className="text-sm text-blue-800 flex items-center">
+                  <li key={index} className="text-sm text-teal-800 flex items-center">
                     <span className="mr-2">{item.startsWith('✅') ? '✅' : '⚠️'}</span>
                     <span>{item.replace(/^[✅⚠️]\s*/, '')}</span>
                   </li>
@@ -283,7 +283,7 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
                             </td>
                             <td className="px-4 py-2 text-center">
                               {item.newService ? (
-                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800">
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-teal-100 text-teal-800">
                                   Nová služba
                                 </span>
                               ) : (
@@ -395,7 +395,7 @@ export default function ExcelImport({ buildingId, year = new Date().getFullYear(
                             <td className="px-4 py-2 text-right font-mono text-gray-900">{item.amount.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</td>
                             <td className="px-4 py-2 text-center">
                               {item.newService ? (
-                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800">
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-teal-100 text-teal-800">
                                   Nová služba
                                 </span>
                               ) : (

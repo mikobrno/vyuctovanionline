@@ -7,8 +7,9 @@ export const runtime = 'nodejs'
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string; serviceId: string } }
+  props: { params: Promise<{ id: string; serviceId: string }> }
 ) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {

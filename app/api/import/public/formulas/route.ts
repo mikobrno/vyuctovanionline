@@ -10,7 +10,7 @@ type FormulaRef = { sheet?: string; range: string }
 // Very simple reference parser: extracts "Sheet!A1", "'Sheet Name'!B2:C10", "A1", "B2:C3"
 function extractRefs(formula: string): FormulaRef[] {
   const refs: FormulaRef[] = []
-  const re = /(('|"))([^\2]+?)\2!\$?[A-Z]+\$?\d+(?::\$?[A-Z]+\$?\d+)?|([A-Za-z0-9_\.]+)!\$?[A-Z]+\$?\d+(?::\$?[A-Z]+\$?\d+)?|\$?[A-Z]+\$?\d+(?::\$?[A-Z]+\$?\d+)?/g
+  const re = /(?:'[^']+'|"[^"]+")!\$?[A-Z]+\$?\d+(?::\$?[A-Z]+\$?\d+)?|([A-Za-z0-9_\.]+)!\$?[A-Z]+\$?\d+(?::\$?[A-Z]+\$?\d+)?|\$?[A-Z]+\$?\d+(?::\$?[A-Z]+\$?\d+)?/g
   let m: RegExpExecArray | null
   while ((m = re.exec(formula)) !== null) {
     const [match] = m

@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
             buildingId,
             name: label,
             code: meterType,
-            methodology: 'měřidla',
+            methodology: 'METER_READING',
             measurementUnit: meterType === 'HEATING' ? 'kWh' : meterType.includes('WATER') ? 'm³' : 'kWh',
             isActive: true
           }

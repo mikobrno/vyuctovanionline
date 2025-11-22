@@ -99,7 +99,7 @@ export default function BillingGenerator({ buildingId, buildingName, services, c
         <select
           value={period}
           onChange={(e) => setPeriod(parseInt(e.target.value))}
-          className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+          className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-gray-900"
           disabled={generating}
           aria-label="Výběr období pro vyúčtování"
         >
@@ -115,7 +115,7 @@ export default function BillingGenerator({ buildingId, buildingName, services, c
       </div>
 
       {/* Přehled nákladů pro vybrané období */}
-      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+      <div className="mb-6 p-4 bg-teal-50 border border-teal-200 rounded-lg">
         <h3 className="font-semibold text-gray-900 mb-3">
           📋 Přehled nákladů pro rok {period}
         </h3>
@@ -185,7 +185,7 @@ export default function BillingGenerator({ buildingId, buildingName, services, c
       <button
         onClick={handleGenerate}
         disabled={generating}
-        className="w-full bg-blue-600 text-white px-6 py-4 rounded-lg font-semibold text-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full bg-primary text-white px-6 py-4 rounded-lg font-semibold text-lg hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {generating ? (
           <>

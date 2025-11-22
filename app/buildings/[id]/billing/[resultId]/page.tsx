@@ -143,7 +143,7 @@ export default async function BillingResultDetailPage({
             </Link>
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900">
-                Vyúčtování {billingResult.unit.name}
+                Vyúčtování {billingResult.unit.unitNumber}
               </h1>
               <p className="mt-2 text-gray-900">
                 {building.name} - Rok {billingResult.billingPeriod.year}

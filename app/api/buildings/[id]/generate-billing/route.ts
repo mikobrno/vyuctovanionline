@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { generateAndSaveBilling } from '@/lib/billingEngine'
+import { calculateBillingForBuilding } from '@/lib/billingEngine'
 
 /**
  * API endpoint pro generování kompletního vyúčtování
@@ -32,22 +32,15 @@ export async function POST(
     console.log(`[Generate Billing API] Building: ${buildingId}, Period: ${period}`)
 
     // Generovat vyúčtování pomocí billing enginu
-    const result = await generateAndSaveBilling(buildingId, period)
+    const result = await calculateBillingForBuilding(buildingId, period)
 
     return NextResponse.json({
       success: true,
       message: `Vyúčtování pro rok ${period} bylo úspěšně vygenerováno`,
       data: {
         billingPeriodId: result.billingPeriod.id,
-        summary: result.billing.summary,
-        numberOfUnits: result.billing.units.length,
-        numberOfServices: result.billing.services.length,
-        services: result.billing.services.map(s => ({
-          name: s.serviceName,
-          code: s.serviceCode,
-          totalCost: s.totalCost
-        })),
-        generatedAt: result.billing.generatedAt
+        numberOfUnits: result.processedUnits,
+        generatedAt: new Date()
       }
     })
   } catch (error) {

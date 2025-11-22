@@ -6,8 +6,9 @@ import { prisma } from '@/lib/prisma'
 // GET - Detail nákladu
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
 
@@ -40,8 +41,9 @@ export async function GET(
 // PUT - Aktualizovat náklad
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
 
@@ -91,8 +93,9 @@ export async function PUT(
 // DELETE - Smazat náklad
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
 

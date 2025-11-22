@@ -161,7 +161,7 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
         <select
           value={selectedPeriod}
           onChange={(e) => setSelectedPeriod(e.target.value)}
-          className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+          className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-gray-900"
           aria-label="Výběr období vyúčtování"
         >
           {billingPeriods.map((period) => (
@@ -186,13 +186,13 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
               <button
                 onClick={handleSendAll}
                 disabled={sendingAll}
-                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="bg-primary text-white px-6 py-3 rounded-lg font-semibold hover:bg-primary-hover transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 {sendingAll ? '⏳ Odesílám...' : '📧 Odeslat všem e-mailem'}
               </button>
             </div>
             {sendResult && (
-              <div className="mt-4 p-4 bg-blue-50 rounded border border-blue-200">
+              <div className="mt-4 p-4 bg-teal-50 rounded border border-teal-200">
                 <div className="grid grid-cols-3 gap-4 mb-3">
                   <div>
                     <span className="text-sm text-gray-600">Odesláno:</span>
@@ -266,9 +266,9 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
           </div>
 
           <div className="grid grid-cols-4 gap-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="text-sm text-blue-600 uppercase mb-1">Celkové náklady</div>
-              <div className="text-2xl font-bold text-blue-900">
+            <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+              <div className="text-sm text-teal-600 uppercase mb-1">Celkové náklady</div>
+              <div className="text-2xl font-bold text-teal-900">
                 {currentPeriod.totalCosts.toLocaleString('cs-CZ')} Kč
               </div>
             </div>
@@ -384,7 +384,7 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                         <td className="px-4 py-3 text-right">
                           <Link
                             href={`/buildings/${buildingId}/billing/${result.id}`}
-                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            className="text-primary hover:text-primary-hover text-sm font-medium"
                           >
                             📄 Zobrazit
                           </Link>

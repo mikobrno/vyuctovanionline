@@ -202,7 +202,7 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
           value={buildingName}
           onChange={(e) => setBuildingName(e.target.value)}
           placeholder="Např. Bytový dům č.p. 318, Brno"
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-gray-900"
         />
         <p className="mt-1 text-sm text-gray-900">
           Pokud dům s tímto názvem už existuje, použije se. Jinak se vytvoří nový. Pokud necháte prázdné, vytvoří se &quot;Importovaná budova&quot;.
@@ -230,11 +230,11 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          className={`block ${uploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${dragActive ? 'text-blue-600' : ''}`}
+          className={`block ${uploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${dragActive ? 'text-primary' : ''}`}
         >
           <div className="mx-auto h-16 w-16 text-gray-400 mb-4">
             {uploading ? (
-              <svg className="animate-spin h-16 w-16 text-blue-600" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin h-16 w-16 text-primary" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -256,11 +256,11 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
 
       {/* Průběh importu */}
       {uploading && progress.length > 0 && (
-        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-blue-900 mb-2">📋 Průběh importu</h3>
+        <div className="mt-4 bg-teal-50 border border-teal-200 rounded-lg p-4">
+          <h3 className="text-sm font-semibold text-teal-900 mb-2">📋 Průběh importu</h3>
           <div className="space-y-1 max-h-48 overflow-y-auto">
             {progress.map((step, index) => (
-              <div key={index} className="text-sm text-blue-800 flex items-start">
+              <div key={index} className="text-sm text-teal-800 flex items-start">
                 <span className="mr-2">•</span>
                 <span>{step}</span>
               </div>
@@ -281,52 +281,52 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
             ✅ {result.message}
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-blue-900 mb-3">Souhrn importu</h3>
+          <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-teal-900 mb-3">Souhrn importu</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div>
-                <p className="text-xs text-blue-700">Dům</p>
-                <p className="text-lg font-semibold text-blue-900">
+                <p className="text-xs text-teal-700">Dům</p>
+                <p className="text-lg font-semibold text-teal-900">
                   {result.summary.building.name}
-                  {result.summary.building.created && <span className="ml-2 text-xs text-blue-600">(nový)</span>}
+                  {result.summary.building.created && <span className="ml-2 text-xs text-teal-600">(nový)</span>}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-blue-700">Jednotky</p>
-                <p className="text-lg font-semibold text-blue-900">
+                <p className="text-xs text-teal-700">Jednotky</p>
+                <p className="text-lg font-semibold text-teal-900">
                   {result.summary.units.total}
-                  <span className="ml-2 text-xs text-blue-600">
+                  <span className="ml-2 text-xs text-teal-600">
                     (+{result.summary.units.created} nových)
                   </span>
                 </p>
               </div>
               <div>
-                <p className="text-xs text-blue-700">Služby</p>
-                <p className="text-lg font-semibold text-blue-900">
+                <p className="text-xs text-teal-700">Služby</p>
+                <p className="text-lg font-semibold text-teal-900">
                   {result.summary.services.total}
-                  <span className="ml-2 text-xs text-blue-600">
+                  <span className="ml-2 text-xs text-teal-600">
                     (+{result.summary.services.created} nových)
                   </span>
                 </p>
               </div>
               <div>
-                <p className="text-xs text-blue-700">Náklady (faktury)</p>
-                <p className="text-lg font-semibold text-blue-900">{result.summary.costs.total}</p>
+                <p className="text-xs text-teal-700">Náklady (faktury)</p>
+                <p className="text-lg font-semibold text-teal-900">{result.summary.costs.total}</p>
               </div>
               <div>
-                <p className="text-xs text-blue-700">Odečty</p>
-                <p className="text-lg font-semibold text-blue-900">{result.summary.readings.total}</p>
+                <p className="text-xs text-teal-700">Odečty</p>
+                <p className="text-lg font-semibold text-teal-900">{result.summary.readings.total}</p>
               </div>
               <div>
-                <p className="text-xs text-blue-700">Platby</p>
-                <p className="text-lg font-semibold text-blue-900">{result.summary.payments.total}</p>
+                <p className="text-xs text-teal-700">Platby</p>
+                <p className="text-lg font-semibold text-teal-900">{result.summary.payments.total}</p>
               </div>
               {result.summary.advances && (
                 <div>
-                  <p className="text-xs text-blue-700">Předpis záloh</p>
-                  <p className="text-lg font-semibold text-blue-900">
+                  <p className="text-xs text-teal-700">Předpis záloh</p>
+                  <p className="text-lg font-semibold text-teal-900">
                     {result.summary.advances.total}
-                    <span className="ml-2 text-xs text-blue-600">
+                    <span className="ml-2 text-xs text-teal-600">
                       (+{result.summary.advances.created} nových, {result.summary.advances.updated} upraveno)
                     </span>
                   </p>
@@ -336,7 +336,7 @@ export default function CompleteImport({ year = new Date().getFullYear() }: Comp
             <div className="mt-4">
               <a
                 href={`/buildings/${result.summary.building.id}`}
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition"
               >
                 Zobrazit detail domu
               </a>

@@ -76,7 +76,8 @@ export async function POST(
 /**
  * GET endpoint pro spuštění výpočtu pro všechny služby v budově
  */
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const buildingId = params.id;
   const periodId = req.nextUrl.searchParams.get('periodId');
 

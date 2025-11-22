@@ -7,8 +7,9 @@ import { sendBillingEmail } from '@/lib/microsoftGraph'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string; resultId: string } }
+  props: { params: Promise<{ id: string; resultId: string }> }
 ) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
@@ -72,7 +73,7 @@ export async function POST(
       },
       period: billingResult.billingPeriod.year,
       unit: {
-        name: billingResult.unit.name,
+        name: billingResult.unit.unitNumber,
         unitNumber: billingResult.unit.unitNumber,
         variableSymbol: billingResult.unit.variableSymbol
       },

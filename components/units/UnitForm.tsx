@@ -8,7 +8,7 @@ interface Unit {
   id: string
   buildingId: string
   unitNumber: string
-  variableSymbol: string
+  variableSymbol: string | null
   totalArea: number
   floorArea: number | null
   shareNumerator: number
@@ -118,7 +118,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
               required
               value={formData.buildingId}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
             >
               <option value="">Vyberte dům...</option>
               {buildings.map((building) => (
@@ -130,7 +130,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
           </div>
 
           <div>
-            <label htmlFor="unitNumber" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="unitNumber" className="block text-sm font-medium text-gray-700 mb-2">
               Číslo jednotky *
             </label>
             <input
@@ -140,13 +140,13 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
               required
               value={formData.unitNumber}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               placeholder="např. 318/01"
             />
           </div>
 
           <div>
-            <label htmlFor="variableSymbol" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="variableSymbol" className="block text-sm font-medium text-gray-700 mb-2">
               Variabilní symbol *
             </label>
             <input
@@ -156,13 +156,13 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
               required
               value={formData.variableSymbol}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               placeholder="např. 31801"
             />
           </div>
 
           <div>
-            <label htmlFor="totalArea" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="totalArea" className="block text-sm font-medium text-gray-700 mb-2">
               Celková výměra (m²) *
             </label>
             <input
@@ -174,13 +174,13 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
               min="0"
               value={formData.totalArea}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               placeholder="65.5"
             />
           </div>
 
           <div>
-            <label htmlFor="floorArea" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="floorArea" className="block text-sm font-medium text-gray-700 mb-2">
               Podlahová plocha (m²)
             </label>
             <input
@@ -191,13 +191,13 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
               min="0"
               value={formData.floorArea}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               placeholder="55.0"
             />
           </div>
 
           <div>
-            <label htmlFor="shareNumerator" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="shareNumerator" className="block text-sm font-medium text-gray-700 mb-2">
               Podíl - čitatel *
             </label>
             <input
@@ -208,13 +208,13 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
               min="1"
               value={formData.shareNumerator}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               placeholder="764"
             />
           </div>
 
           <div>
-            <label htmlFor="shareDenominator" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="shareDenominator" className="block text-sm font-medium text-gray-700 mb-2">
               Podíl - jmenovatel *
             </label>
             <input
@@ -225,13 +225,13 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
               min="1"
               value={formData.shareDenominator}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               placeholder="14238"
             />
           </div>
 
           <div>
-            <label htmlFor="residents" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="residents" className="block text-sm font-medium text-gray-700 mb-2">
               Počet obyvatel
             </label>
             <input
@@ -241,7 +241,7 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
               min="0"
               value={formData.residents}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               placeholder="2"
             />
           </div>
@@ -251,14 +251,14 @@ export default function UnitForm({ unit, buildings, preselectedBuildingId }: Uni
       <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-4">
         <Link
           href={unit ? `/units/${unit.id}` : '/units'}
-          className="px-6 py-2 border border-gray-300 rounded-lg font-semibold text-gray-900 hover:bg-gray-100 transition-colors"
+          className="px-6 py-2 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
         >
           Zrušit
         </Link>
         <button
           type="submit"
           disabled={loading}
-          className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-6 py-2 bg-teal-600 text-white rounded-lg font-semibold hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? 'Ukládám...' : unit ? 'Uložit změny' : 'Vytvořit jednotku'}
         </button>

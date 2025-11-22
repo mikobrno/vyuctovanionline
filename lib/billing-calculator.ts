@@ -369,7 +369,7 @@ export class BillingCalculator {
             return sum
           }, 0)
           
-          if (buildingConsumption > 0) {
+          if (buildingConsumption !== undefined && buildingConsumption > 0) {
             unitCost = (totalServiceCost / buildingConsumption) * unitConsumption
             calculationBasis = `(${totalServiceCost.toFixed(2)} Kč / ${buildingConsumption.toFixed(2)} ${service.measurementUnit || 'j'}) × ${unitConsumption.toFixed(2)} ${service.measurementUnit || 'j'} = ${unitCost.toFixed(2)} Kč`
           } else {

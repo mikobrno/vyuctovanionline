@@ -44,7 +44,7 @@ function ImportInvoicesWidget({ buildingId, buildingName }: { buildingId: string
         <div>
           <label className="block text-sm font-medium text-gray-900">Soubor v public</label>
           <input
-            className="mt-1 w-80 px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900"
+            className="mt-1 w-80 px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900 focus:ring-primary focus:border-primary"
             value={file}
             onChange={(e) => setFile(e.target.value)}
             placeholder="vyuctovani2024 (19).xlsx"
@@ -53,7 +53,7 @@ function ImportInvoicesWidget({ buildingId, buildingName }: { buildingId: string
         <div>
           <label className="block text-sm font-medium text-gray-900">List</label>
           <input
-            className="mt-1 w-48 px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900"
+            className="mt-1 w-48 px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900 focus:ring-primary focus:border-primary"
             value={sheet}
             onChange={(e) => setSheet(e.target.value)}
             placeholder="faktury"
@@ -62,7 +62,7 @@ function ImportInvoicesWidget({ buildingId, buildingName }: { buildingId: string
         <button
           onClick={runImport}
           disabled={loading}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-60"
+          className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-hover disabled:opacity-60 transition-colors"
         >
           {loading ? 'Importuji…' : 'Načíst faktury z public'}
         </button>
@@ -84,7 +84,7 @@ function ImportInvoicesWidget({ buildingId, buildingName }: { buildingId: string
             }
           }}
           disabled={loading}
-          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-60"
+          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-60 transition-colors"
         >
           {loading ? 'Probíhá…' : 'Plný import z public'}
         </button>
@@ -260,7 +260,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                 }`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-primary focus:border-primary sm:text-sm"
               />
               {searchTerm && (
                 <button
@@ -281,7 +281,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                 onClick={() => setShowUnitFilter(!showUnitFilter)}
                 className={`px-4 py-2 border rounded-md text-sm font-medium transition-colors ${
                   showUnitFilter || selectedUnits.size > 0
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    ? 'border-primary bg-teal-50 text-primary-hover'
                     : 'border-gray-300 bg-white text-gray-900 hover:bg-gray-50'
                 }`}
               >
@@ -291,7 +291,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                   </svg>
                   Filtr jednotek
                   {selectedUnits.size > 0 && (
-                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold leading-none text-white bg-blue-600 rounded-full">
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold leading-none text-white bg-primary rounded-full">
                       {selectedUnits.size}
                     </span>
                   )}
@@ -308,7 +308,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                 <div className="flex gap-2">
                   <button
                     onClick={selectAllUnits}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                    className="text-xs text-primary hover:text-primary-hover font-medium"
                   >
                     Vybrat vše
                   </button>
@@ -331,7 +331,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                       type="checkbox"
                       checked={selectedUnits.has(unit.id)}
                       onChange={() => toggleUnit(unit.id)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
                     />
                     <span className="text-sm text-gray-900 font-medium">
                       {unit.unitNumber}
@@ -374,7 +374,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
             <h2 className="text-xl font-semibold text-gray-900">Jednotky v domě</h2>
             <Link
               href={`/units/new?buildingId=${building.id}`}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors text-sm"
+              className="bg-primary text-white px-4 py-2 rounded-lg font-semibold hover:bg-primary-hover transition-colors text-sm"
             >
               + Přidat jednotku
             </Link>
@@ -442,7 +442,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <Link
                           href={`/units/${unit.id}`}
-                          className="text-blue-600 hover:text-blue-900 mr-4"
+                          className="text-primary hover:text-primary-hover mr-4"
                         >
                           Detail
                         </Link>
@@ -481,8 +481,8 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                 return (
                   <div key={owner.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-2">
-                      <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <div className="h-10 w-10 bg-teal-100 rounded-full flex items-center justify-center">
+                        <svg className="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                         </svg>
                       </div>
@@ -494,7 +494,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                       {owner.email && <p>📧 {owner.email}</p>}
                       {owner.phone && <p>📱 {owner.phone}</p>}
                       {owner.address && <p className="text-xs">📍 {owner.address}</p>}
-                      <p className="text-blue-600 font-medium mt-2">
+                      <p className="text-primary font-medium mt-2">
                         Vlastní {ownerUnits.length} {ownerUnits.length === 1 ? 'jednotku' : ownerUnits.length < 5 ? 'jednotky' : 'jednotek'}
                       </p>
                       <div className="text-xs text-gray-900">
@@ -519,7 +519,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
             </div>
 
             {/* Import faktur z public */}
-            <div className="mb-6 border border-blue-200 bg-blue-50 rounded-lg p-4">
+            <div className="mb-6 border border-teal-200 bg-teal-50 rounded-lg p-4">
               <ImportInvoicesWidget buildingId={building.id} buildingName={building.name} />
             </div>
             
@@ -551,7 +551,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                         </div>
                         <Link
                           href={`/buildings/${building.id}/services/${service.id}/edit`}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          className="text-primary hover:text-primary-hover text-sm font-medium"
                         >
                           ⚙️ Nastavit
                         </Link>
@@ -560,7 +560,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                       <div className="space-y-3 text-sm">
                         <div className="flex justify-between pt-2 border-t border-gray-200">
                           <span className="text-gray-900">Celkový náklad:</span>
-                          <span className="font-semibold text-blue-600">
+                          <span className="font-semibold text-primary">
                             {totalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
                           </span>
                         </div>
@@ -594,7 +594,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                         >
                           <label className="block">
                             <span className="text-gray-900">Metodika</span>
-                            <select name="methodology" defaultValue={service.methodology} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900">
+                            <select name="methodology" defaultValue={service.methodology} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900 focus:ring-primary focus:border-primary">
                               <option value="OWNERSHIP_SHARE">Vlastnický podíl</option>
                               <option value="AREA">Podle výměry</option>
                               <option value="PERSON_MONTHS">Osobo-měsíce</option>
@@ -606,19 +606,19 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                           </label>
                           <label className="block">
                             <span className="text-gray-900">Jednotka</span>
-                            <input name="measurementUnit" defaultValue={service.measurementUnit || ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900" />
+                            <input name="measurementUnit" defaultValue={service.measurementUnit || ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900 focus:ring-primary focus:border-primary" />
                           </label>
                           <label className="block">
                             <span className="text-gray-900">Cena za jednotku</span>
-                            <input name="unitPrice" defaultValue={service.unitPrice ?? ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900" />
+                            <input name="unitPrice" defaultValue={service.unitPrice ?? ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900 focus:ring-primary focus:border-primary" />
                           </label>
                           <label className="block">
                             <span className="text-gray-900">Fixní částka/byt</span>
-                            <input name="fixedAmountPerUnit" defaultValue={service.fixedAmountPerUnit ?? ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900" />
+                            <input name="fixedAmountPerUnit" defaultValue={service.fixedAmountPerUnit ?? ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900 focus:ring-primary focus:border-primary" />
                           </label>
                           <label className="block">
                             <span className="text-gray-900">Zdroj dat</span>
-                            <select name="dataSourceType" defaultValue={service.dataSourceType || ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900">
+                            <select name="dataSourceType" defaultValue={service.dataSourceType || ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900 focus:ring-primary focus:border-primary">
                               <option value="">—</option>
                               <option value="METER_DATA">Měřidla</option>
                               <option value="UNIT_ATTRIBUTE">Atribut jednotky</option>
@@ -629,14 +629,14 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                           </label>
                           <label className="block">
                             <span className="text-gray-900">Atribut jednotky</span>
-                            <input name="unitAttributeName" defaultValue={service.unitAttributeName || ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900" />
+                            <input name="unitAttributeName" defaultValue={service.unitAttributeName || ''} className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-gray-900 focus:ring-primary focus:border-primary" />
                           </label>
                           <label className="flex items-center gap-2 col-span-2">
-                            <input type="checkbox" name="showOnStatement" defaultChecked={service.showOnStatement} className="h-4 w-4" />
+                            <input type="checkbox" name="showOnStatement" defaultChecked={service.showOnStatement} className="h-4 w-4 text-primary focus:ring-primary" />
                             <span className="text-gray-900">Zobrazit na výpise</span>
                           </label>
                           <div className="col-span-2 flex justify-end">
-                            <button type="submit" className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60" disabled={savingServiceId === service.id}>
+                            <button type="submit" className="px-3 py-1.5 bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-60 transition-colors" disabled={savingServiceId === service.id}>
                               {savingServiceId === service.id ? 'Ukládám…' : 'Uložit nastavení'}
                             </button>
                           </div>
@@ -815,7 +815,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
             </div>
           </div>
           
-          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="mb-6 bg-teal-50 border border-teal-200 rounded-lg p-4">
             <h3 className="font-semibold text-gray-900 mb-2">📊 Jak funguje výpočet osobo-měsíců?</h3>
             <ul className="text-sm text-gray-900 space-y-1">
               <li>• <strong>Počet osob</strong> (sloupec N) - kolik osob bydlí v jednotce</li>
@@ -860,7 +860,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                       </div>
                       <div className="text-right">
                         <div className="text-sm text-gray-900">Aktuální počet osob</div>
-                        <div className="text-2xl font-bold text-blue-600">
+                        <div className="text-2xl font-bold text-primary">
                           {unit.residents || 0}
                         </div>
                       </div>
@@ -883,7 +883,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                               <div className="flex items-center justify-between mb-3">
                                 <h4 className="font-semibold text-gray-900">Rok {year}</h4>
                                 <div className="text-sm text-gray-900">
-                                  Celkem: <span className="font-bold text-blue-600">{totalPersonMonths}</span> osobo-měsíců
+                                  Celkem: <span className="font-bold text-primary">{totalPersonMonths}</span> osobo-měsíců
                                 </div>
                               </div>
                               
@@ -898,7 +898,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                                       key={month}
                                       className={`text-center p-2 rounded ${
                                         hasData 
-                                          ? 'bg-blue-100 border border-blue-300' 
+                                          ? 'bg-teal-100 border border-teal-300' 
                                           : 'bg-gray-50 border border-gray-200'
                                       }`}
                                     >
@@ -906,7 +906,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                                         {month}.
                                       </div>
                                       <div className={`text-lg font-bold ${
-                                        hasData ? 'text-blue-600' : 'text-gray-400'
+                                        hasData ? 'text-primary' : 'text-gray-400'
                                       }`}>
                                         {personCount}
                                       </div>
@@ -941,14 +941,14 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
               </Link>
               <Link
                 href={`/billing/import?buildingId=${building.id}`}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors text-sm"
+                className="bg-primary text-white px-4 py-2 rounded-lg font-semibold hover:bg-primary-hover transition-colors text-sm"
               >
                 📊 Import vyúčtování
               </Link>
             </div>
           </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-            <svg className="h-16 w-16 text-blue-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="bg-teal-50 border border-teal-200 rounded-lg p-6 text-center">
+            <svg className="h-16 w-16 text-primary mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Vypočítat vyúčtování automaticky</h3>
@@ -967,14 +967,14 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
               </div>
             )}
             
-            <div className="mt-6 border-t border-blue-200 pt-6">
+            <div className="mt-6 border-t border-teal-200 pt-6">
               <h4 className="font-semibold text-gray-900 mb-3">Nebo importovat z Excelu</h4>
               <p className="text-gray-900 mb-4 text-sm">
                 Nahrajte Excel soubor s kompletním vyúčtováním (faktury, odečty, platby)
               </p>
               <Link
                 href={`/billing/import?buildingId=${building.id}`}
-                className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center px-6 py-3 bg-primary text-white rounded-lg font-semibold hover:bg-primary-hover transition-colors"
               >
                 📊 Importovat z Excelu
               </Link>
@@ -1259,7 +1259,7 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
     await load()
   }
 
-  if (loading) return <div className="text-gray-500">Načítám předpisy…</div>
+  if (loading) return <div className="text-gray-500 p-4">Načítám předpisy…</div>
   if (error) return <div className="bg-red-50 border border-red-200 rounded p-3 text-red-800">{error}</div>
 
   if (units.length === 0 || services.length === 0) {
@@ -1272,71 +1272,97 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <label className="text-sm text-gray-900">Rok:</label>
-        <input type="number" value={year} onChange={(e) => setYear(parseInt(e.target.value || String(new Date().getFullYear()), 10))} className="w-24 px-2 py-1 border border-gray-300 rounded text-gray-900" />
+    <div className="space-y-6">
+      <div className="flex items-center gap-4 bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+        <label className="text-sm font-medium text-gray-700">Rok:</label>
+        <input 
+          type="number" 
+          value={year} 
+          onChange={(e) => setYear(parseInt(e.target.value || String(new Date().getFullYear()), 10))} 
+          className="w-24 px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:ring-primary focus:border-primary" 
+        />
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 uppercase">Jednotka</th>
-              {services.map((s) => (
-                <th key={s.id} className="px-4 py-3 text-right text-xs font-medium text-gray-900 uppercase">{s.name}</th>
-              ))}
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 uppercase">Předepsáno celkem</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 uppercase">Uhrazeno celkem</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {units.map((u) => {
-              const unitRowTotals = services.reduce((sum, s) => sum + (data[u.id]?.[s.id]?.total || 0), 0)
-              const unitPaidTotal = services.reduce((sum, s) => sum + (paid[u.id]?.[s.id] || 0), 0)
-              return (
-                <tr key={u.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                    {u.unitNumber}
-                    {u.variableSymbol && <span className="ml-2 text-xs text-gray-500">VS: {u.variableSymbol}</span>}
-                  </td>
-                  {services.map((s) => {
-                    const cell = data[u.id]?.[s.id]
-                    const total = cell?.total || 0
-                    const paidSrv = paid[u.id]?.[s.id] || 0
-                    // jednoduché editační pole na nastavení všech měsíců
-                    return (
-                      <td key={s.id} className="px-4 py-3 text-right align-middle">
-                        <div className="flex items-center justify-end gap-2">
-                          <input
-                            type="number"
-                            placeholder="měsíc"
-                            className="w-24 px-2 py-1 border border-gray-300 rounded text-right text-gray-900"
-                            defaultValue={cell ? Math.round((total / 12) * 100) / 100 : 0}
-                            onBlur={async (e) => {
-                              const val = parseFloat(e.target.value)
-                              if (isNaN(val)) return
-                              try { await updateAllMonths(u.id, s.id, val) } catch (err) { alert(err instanceof Error ? err.message : 'Uložení selhalo') }
-                            }}
-                          />
-                          <div className="text-xs text-gray-500 w-28 text-right">
-                            {(total).toLocaleString('cs-CZ')} Kč
-                            <div className="text-[10px] text-green-700">uhrazeno {(paidSrv).toLocaleString('cs-CZ')}</div>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">
+                  JEDNOTKA
+                </th>
+                {services.map((s) => (
+                  <th key={s.id} className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider min-w-[120px]">
+                    {s.name}
+                  </th>
+                ))}
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 sticky right-0 z-10">
+                  CELKEM
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {units.map((u) => {
+                const unitRowTotals = services.reduce((sum, s) => sum + (data[u.id]?.[s.id]?.total || 0), 0)
+                
+                return (
+                  <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 z-10 border-r border-gray-100">
+                      <div className="flex flex-col">
+                        <span className="text-base">{u.unitNumber}</span>
+                        {u.variableSymbol && <span className="text-xs text-gray-400">VS: {u.variableSymbol}</span>}
+                      </div>
+                    </td>
+                    {services.map((s) => {
+                      const cell = data[u.id]?.[s.id]
+                      const total = cell?.total || 0
+                      const paidSrv = paid[u.id]?.[s.id] || 0
+                      const monthlyVal = cell ? Math.round((total / 12) * 100) / 100 : 0
+                      
+                      return (
+                        <td key={s.id} className="px-4 py-3 align-middle">
+                          <div className="flex flex-col items-center gap-1">
+                            <input
+                              type="number"
+                              className="w-24 px-2 py-1.5 border border-gray-200 rounded text-center text-sm text-gray-900 focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              defaultValue={monthlyVal}
+                              onBlur={async (e) => {
+                                const val = parseFloat(e.target.value)
+                                if (isNaN(val)) return
+                                try { await updateAllMonths(u.id, s.id, val) } catch (err) { alert(err instanceof Error ? err.message : 'Uložení selhalo') }
+                              }}
+                            />
+                            <div className="flex flex-col items-center">
+                              <span className="text-xs text-gray-400">
+                                {total > 0 ? `${total.toLocaleString('cs-CZ')} Kč` : '-'}
+                              </span>
+                              {paidSrv > 0 && (
+                                <span className="text-[10px] text-green-600 font-medium">
+                                  uhrazeno {paidSrv.toLocaleString('cs-CZ')}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                    )
-                  })}
-                  <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">{unitRowTotals.toLocaleString('cs-CZ')} Kč</td>
-                  <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">{unitPaidTotal.toLocaleString('cs-CZ')} Kč</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+                        </td>
+                      )
+                    })}
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-gray-900 sticky right-0 bg-white hover:bg-gray-50 z-10 border-l border-gray-100">
+                      {unitRowTotals.toLocaleString('cs-CZ')} Kč
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div className="text-xs text-gray-500">Tip: do pole zadejte měsíční částku a klikněte mimo – nastaví se pro všech 12 měsíců.</div>
+      <div className="text-sm text-gray-500 bg-blue-50 p-3 rounded-md border border-blue-100 flex items-center gap-2">
+        <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>Změna částky v poli automaticky přepočítá předpis pro všech 12 měsíců.</span>
+      </div>
     </div>
   )
 }

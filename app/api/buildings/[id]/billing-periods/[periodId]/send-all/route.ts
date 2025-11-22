@@ -7,8 +7,9 @@ import { sendBillingEmail } from '@/lib/microsoftGraph'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string; periodId: string } }
+  props: { params: Promise<{ id: string; periodId: string }> }
 ) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
@@ -69,7 +70,7 @@ export async function POST(
 
       if (!owner || !owner.email) {
         results.skipped++
-        results.errors.push(`${billingResult.unit.name}: Chybí email vlastníka`)
+        results.errors.push(`${billingResult.unit.unitNumber}: Chybí email vlastníka`)
         continue
       }
 
@@ -83,7 +84,7 @@ export async function POST(
           },
           period: billingPeriod.year,
           unit: {
-            name: billingResult.unit.name,
+            name: billingResult.unit.unitNumber,
             unitNumber: billingResult.unit.unitNumber,
             variableSymbol: billingResult.unit.variableSymbol
           },
@@ -142,9 +143,9 @@ export async function POST(
       } catch (error) {
         results.failed++
         results.errors.push(
-          `${billingResult.unit.name}: ${error instanceof Error ? error.message : 'Neznámá chyba'}`
+          `${billingResult.unit.unitNumber}: ${error instanceof Error ? error.message : 'Neznámá chyba'}`
         )
-        console.error(`Error sending email for ${billingResult.unit.name}:`, error)
+        console.error(`Error sending email for ${billingResult.unit.unitNumber}:`, error)
       }
     }
 

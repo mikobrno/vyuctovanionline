@@ -127,7 +127,7 @@ export default function ReadingsImport({ buildingId, year = new Date().getFullYe
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          className={`block cursor-pointer ${dragActive ? 'text-blue-600' : ''}`}
+          className={`block cursor-pointer ${dragActive ? 'text-primary' : ''}`}
         >
           <div className="mx-auto h-16 w-16 text-gray-400 mb-4">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -155,8 +155,8 @@ export default function ReadingsImport({ buildingId, year = new Date().getFullYe
           </div>
 
           {result.foundSheets && result.foundSheets.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="text-sm text-blue-800">
+            <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
+              <p className="text-sm text-teal-800">
                 📑 Načtené záložky: <strong>{result.foundSheets.join(', ')}</strong>
               </p>
             </div>
@@ -169,30 +169,30 @@ export default function ReadingsImport({ buildingId, year = new Date().getFullYe
                   <h3 className="text-sm font-semibold text-gray-900 mb-2">
                     {meterType} ({readings.length} odečtů)
                   </h3>
-                  <div className="overflow-auto border border-gray-200 rounded-lg">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-gray-50">
+                  <div className="overflow-auto border border-gray-200 rounded-lg max-h-96">
+                    <table className="min-w-full text-sm relative">
+                      <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
                         <tr>
                           <th className="px-4 py-2 text-left font-medium text-gray-900">Jednotka</th>
                           <th className="px-4 py-2 text-left font-medium text-gray-900">Vlastník</th>
                           <th className="px-4 py-2 text-right font-medium text-gray-900">Spotřeba</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-200">
+                      <tbody className="divide-y divide-gray-200 bg-white">
                         {readings.map((item, index) => (
-                          <tr key={index}>
-                            <td className="px-4 py-2 font-medium">{item.unitNumber}</td>
+                          <tr key={index} className="hover:bg-gray-50">
+                            <td className="px-4 py-2 font-medium text-primary">{item.unitNumber}</td>
                             <td className="px-4 py-2 text-gray-900">{item.ownerName}</td>
-                            <td className="px-4 py-2 text-right font-mono">
+                            <td className="px-4 py-2 text-right font-mono text-gray-900">
                               {item.consumption.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
                             </td>
                           </tr>
                         ))}
                       </tbody>
-                      <tfoot className="bg-gray-50">
+                      <tfoot className="bg-gray-50 sticky bottom-0 z-10 border-t border-gray-200">
                         <tr>
-                          <td className="px-4 py-2 font-semibold" colSpan={2}>Celkem</td>
-                          <td className="px-4 py-2 text-right font-semibold font-mono">
+                          <td className="px-4 py-2 font-semibold text-gray-900" colSpan={2}>Celkem</td>
+                          <td className="px-4 py-2 text-right font-semibold font-mono text-primary">
                             {readings.reduce((sum, item) => sum + item.consumption, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
                           </td>
                         </tr>

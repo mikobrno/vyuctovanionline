@@ -23,7 +23,8 @@ function parseAmount(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const buildingId = params.id
     const { searchParams } = new URL(req.url)

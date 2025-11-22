@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { BillingCalculator } from '@/lib/billing-calculator'
+import { calculateBillingForBuilding } from '@/lib/billingEngine'
 
 export async function POST(
   req: NextRequest,
@@ -22,13 +22,12 @@ export async function POST(
 
     console.log(`[API] Spouštím výpočet vyúčtování pro budovu ${id}, rok ${year}`)
 
-    const calculator = new BillingCalculator(id, parseInt(year))
-    const billingPeriod = await calculator.calculate()
+    const result = await calculateBillingForBuilding(id, parseInt(year))
 
     return NextResponse.json({
       success: true,
       message: `Vyúčtování pro rok ${year} bylo úspěšně vypočteno`,
-      billingPeriodId: billingPeriod.id,
+      details: result,
     })
   } catch (error) {
     console.error('[Billing calculate]', error)

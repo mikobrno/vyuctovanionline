@@ -51,7 +51,7 @@ export default async function UnitsPage() {
           </div>
           <Link
             href="/units/new"
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+            className="bg-teal-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-teal-700 transition-colors"
           >
             + Přidat jednotku
           </Link>
@@ -61,22 +61,22 @@ export default async function UnitsPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Jednotka
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Vlastník
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Výměra
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Podíl
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   VS
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-900 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Akce
                 </th>
               </tr>
@@ -86,8 +86,8 @@ export default async function UnitsPage() {
                 <tr key={unit.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="h-10 w-10 shrink-0 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <div className="h-10 w-10 shrink-0 bg-teal-50 rounded-lg flex items-center justify-center">
+                        <svg className="h-5 w-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                         </svg>
                       </div>
@@ -95,7 +95,7 @@ export default async function UnitsPage() {
                         <div className="text-sm font-medium text-gray-900">
                           {unit.unitNumber}
                         </div>
-                        <div className="text-sm text-gray-900">
+                        <div className="text-sm text-gray-500">
                           {unit.building.name}
                         </div>
                       </div>
@@ -107,7 +107,7 @@ export default async function UnitsPage() {
                         <div className="text-sm font-medium text-gray-900">
                           {unit.ownerships[0].owner.firstName} {unit.ownerships[0].owner.lastName}
                         </div>
-                        <div className="text-sm text-gray-900">
+                        <div className="text-sm text-gray-500">
                           {unit.ownerships[0].owner.email}
                         </div>
                       </div>
@@ -127,13 +127,13 @@ export default async function UnitsPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <Link
                       href={`/units/${unit.id}`}
-                      className="text-blue-600 hover:text-blue-900 mr-4"
+                      className="text-teal-600 hover:text-teal-900 mr-4"
                     >
                       Detail
                     </Link>
                     <Link
                       href={`/units/${unit.id}/edit`}
-                      className="text-gray-900 hover:text-gray-900"
+                      className="text-gray-600 hover:text-gray-900"
                     >
                       Upravit
                     </Link>

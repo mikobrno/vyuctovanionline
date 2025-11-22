@@ -6,8 +6,9 @@ import { sendBillingSms, normalizePhoneNumber } from '@/lib/smsManager';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string; resultId: string } }
+  props: { params: Promise<{ id: string; resultId: string }> }
 ) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
