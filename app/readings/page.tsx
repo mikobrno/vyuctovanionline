@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 
+export const dynamic = 'force-dynamic'
+
 type MeterType = 'HOT_WATER' | 'COLD_WATER' | 'HEATING' | 'ELECTRICITY'
 
 const METER_TYPE_LABELS: Record<MeterType, { label: string; icon: string }> = {
