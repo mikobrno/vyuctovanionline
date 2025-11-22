@@ -219,7 +219,7 @@ export async function calculateServiceDistribution(
       if (totalValue === 0) {
         return units.map((unit: Unit) => ({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: 0,
           formula: 'Žádná hodnota atributu',
           breakdown: { totalCost, divisor: 0, unitValue: 0, pricePerUnit: 0 },
@@ -235,7 +235,7 @@ export async function calculateServiceDistribution(
         const attributeLabel = getAttributeLabel(service.unitAttributeName!)
         results.push({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: Math.round(amount * 100) / 100,
           formula: `${value.toFixed(2)} × ${pricePerUnit.toFixed(2)} Kč/${attributeLabel}`,
           breakdown: {
@@ -265,7 +265,7 @@ export async function calculateServiceDistribution(
       if (totalPersonMonths === 0) {
         return units.map((unit: Unit) => ({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: 0,
           formula: 'Žádné osobo-měsíce',
           breakdown: { totalCost, divisor: 0, unitValue: 0, pricePerUnit: 0 },
@@ -280,7 +280,7 @@ export async function calculateServiceDistribution(
         const amount = value * pricePerPersonMonth
         results.push({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: Math.round(amount * 100) / 100,
           formula: `${value} osob×měs. × ${pricePerPersonMonth.toFixed(2)} Kč/osob×měs.`,
           breakdown: {
@@ -302,7 +302,7 @@ export async function calculateServiceDistribution(
       for (const unit of units) {
         results.push({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: Math.round(amountPerUnit * 100) / 100,
           formula: `${totalCost.toFixed(2)} Kč / ${numberOfUnits} jednotek`,
           breakdown: {
@@ -323,7 +323,7 @@ export async function calculateServiceDistribution(
       for (const unit of units) {
         results.push({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: fixedAmount,
           formula: `Fixní částka: ${fixedAmount.toFixed(2)} Kč/jednotku`,
           breakdown: {
@@ -342,7 +342,7 @@ export async function calculateServiceDistribution(
       for (const unit of units) {
         results.push({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: 0,
           formula: 'Nevyúčtovává se',
           breakdown: {
@@ -396,7 +396,7 @@ async function calculateLegacyMethodology(
         const amount = totalCost * share
         results.push({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: Math.round(amount * 100) / 100,
           formula: `${totalCost.toFixed(2)} × (${unit.shareNumerator}/${unit.shareDenominator})`,
           breakdown: {
@@ -411,19 +411,20 @@ async function calculateLegacyMethodology(
     }
 
     case 'AREA': {
-      const totalArea = units.reduce((sum, u) => sum + u.floorArea, 0)
+      const totalArea = units.reduce((sum, u) => sum + (u.floorArea ?? 0), 0)
       const pricePerM2 = totalCost / totalArea
       for (const unit of units) {
-        const amount = unit.floorArea * pricePerM2
+        const floorArea = unit.floorArea ?? 0
+        const amount = floorArea * pricePerM2
         results.push({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: Math.round(amount * 100) / 100,
-          formula: `${unit.floorArea.toFixed(2)} m² × ${pricePerM2.toFixed(2)} Kč/m²`,
+          formula: `${floorArea.toFixed(2)} m² × ${pricePerM2.toFixed(2)} Kč/m²`,
           breakdown: {
             totalCost,
             divisor: totalArea,
-            unitValue: unit.floorArea,
+            unitValue: floorArea,
             pricePerUnit: pricePerM2,
           },
         })
@@ -436,7 +437,7 @@ async function calculateLegacyMethodology(
       for (const unit of units) {
         results.push({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: Math.round(amountPerUnit * 100) / 100,
           formula: `${totalCost.toFixed(2)} Kč / ${units.length} jednotek`,
           breakdown: {
@@ -455,7 +456,7 @@ async function calculateLegacyMethodology(
       for (const unit of units) {
         results.push({
           unitId: unit.id,
-          unitName: unit.name,
+          unitName: unit.unitNumber,
           amount: 0,
           formula: 'Nepodporovaná metodologie',
           breakdown: {

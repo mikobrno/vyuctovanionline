@@ -44,10 +44,13 @@ export async function POST(
       salutation: owner.salutation,
       unitName: pdfData.unit.unitNumber,
       buildingAddress: pdfData.building.address,
+      buildingName: pdfData.building.name,
       year: pdfData.result.billingPeriod.year,
       balance: pdfData.result.result,
       managerName: pdfData.building.managerName,
-      pdfBase64
+      pdfBase64,
+      subjectTemplate: pdfData.building.emailTemplateSubject,
+      bodyTemplate: pdfData.building.emailTemplateBody
     })
 
     // Označit jako odesláno

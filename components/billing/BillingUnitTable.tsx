@@ -24,6 +24,36 @@ export function BillingUnitTable({ buildingId, results }: Props) {
     window.open(`/api/buildings/${buildingId}/billing/${resultId}/pdf`, '_blank');
   };
 
+  const handleTestEmail = async (resultId: string) => {
+    try {
+      const response = await fetch(`/api/buildings/${buildingId}/billing/${resultId}/send-test-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'kost@onlinesprava.cz' })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.details || data.error)
+      alert('Testovací email odeslán na kost@onlinesprava.cz!')
+    } catch (e) {
+      alert('Chyba: ' + (e instanceof Error ? e.message : String(e)))
+    }
+  }
+
+  const handleTestSms = async (resultId: string) => {
+    try {
+      const response = await fetch(`/api/buildings/${buildingId}/billing/${resultId}/send-test-sms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: '777338203' })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.details || data.error)
+      alert('Testovací SMS odeslána na 777338203!')
+    } catch (e) {
+      alert('Chyba: ' + (e instanceof Error ? e.message : String(e)))
+    }
+  }
+
   return (
     <div className="rounded-md border bg-white shadow-sm overflow-hidden">
       <table className="min-w-full divide-y divide-gray-200">
@@ -57,6 +87,20 @@ export function BillingUnitTable({ buildingId, results }: Props) {
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => handleTestEmail(row.id)}
+                    className="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 rounded hover:bg-blue-50 border border-blue-200"
+                    title="Odeslat testovací email na kost@onlinesprava.cz"
+                  >
+                    Test Email
+                  </button>
+                  <button
+                    onClick={() => handleTestSms(row.id)}
+                    className="text-purple-600 hover:text-purple-800 text-xs font-medium px-2 py-1 rounded hover:bg-purple-50 border border-purple-200"
+                    title="Odeslat testovací SMS na 777338203"
+                  >
+                    Test SMS
+                  </button>
                   <button 
                     onClick={() => handleDownloadPdf(row.id)}
                     className="text-gray-700 hover:text-gray-900 bg-white border border-gray-300 px-3 py-1 rounded-md text-sm"

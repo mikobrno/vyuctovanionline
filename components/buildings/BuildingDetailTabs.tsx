@@ -7,6 +7,7 @@ import BillingGenerator from './BillingGenerator'
 import BillingResultsViewer from './BillingResultsViewer'
 import BuildingOverview from './BuildingOverview'
 import ServiceConfigTable from './ServiceConfigTable'
+import { BuildingTemplates } from './BuildingTemplates'
  
 
 interface BuildingDetailTabsProps {
@@ -159,6 +160,10 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
   const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set())
   const [showUnitFilter, setShowUnitFilter] = useState(false)
 
+  const buildingServices = building?.services || []
+  const [servicesState, setServicesState] = useState<any[]>(buildingServices)
+  useEffect(() => { setServicesState(buildingServices) }, [buildingServices])
+
   // Kontrola, zda building existuje
   if (!building) {
     return (
@@ -171,10 +176,6 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
   // Bezpečné přístupy k properties - s fallbackem
   const buildingUnits = building?.units || []
   const buildingCosts = building?.costs || []
-  const buildingServices = building?.services || []
-
-  const [servicesState, setServicesState] = useState<any[]>(buildingServices)
-  useEffect(() => { setServicesState(buildingServices) }, [buildingServices])
 
   // Toggle výběr jednotky
   const toggleUnit = (unitId: string) => {
@@ -1052,6 +1053,15 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
             </ul>
           </div>
         </div>
+      )}
+
+      {/* ŠABLONY */}
+      {tab === 'templates' && (
+        <BuildingTemplates
+          buildingId={building.id}
+          initialSubject={building.emailTemplateSubject}
+          initialBody={building.emailTemplateBody}
+        />
       )}
 
       {/* Test výpočetního enginu */}

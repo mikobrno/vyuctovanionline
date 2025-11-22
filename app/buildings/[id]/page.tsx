@@ -329,6 +329,16 @@ export default async function BuildingDetailPage({
                 ⚙️ Parametry
               </Link>
               <Link
+                href={`/buildings/${building.id}?tab=templates`}
+                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
+                  tab === 'templates'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-900 hover:text-gray-900 hover:border-gray-300'
+                }`}
+              >
+                ✉️ Šablony
+              </Link>
+              <Link
                 href={`/buildings/${building.id}?tab=billing`}
                 className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${
                   tab === 'billing'

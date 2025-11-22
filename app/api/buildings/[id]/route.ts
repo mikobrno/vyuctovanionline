@@ -162,7 +162,8 @@ export async function PATCH(
     // Filtrovat pouze povolené pole pro update
     const allowedFields = [
       'name', 'address', 'city', 'zip', 'ico', 'bankAccount', 'managerName',
-      'totalArea', 'chargeableArea', 'chimneysCount', 'totalPeople', 'unitCountOverride'
+      'totalArea', 'chargeableArea', 'chimneysCount', 'totalPeople', 'unitCountOverride',
+      'emailTemplateSubject', 'emailTemplateBody'
     ]
 
     const dataToUpdate: Record<string, unknown> = {}

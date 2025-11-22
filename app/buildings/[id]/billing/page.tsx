@@ -120,6 +120,7 @@ export default async function BillingDashboardPage({ params, searchParams }: Pag
         buildingId={id} 
         year={currentYear} 
         status={billingPeriod?.status || 'DRAFT'} 
+        billingPeriodId={billingPeriod?.id}
       />
 
       {/* Karty s přehledem */}

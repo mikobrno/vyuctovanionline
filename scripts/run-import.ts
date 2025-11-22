@@ -1,7 +1,7 @@
 
 import { read, utils } from 'xlsx'
 import { prisma } from '../lib/prisma'
-import { CalculationMethod, DataSourceType, MeterType } from '@prisma/client'
+import { CalculationMethod, DataSourceType, MeterType, Service } from '@prisma/client'
 import fs from 'fs'
 import path from 'path'
 
@@ -504,7 +504,7 @@ async function runImport() {
               .toUpperCase()
               .replace(/\s+/g, '_')
               .replace(/[^A-Z0-9_]/g, '') || 'SERVICE'
-            let created: typeof service | null = null
+            let created: Service | null = null
             for (let attempt = 0; attempt < 15 && !created; attempt++) {
               const candidate = attempt === 0 ? baseCode : `${baseCode}_${attempt}`
               try {

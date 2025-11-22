@@ -100,10 +100,13 @@ export async function POST(
                   salutation: owner.salutation,
                   unitName: billingResult.unit.unitNumber,
                   buildingAddress: billingPeriod.building.address,
+                  buildingName: billingPeriod.building.name,
                   year: billingPeriod.year,
                   balance: billingResult.result,
                   managerName: billingPeriod.building.managerName,
-                  pdfBase64
+                  pdfBase64,
+                  subjectTemplate: billingPeriod.building.emailTemplateSubject,
+                  bodyTemplate: billingPeriod.building.emailTemplateBody
                 })
 
                 await prisma.billingResult.update({

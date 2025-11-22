@@ -7,13 +7,15 @@ interface Props {
   buildingId: string;
   year: number;
   status?: 'DRAFT' | 'CALCULATED' | 'APPROVED' | 'SENT';
+  billingPeriodId?: string;
 }
 
-export function BillingControls({ buildingId, year, status = 'DRAFT' }: Props) {
+export function BillingControls({ buildingId, year, status = 'DRAFT', billingPeriodId }: Props) {
   const router = useRouter();
   const [isCalculating, setIsCalculating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   const handleCalculate = async () => {
     if (!confirm(`Opravdu chcete spustit nový výpočet pro rok ${year}? Stávající výsledky budou přepsány.`)) return;
@@ -79,6 +81,32 @@ export function BillingControls({ buildingId, year, status = 'DRAFT' }: Props) {
     }
   };
 
+  const handleSendAll = async () => {
+    if (!billingPeriodId) return;
+    if (!confirm(`Opravdu chcete odeslat notifikace (Email + SMS) všem vlastníkům v období ${year}?`)) return;
+
+    setIsSending(true);
+    try {
+      const response = await fetch(`/api/buildings/${buildingId}/billing-periods/${billingPeriodId}/send-all-notifications`, {
+        method: 'POST'
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.details || 'Nepodařilo se odeslat notifikace');
+      }
+
+      alert(`Odesláno: Email: ${data.details.sentEmail}, SMS: ${data.details.sentSms}, Chyby: ${data.details.failed}`);
+      router.refresh();
+    } catch (error) {
+      console.error("Chyba odesílání:", error);
+      alert(error instanceof Error ? error.message : 'Nepodařilo se odeslat notifikace');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const isLocked = status === 'APPROVED' || status === 'SENT';
 
   return (
@@ -132,6 +160,17 @@ export function BillingControls({ buildingId, year, status = 'DRAFT' }: Props) {
           </>
         )}
       </button>
+
+      {/* Tlačítko Odeslat */}
+      {billingPeriodId && (
+        <button 
+          onClick={handleSendAll} 
+          disabled={isSending} 
+          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-11 px-4 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400"
+        >
+          {isSending ? 'Odesílám...' : '🚀 Odeslat vše (Email + SMS)'}
+        </button>
+      )}
     </div>
   );
 }

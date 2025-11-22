@@ -18,7 +18,7 @@ export async function POST(
 
     const { resultId } = params
     const body = await request.json()
-    const email = body.email || 'kost@onlinepsrava.cz'
+    const email = body.email || 'kost@onlinesprava.cz'
 
     const pdfData = await getBillingPdfData(resultId)
     if (!pdfData) {
@@ -32,10 +32,13 @@ export async function POST(
       salutation: pdfData.owner?.salutation || (pdfData.owner?.firstName ? `Vážený/á ${pdfData.owner.firstName} ${pdfData.owner.lastName}` : 'Vážený vlastníce'),
       unitName: pdfData.unit.unitNumber,
       buildingAddress: pdfData.building.address,
+      buildingName: pdfData.building.name,
       year: pdfData.result.billingPeriod.year,
       balance: pdfData.result.result,
       managerName: pdfData.building.managerName || 'Správa',
-      pdfBase64
+      pdfBase64,
+      subjectTemplate: pdfData.building.emailTemplateSubject,
+      bodyTemplate: pdfData.building.emailTemplateBody
     })
 
     return NextResponse.json({ success: true, message: `Test email sent to ${email}` })

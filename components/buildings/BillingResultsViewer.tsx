@@ -118,11 +118,11 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
       const response = await fetch(`/api/buildings/${buildingId}/billing/${resultId}/send-test-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'kost@onlinepsrava.cz' })
+        body: JSON.stringify({ email: 'kost@onlinesprava.cz' })
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.details || data.error)
-      alert('Testovací email odeslán na kost@onlinepsrava.cz!')
+      alert('Testovací email odeslán na kost@onlinesprava.cz!')
     } catch (e) {
       alert('Chyba: ' + (e instanceof Error ? e.message : String(e)))
     }
@@ -444,7 +444,7 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                             <button
                               onClick={() => handleTestEmail(result.id)}
                               className="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 rounded hover:bg-blue-50"
-                              title="Odeslat testovací email na kost@onlinepsrava.cz"
+                              title="Odeslat testovací email na kost@onlinesprava.cz"
                             >
                               Test Email
                             </button>

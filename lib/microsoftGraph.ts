@@ -95,50 +95,67 @@ export async function sendBillingEmail({
   salutation,
   unitName,
   buildingAddress,
+  buildingName,
   year,
   balance,
   managerName,
-  pdfBase64
+  pdfBase64,
+  subjectTemplate,
+  bodyTemplate
 }: {
   to: string
   salutation: string | null
   unitName: string
   buildingAddress: string
+  buildingName?: string
   year: number
   balance: number
   managerName: string | null
   pdfBase64: string
+  subjectTemplate?: string | null
+  bodyTemplate?: string | null
 }): Promise<void> {
-  const subject = `Vyúčtování služeb ${year} - ${unitName}`
-  
-  const balanceText = balance > 0 
-    ? `nedoplatek <strong>${balance.toLocaleString('cs-CZ')} Kč</strong>`
-    : balance < 0
-    ? `přeplatek <strong>${Math.abs(balance).toLocaleString('cs-CZ')} Kč</strong>`
-    : 'vyrovnáno'
-  
   // Použít oslovení z Excelu nebo výchozí
   const greeting = salutation || 'Vážený/á vlastníku/vlastnice'
   
   // Použít správce z Excelu nebo výchozí
   const manager = managerName || 'AdminReal s.r.o.'
+  
+  // Název domu (nebo adresa, pokud není název)
+  const buildingLabel = buildingName || buildingAddress
 
-  const htmlBody = `
-    <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .header { background-color: #0078d4; color: white; padding: 20px; text-align: center; }
-          .content { padding: 20px; }
-          .footer { background-color: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; color: #666; }
-          .balance { font-size: 18px; margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #0078d4; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Vyúčtování služeb ${year}</h1>
-        </div>
-        <div class="content">
+  // 1. PŘEDMĚT
+  let subject = `Vyúčtování služeb ${year} - ${unitName}`
+  if (subjectTemplate) {
+    subject = subjectTemplate
+      .replace(/#rok#/g, year.toString())
+      .replace(/#jednotka_cislo#/g, unitName)
+      .replace(/#bytovy_dum#/g, buildingLabel)
+  }
+
+  // 2. TĚLO
+  let contentHtml = ''
+  
+  if (bodyTemplate) {
+    // Nahrazení proměnných v šabloně
+    const body = bodyTemplate
+      .replace(/#osloveni#/g, greeting)
+      .replace(/#jednotka_cislo#/g, unitName)
+      .replace(/#bytovy_dum#/g, buildingLabel)
+      .replace(/#rok#/g, year.toString())
+      .replace(/#spravce#/g, manager)
+      
+    // Převod newlines na <br>
+    contentHtml = body.replace(/\n/g, '<br>')
+  } else {
+    // Výchozí tělo
+    const balanceText = balance > 0 
+      ? `nedoplatek <strong>${balance.toLocaleString('cs-CZ')} Kč</strong>`
+      : balance < 0
+      ? `přeplatek <strong>${Math.abs(balance).toLocaleString('cs-CZ')} Kč</strong>`
+      : 'vyrovnáno'
+
+    contentHtml = `
           <p>${greeting},</p>
           
           <p>dnes Vám bylo na email <strong>${to}</strong> zasláno vyúčtování za rok <strong>${year}</strong> k Vaší bytové jednotce <strong>${unitName}</strong> v bytovém domě na adrese <strong>${buildingAddress}</strong>.</p>
@@ -156,6 +173,26 @@ export async function sendBillingEmail({
           <p>V případě dotazů nebo připomínek nás prosím kontaktujte.</p>
           
           <p>S pozdravem,<br><strong>${manager}</strong></p>
+    `
+  }
+
+  const htmlBody = `
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .header { background-color: #0078d4; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; }
+          .footer { background-color: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; color: #666; }
+          .balance { font-size: 18px; margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #0078d4; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Vyúčtování služeb ${year}</h1>
+        </div>
+        <div class="content">
+          ${contentHtml}
         </div>
         <div class="footer">
           <p>Tento email byl vygenerován automaticky systémem OnlineSprava.</p>
