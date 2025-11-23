@@ -22,16 +22,16 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 fixed h-full left-0 top-0 z-30 hidden lg:flex flex-col">
-      <div className="h-16 flex items-center px-6 border-b border-gray-100">
+    <aside className="w-64 bg-white dark:bg-slate-800 border-r border-gray-200 dark:border-slate-700 fixed h-full left-0 top-0 z-30 hidden lg:flex flex-col transition-colors duration-200">
+      <div className="h-16 flex items-center px-6 border-b border-gray-100 dark:border-slate-700">
         <div className="flex items-center gap-2 text-teal-500">
           <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center text-white font-bold text-xl">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
           </div>
-          <span className="text-gray-900 font-bold text-lg tracking-tight">Portál</span>
-          <span className="text-gray-500 font-medium">vyúčtování</span>
+          <span className="text-gray-900 dark:text-white font-bold text-lg tracking-tight">Portál</span>
+          <span className="text-gray-500 dark:text-gray-400 font-medium">vyúčtování</span>
         </div>
       </div>
 
@@ -45,11 +45,11 @@ export default function Sidebar() {
                 href={item.href}
                 className={`flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors group ${
                   isActive
-                    ? 'bg-teal-50 text-teal-600'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700 hover:text-gray-900 dark:hover:text-white'
                 }`}
               >
-                <span className={`mr-3 ${isActive ? 'text-teal-500' : 'text-gray-400 group-hover:text-gray-500'}`}>
+                <span className={`mr-3 ${isActive ? 'text-teal-500 dark:text-teal-400' : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-300'}`}>
                   {item.icon}
                 </span>
                 {item.name}
@@ -59,10 +59,10 @@ export default function Sidebar() {
         </nav>
       </div>
 
-      <div className="p-4 border-t border-gray-100">
-        <div className="bg-teal-50 rounded-xl p-4">
-          <h4 className="text-sm font-semibold text-teal-900 mb-1">Potřebujete pomoc?</h4>
-          <p className="text-xs text-teal-700 mb-3">Podívejte se do dokumentace nebo kontaktujte podporu.</p>
+      <div className="p-4 border-t border-gray-100 dark:border-slate-700">
+        <div className="bg-teal-50 dark:bg-teal-900/20 rounded-xl p-4">
+          <h4 className="text-sm font-semibold text-teal-900 dark:text-teal-100 mb-1">Potřebujete pomoc?</h4>
+          <p className="text-xs text-teal-700 dark:text-teal-300 mb-3">Podívejte se do dokumentace nebo kontaktujte podporu.</p>
           <button className="w-full bg-teal-500 hover:bg-teal-600 text-white text-xs font-medium py-2 px-3 rounded-lg transition-colors">
             Otevřít dokumentaci
           </button>

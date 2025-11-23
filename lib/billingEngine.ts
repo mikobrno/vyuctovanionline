@@ -6,6 +6,7 @@ interface ServiceCalculationResult {
   serviceName: string;
   method: CalculationMethod;
   totalBuildingCost: number; // Celkový náklad za dům
+  buildingConsumption?: number; // Celková spotřeba/počet jednotek domu
   unitCost: number;          // Vypočítaný náklad na jednotku
   unitConsumption?: number;  // Spotřeba (pokud existuje)
   pricePerUnit?: number;     // Cena za měrnou jednotku
@@ -147,10 +148,15 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
       if (service.dataSourceName) {
         targetMeterTypes = [service.dataSourceName];
       } else {
-        const isWater = service.name.toLowerCase().includes('vod') || service.name.includes('SV') || service.name.includes('TUV');
+        const nameLower = service.name.toLowerCase();
+        // Přísnější detekce pro vodu - vyloučit SVJ
+        const isWater = nameLower.includes('vod') || 
+                       (service.name.includes('SV') && !service.name.includes('SVJ')) || 
+                       service.name.includes('TUV');
+                       
         if (isWater) targetMeterTypes = ['COLD_WATER', 'HOT_WATER'];
-        if (service.name.toLowerCase().includes('teplo')) targetMeterTypes.push('HEATING');
-        if (service.name.toLowerCase().includes('elek')) targetMeterTypes.push('ELECTRICITY');
+        if (nameLower.includes('teplo')) targetMeterTypes.push('HEATING');
+        if (nameLower.includes('elek')) targetMeterTypes.push('ELECTRICITY');
       }
       
       for (const u of units) {
@@ -188,6 +194,7 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
       
       let calculatedCost = 0;
       let unitConsumption = 0;
+      let buildingConsumption = 0;
       let pricePerUnit = 0;
       let basisText = "";
 
@@ -214,7 +221,10 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
       switch (service.methodology) {
         
         case 'OWNERSHIP_SHARE': // Podle podílu
+          buildingConsumption = totalShare;
+          unitConsumption = safeNumber(unit.shareNumerator);
           if (totalShare > 0) {
+            pricePerUnit = serviceBuildingCost / totalShare;
             calculatedCost = safeNumber(serviceBuildingCost * (safeNumber(unit.shareNumerator) / totalShare));
             basisText = `Podíl ${safeNumber(unit.shareNumerator).toFixed(4)} / ${totalShare.toFixed(4)}`;
           } else {
@@ -224,16 +234,24 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
 
         case 'FIXED_PER_UNIT': // Na byt
           const monthsInEvidence = unitMonthsMap.get(unit.id) ?? 12;
+          unitConsumption = monthsInEvidence;
           
           if (service.fixedAmountPerUnit) {
             // Fixní částka * (měsíce / 12)
+            buildingConsumption = 0; // Není relevantní pro fixní částku
+            pricePerUnit = service.fixedAmountPerUnit;
             calculatedCost = service.fixedAmountPerUnit * (monthsInEvidence / 12);
             basisText = `Fixní částka ${service.fixedAmountPerUnit} Kč * (${monthsInEvidence}/12 měs.)`;
           } else if (totalUnitMonths > 0) {
             // Rozpočítání celkového nákladu podle měsíců (aby se rozdělilo 100%)
+            buildingConsumption = totalUnitMonths;
+            pricePerUnit = serviceBuildingCost / totalUnitMonths;
             calculatedCost = safeNumber(serviceBuildingCost * (monthsInEvidence / totalUnitMonths));
             basisText = `Podíl měsíců: ${monthsInEvidence} / ${totalUnitMonths} (z celku)`;
           } else if (totalUnitsCount > 0) {
+            buildingConsumption = totalUnitsCount;
+            unitConsumption = 1;
+            pricePerUnit = serviceBuildingCost / totalUnitsCount;
             calculatedCost = safeNumber(serviceBuildingCost / totalUnitsCount);
             basisText = `1 / ${totalUnitsCount} jednotek`;
           }
@@ -245,11 +263,19 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
           
           if (service.divisor) {
             // Pokud je zadán ruční dělitel: (Náklad / Dělitel) * (Měsíce / 12)
+            buildingConsumption = divisor;
+            unitConsumption = uMonths / 12; // Přepočtená jednotka
+            pricePerUnit = serviceBuildingCost / divisor;
+            
             const costPerUnitFullYear = serviceBuildingCost / divisor;
             calculatedCost = safeNumber(costPerUnitFullYear * (uMonths / 12));
             basisText = `(Náklad / ${divisor}) * (${uMonths}/12 měs.)`;
           } else if (totalUnitMonths > 0) {
             // Pokud není dělitel, rozpočítáme podle měsíců (jako FIXED_PER_UNIT)
+            buildingConsumption = totalUnitMonths;
+            unitConsumption = uMonths;
+            pricePerUnit = serviceBuildingCost / totalUnitMonths;
+            
             calculatedCost = safeNumber(serviceBuildingCost * (uMonths / totalUnitMonths));
             basisText = `Podíl měsíců: ${uMonths} / ${totalUnitMonths}`;
           } else {
@@ -259,7 +285,11 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
 
         case 'AREA': // Podle plochy
           const unitArea = unit.totalArea || 0;
+          buildingConsumption = totalArea;
+          unitConsumption = unitArea;
+          
           if (totalArea > 0) {
+            pricePerUnit = serviceBuildingCost / totalArea;
             calculatedCost = safeNumber(serviceBuildingCost * (unitArea / totalArea));
             basisText = `${unitArea.toFixed(2)} m² / ${totalArea.toFixed(2)} m²`;
           }
@@ -267,7 +297,11 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
 
         case 'PERSON_MONTHS': // Na osoby
           const unitPeople = unit.residents || 0;
+          buildingConsumption = totalPeople;
+          unitConsumption = unitPeople;
+          
           if (totalPeople > 0) {
+            pricePerUnit = serviceBuildingCost / totalPeople;
             calculatedCost = safeNumber(serviceBuildingCost * (unitPeople / totalPeople));
             basisText = `${unitPeople} / ${totalPeople} osob`;
           }
@@ -294,6 +328,12 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
                   const r = m.readings[0];
                   if (r) variables.UNIT_CONSUMPTION += safeNumber(r.consumption ?? r.value);
                 }
+              }
+              
+              unitConsumption = variables.UNIT_CONSUMPTION;
+              buildingConsumption = variables.TOTAL_CONSUMPTION;
+              if (buildingConsumption > 0) {
+                 pricePerUnit = serviceBuildingCost / buildingConsumption;
               }
 
               // Vyhodnocení vzorce
@@ -327,17 +367,19 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
           const paramName = service.unitAttributeName;
           if (paramName) {
              // Calculate total for this parameter across all units
-             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-             const totalParamValue = units.reduce((sum, u: any) => {
-                const p = u.parameters?.find((p: any) => p.name === paramName);
+             const totalParamValue = units.reduce((sum, u) => {
+                const p = u.parameters?.find(p => p.name === paramName);
                 return sum + (p ? p.value : 0);
              }, 0);
 
-             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-             const unitParam = (unit as any).parameters?.find((p: any) => p.name === paramName);
+             const unitParam = unit.parameters?.find(p => p.name === paramName);
              const unitValue = unitParam ? unitParam.value : 0;
+             
+             buildingConsumption = totalParamValue;
+             unitConsumption = unitValue;
 
              if (totalParamValue > 0) {
+               pricePerUnit = serviceBuildingCost / totalParamValue;
                calculatedCost = safeNumber(serviceBuildingCost * (unitValue / totalParamValue));
                basisText = `${paramName}: ${unitValue} / ${totalParamValue}`;
              } else {
@@ -350,16 +392,21 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
 
         case 'METER_READING': // Voda
           const totalServiceCons = safeNumber(serviceTotalConsumptions.get(service.id));
+          buildingConsumption = totalServiceCons;
           
           // Spotřeba jednotky
           let targetMeterTypes: string[] = [];
           if (service.dataSourceName) {
             targetMeterTypes = [service.dataSourceName];
           } else {
-            const isWater = service.name.toLowerCase().includes('vod') || service.name.includes('SV') || service.name.includes('TUV');
+            const nameLower = service.name.toLowerCase();
+            const isWater = nameLower.includes('vod') || 
+                           (service.name.includes('SV') && !service.name.includes('SVJ')) || 
+                           service.name.includes('TUV');
+                           
             if (isWater) targetMeterTypes = ['COLD_WATER', 'HOT_WATER'];
-            if (service.name.toLowerCase().includes('teplo')) targetMeterTypes.push('HEATING');
-            if (service.name.toLowerCase().includes('elek')) targetMeterTypes.push('ELECTRICITY');
+            if (nameLower.includes('teplo')) targetMeterTypes.push('HEATING');
+            if (nameLower.includes('elek')) targetMeterTypes.push('ELECTRICITY');
           }
 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -421,6 +468,7 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
         serviceName: service.name,
         method: service.methodology,
         totalBuildingCost: serviceBuildingCost,
+        buildingConsumption: buildingConsumption > 0 ? buildingConsumption : undefined,
         unitCost: calculatedCost,
         unitConsumption: unitConsumption > 0 ? unitConsumption : undefined,
         pricePerUnit: pricePerUnit > 0 ? pricePerUnit : undefined,
@@ -475,6 +523,7 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
           unitId: unit.id,
           
           buildingTotalCost: res.totalBuildingCost,
+          buildingConsumption: res.buildingConsumption, // Uložení celkové spotřeby/jednotek domu
           unitCost: res.unitCost,
           unitAdvance: res.advancePaid,
           unitBalance: res.balance,

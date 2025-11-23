@@ -41,7 +41,7 @@ export default function BuildingsImport() {
   }
 
   return (
-    <label className="bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-semibold hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-2 cursor-pointer">
+    <label className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300 px-6 py-3 rounded-lg font-semibold hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-2 cursor-pointer">
       {loading ? (
         <span>Importuji...</span>
       ) : (

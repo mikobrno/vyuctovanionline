@@ -1132,6 +1132,8 @@ async function runImport() {
       summary.advances = { created: 0, updated: 0, total: 0 }
       try {
         const advancesSheet = workbook.Sheets[advancesSheetName]
+        console.log(`[DEBUG] Sheet Range: ${advancesSheet['!ref']}`);
+        
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rawData = utils.sheet_to_json<any[]>(advancesSheet, { header: 1, defval: null })
 
@@ -1142,109 +1144,29 @@ async function runImport() {
           throw new Error('Chybí ID fakturačního období při zpracování předpisů.')
         }
 
-        // 1. Najít řádek s měsíci (obsahuje "leden", "únor" nebo "1", "2"...) a "celkem"
-        let monthsRowIndex = -1
-        for (let r = 0; r < Math.min(rawData.length, 10); r++) {
-          const row = rawData[r]
-          if (!row) continue
-          const rowStr = row.map(c => String(c).toLowerCase()).join(' ')
-          if (rowStr.includes('leden') || rowStr.includes('celkem')) {
-            monthsRowIndex = r
-            break
-          }
+        // Najít nebo vytvořit službu pro importované zálohy
+        // Použijeme speciální službu "Zálohy (Import)", která bude sloužit pro uložení celkových záloh
+        let advanceService = await prisma.service.findFirst({
+          where: { buildingId: building.id, name: 'Zálohy (Import)' }
+        })
+
+        if (!advanceService) {
+          advanceService = await prisma.service.create({
+            data: {
+              buildingId: building.id,
+              name: 'Zálohy (Import)',
+              code: 'ADV_IMPORT',
+              methodology: 'NO_BILLING', // Tato služba se nebude vyúčtovávat standardně, jen drží zálohy
+              isActive: true
+            }
+          })
         }
 
-        if (monthsRowIndex === -1) {
-           // Fallback: zkusíme najít řádek, kde je hodně čísel 1-12
-           // Ale spolehlivější je hledat "Celkem"
-           log('[Předpis] Nenalezen řádek s měsíci/celkem. Zkouším fallback na řádek 1.')
-           monthsRowIndex = 1
-        }
-
-        log(`[Předpis] Řádek s měsíci/celkem nalezen na indexu ${monthsRowIndex}`)
-
-        // 2. Identifikovat služby z řádku nad měsíci (nebo ze stejného, pokud je to nějak divně)
-        // Očekáváme: Row N = Service Names (merged), Row N+1 = Months + Celkem
-        const serviceNameRowIndex = monthsRowIndex > 0 ? monthsRowIndex - 1 : 0
-        const serviceNameRow = rawData[serviceNameRowIndex]
-        const monthsRow = rawData[monthsRowIndex]
-
-        const headerMap: { [colIndex: number]: { serviceId: string; serviceName: string } } = {}
-        
-        // Načíst služby z DB pro párování
-        const services = await prisma.service.findMany({ where: { buildingId: building.id } })
-        const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ')
-        const serviceNameMap = new Map<string, { id: string; name: string }>()
-        services.forEach(s => serviceNameMap.set(normalize(s.name), { id: s.id, name: s.name }))
-
-        // Procházíme sloupce v řádku měsíců a hledáme "Celkem"
-        let currentServiceName = ''
-        
-        for (let c = 0; c < monthsRow.length; c++) {
-          // Aktualizovat název služby, pokud je v řádku nad tím
-          const cellAbove = String(serviceNameRow[c] ?? '').trim()
-          if (cellAbove && cellAbove.length > 2) { // ignorovat krátké smetí
-             currentServiceName = cellAbove
-          }
-
-          const cellCurrent = String(monthsRow[c] ?? '').trim().toLowerCase()
-          
-          if (cellCurrent === 'celkem' || cellCurrent === 'total') {
-             // Máme sloupec Celkem pro službu `currentServiceName`
-             if (!currentServiceName) {
-               log(`[Předpis] Nalezen sloupec Celkem na indexu ${c}, ale chybí název služby.`)
-               continue
-             }
-
-             const normalizedName = normalize(currentServiceName)
-             // Zkusit najít službu
-             let foundService = serviceNameMap.get(normalizedName)
-             
-             // Fuzzy match / opravy názvů
-             if (!foundService) {
-                // Zkusit najít službu, která je "podobná" nebo obsažená
-                for (const [dbName, s] of serviceNameMap.entries()) {
-                   if (normalizedName.includes(dbName) || dbName.includes(normalizedName)) {
-                      foundService = s
-                      break
-                   }
-                }
-             }
-
-             if (foundService) {
-               headerMap[c] = { serviceId: foundService.id, serviceName: foundService.name }
-               log(`[Předpis] MAPA: Sloupec ${columnIndexToLetter(c)} (${currentServiceName}) -> DB Služba: ${foundService.name}`)
-             } else {
-               log(`[Předpis] VAROVÁNÍ: Služba "${currentServiceName}" (sloupec ${columnIndexToLetter(c)}) nenalezena v DB.`)
-             }
-          }
-        }
-
-        const mappedColumns = Object.keys(headerMap).length
-        log(`[Předpis] Úspěšně namapováno ${mappedColumns} služeb.`)
-
-        if (mappedColumns === 0) {
-           // Fallback na starou logiku (fixed 13 columns) pokud nová selže
-           log('[Předpis] Nová detekce selhala, zkouším fallback na fixní strukturu...')
-           // ... (zde bychom mohli nechat starý kód, ale pro stručnost spoléháme na to, že "Celkem" tam je)
-           throw new Error('Nepodařilo se detekovat sloupce "Celkem".')
-        }
-
-        // 3. Zpracovat řádky s jednotkami
         const units = await prisma.unit.findMany({ where: { buildingId: building.id } })
         
-        // Najít sloupec s jednotkami
-        let unitColIndex = 0
-        // Hledáme v řádku měsíců nebo pod ním
-        for(let c = 0; c < 5; c++) {
-           const val = String(monthsRow[c] ?? '').toLowerCase()
-           if (val.includes('jednotka') || val.includes('byt') || val.includes('jméno')) {
-              unitColIndex = c
-              break
-           }
-        }
-
-        log(`[Předpis] Sloupec s jednotkami: index ${unitColIndex}`)
+        // Sloupce JC (262) až JN (273) obsahují měsíční zálohy (Leden - Prosinec)
+        // const startColIndex = 262 // JC
+        // const endColIndex = 273   // JN
 
         for (const unit of units) {
           const possibleNames = [
@@ -1256,16 +1178,20 @@ async function runImport() {
           
           let unitRow = null
           
-          // Hledáme od řádku pod měsíci
-          for (let rowIndex = monthsRowIndex + 1; rowIndex < rawData.length; rowIndex++) {
-            const cellValue = String(rawData[rowIndex]?.[unitColIndex] ?? '').trim()
-            const normalizedCell = normalize(cellValue)
+          // Hledáme řádek s jednotkou ve sloupci A (index 0)
+          for (let rowIndex = 0; rowIndex < rawData.length; rowIndex++) {
+            const cellValue = String(rawData[rowIndex]?.[0] ?? '').trim()
+            const normalizedCell = normalizeHeaderCell(cellValue)
             
-            // Check exact match or contains
-            if (possibleNames.some(n => normalize(n) === normalizedCell || normalizedCell.includes(normalize(n)))) {
-               // Double check: if it's just a partial match, make sure it's not a false positive (e.g. 1 vs 10)
-               // But for now simple check
+            // Improved matching for 318/03 vs 318/3
+            const unitNumSimple = unit.unitNumber.replace(/\/0(\d)/, '/$1'); // 318/03 -> 318/3
+
+            if (possibleNames.some(n => normalizeHeaderCell(n) === normalizedCell || normalizedCell.includes(normalizeHeaderCell(n))) || normalizedCell === normalizeHeaderCell(unitNumSimple)) {
                unitRow = rawData[rowIndex]
+               
+               if (unit.unitNumber === '318/03' || unit.unitNumber.includes('318/03')) {
+                   // console.log(`[DEBUG] Found unit ${unit.unitNumber} at Row Index ${rowIndex} (Excel Row ${rowIndex + 1}). Cell A: "${cellValue}"`);
+               }
                break
             }
           }
@@ -1275,47 +1201,68 @@ async function runImport() {
             continue
           }
 
-          // Pro každou namapovanou službu
-          for (const colIndexStr of Object.keys(headerMap)) {
-            const celkemColIndex = Number(colIndexStr)
-            const mapping = headerMap[celkemColIndex]
+          // Načíst měsíční zálohy - sčítání napříč službami (sloupce B až JA)
+          // Data jsou v blocích po 13 sloupcích (12 měsíců + 1 spacer)
+          // B-M (1-12), O-Z (14-25), AB-AM (27-38), atd.
+          const monthlyTotals = new Array(13).fill(0);
+          
+          // Iterujeme přes sloupce 1 (B) až 260 (IZ) - odhadovaný rozsah dat
+          for (let c = 1; c <= 260; c++) {
+             // Zjistíme, o který měsíc se jedná v rámci bloku 13 sloupců
+             // (c - 1) % 13 dá 0..12. 
+             // 0 -> měsíc 1
+             // 11 -> měsíc 12
+             // 12 -> spacer (ignorovat)
+             const mod = (c - 1) % 13;
+             if (mod < 12) {
+                 const month = mod + 1;
+                 const valStr = String(unitRow[c] ?? '').replace(/\s/g, '').replace(',', '.');
+                 const val = parseFloat(valStr);
+                 if (Number.isFinite(val)) {
+                     monthlyTotals[month] += val;
+                 }
+             }
+          }
 
-            // Hodnota v sloupci Celkem
-            const valStr = String(unitRow[celkemColIndex] ?? '').replace(/\s/g, '').replace(',', '.')
-            const totalAmount = parseFloat(valStr)
+          // Uložit sečtené měsíční zálohy
+          for (let month = 1; month <= 12; month++) {
+            const amount = monthlyTotals[month];
+            
+            if (!Number.isFinite(amount)) continue
 
-            if (!Number.isFinite(totalAmount) || totalAmount === 0) continue
-
-            // Uložit
-             try {
+            // Uložit měsíční zálohu
+            try {
               const existing = await prisma.advanceMonthly.findUnique({
                 where: {
                   unitId_serviceId_year_month: {
                     unitId: unit.id,
-                    serviceId: mapping.serviceId,
+                    serviceId: advanceService.id,
                     year: periodYear,
-                    month: 0
+                    month: month
                   }
                 }
-              }).catch(() => null)
+              })
 
               if (!existing) {
                 await prisma.advanceMonthly.create({
                   data: {
                     unitId: unit.id,
-                    serviceId: mapping.serviceId,
+                    serviceId: advanceService.id,
                     year: periodYear,
-                    month: 0,
-                    amount: totalAmount
+                    month: month,
+                    amount: amount
                   }
                 })
                 summary.advances.created += 1
               } else {
-                await prisma.advanceMonthly.update({ where: { id: existing.id }, data: { amount: totalAmount } })
+                await prisma.advanceMonthly.update({
+                  where: { id: existing.id },
+                  data: { amount: amount }
+                })
                 summary.advances.updated += 1
               }
             } catch (e) {
-              console.error(`[Předpis] Chyba DB: ${(e as Error).message}`)
+              console.error(`[Předpis] Chyba DB pro jednotku ${unit.unitNumber}, měsíc ${month}: ${(e as Error).message}`)
             }
           }
         }

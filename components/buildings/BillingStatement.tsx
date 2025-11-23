@@ -67,57 +67,7 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
   const isBrnoReal = data.building.managerName?.toLowerCase().includes('brnoreal');
   const logoSrc = isBrnoReal ? '/brnoreal.png' : '/adminreal.png';
 
-  const processServices = (services: typeof data.services) => {
-    const grouped: typeof data.services = [];
-    
-    // Helper to get base name
-    const getBaseName = (name: string) => {
-      if (name.startsWith("Ohřev teplé vody")) return "Ohřev teplé vody";
-      return name;
-    };
-
-    // Group by base name
-    const groups = new Map<string, typeof data.services>();
-    services.forEach(s => {
-      const base = getBaseName(s.name);
-      if (!groups.has(base)) groups.set(base, []);
-      groups.get(base)!.push(s);
-    });
-
-    // Reconstruct list preserving order of first appearance
-    const processedBases = new Set<string>();
-    services.forEach(s => {
-      const base = getBaseName(s.name);
-      if (processedBases.has(base)) return;
-      processedBases.add(base);
-
-      const group = groups.get(base)!;
-      if (base === "Ohřev teplé vody" && group.length > 1) {
-        // Merge
-        const merged = { ...group[0] };
-        merged.name = base;
-        merged.buildingCost = group.reduce((sum, x) => sum + x.buildingCost, 0);
-        merged.advance = group.reduce((sum, x) => sum + x.advance, 0);
-        merged.userCost = group.reduce((sum, x) => sum + x.userCost, 0);
-        merged.result = group.reduce((sum, x) => sum + x.result, 0);
-        
-        // Clear specific columns
-        merged.unit = "viz rozúčtování";
-        merged.share = 100; 
-        merged.buildingUnits = 0;
-        merged.pricePerUnit = 0;
-        merged.userUnits = 0;
-        
-        grouped.push(merged);
-      } else {
-        group.forEach(item => grouped.push(item));
-      }
-    });
-
-    return grouped;
-  };
-
-  const displayedServices = processServices(data.services);
+  const displayedServices = data.services;
 
   return (
     <div className="max-w-[297mm] mx-auto bg-white p-8 text-sm font-sans print:p-0 print:max-w-none">
@@ -188,7 +138,10 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
             </tr>
           </thead>
           <tbody>
-            {displayedServices.filter(service => !(service.buildingCost === 0 && service.advance === 0)).map((service, idx) => (
+            {displayedServices
+              .filter(service => !(service.buildingCost === 0 && service.advance === 0))
+              .filter(service => service.name !== 'Celková záloha' && service.name !== 'TOTAL_ADVANCE')
+              .map((service, idx) => (
               <tr key={idx} className={`border-b border-gray-200 hover:bg-blue-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                 <td className="p-2 font-medium text-gray-800">{service.name}</td>
                 <td className="p-2 text-center text-gray-600">{service.unit}</td>

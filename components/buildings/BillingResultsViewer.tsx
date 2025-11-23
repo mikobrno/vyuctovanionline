@@ -145,14 +145,14 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
 
   if (billingPeriods.length === 0) {
     return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
         <div className="flex items-start gap-3">
           <span className="text-2xl">⚠️</span>
           <div>
-            <h3 className="font-semibold text-yellow-900 mb-2">
+            <h3 className="font-semibold text-yellow-900 dark:text-yellow-200 mb-2">
               Zatím nebylo vygenerováno žádné vyúčtování
             </h3>
-            <p className="text-sm text-yellow-800">
+            <p className="text-sm text-yellow-800 dark:text-yellow-300">
               Pro vytvoření vyúčtování přejděte na záložku Vyúčtování a klikněte na tlačítko generování.
             </p>
           </div>
@@ -163,14 +163,14 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow p-4">
-        <label className="block text-sm font-medium text-gray-900 mb-2">
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+        <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
           Vyberte období vyúčtování
         </label>
         <select
           value={selectedPeriod}
           onChange={(e) => setSelectedPeriod(e.target.value)}
-          className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-gray-900"
+          className="w-full max-w-xs px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-gray-900 dark:text-white dark:bg-slate-700"
           aria-label="Výběr období vyúčtování"
         >
           {billingPeriods.map((period) => (
@@ -184,11 +184,11 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
       {currentPeriod && (
         <>
           {/* Akční tlačítka */}
-          <div className="bg-white rounded-lg shadow p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Hromadné odeslání</h3>
-                <p className="text-sm text-gray-600">
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Hromadné odeslání</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   Odeslat vyúčtování všem vlastníkům (Email + SMS)
                 </p>
               </div>
@@ -201,29 +201,29 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
               </button>
             </div>
             {sendResult && (
-              <div className="mt-4 p-4 bg-teal-50 rounded border border-teal-200">
+              <div className="mt-4 p-4 bg-teal-50 dark:bg-teal-900/20 rounded border border-teal-200 dark:border-teal-800">
                 <div className="grid grid-cols-4 gap-4 mb-3">
                   <div>
-                    <span className="text-sm text-gray-600">Emailů:</span>
-                    <span className="ml-2 font-bold text-green-600">{sendResult.sentEmail}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Emailů:</span>
+                    <span className="ml-2 font-bold text-green-600 dark:text-green-400">{sendResult.sentEmail}</span>
                   </div>
                   <div>
-                    <span className="text-sm text-gray-600">SMS:</span>
-                    <span className="ml-2 font-bold text-purple-600">{sendResult.sentSms}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">SMS:</span>
+                    <span className="ml-2 font-bold text-purple-600 dark:text-purple-400">{sendResult.sentSms}</span>
                   </div>
                   <div>
-                    <span className="text-sm text-gray-600">Přeskočeno:</span>
-                    <span className="ml-2 font-bold text-yellow-600">{sendResult.skipped}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Přeskočeno:</span>
+                    <span className="ml-2 font-bold text-yellow-600 dark:text-yellow-400">{sendResult.skipped}</span>
                   </div>
                   <div>
-                    <span className="text-sm text-gray-600">Selhalo:</span>
-                    <span className="ml-2 font-bold text-red-600">{sendResult.failed}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Selhalo:</span>
+                    <span className="ml-2 font-bold text-red-600 dark:text-red-400">{sendResult.failed}</span>
                   </div>
                 </div>
                 {sendResult.errors.length > 0 && (
                   <div className="mt-3">
-                    <p className="text-sm font-semibold text-gray-700 mb-2">Chyby:</p>
-                    <ul className="text-xs text-gray-600 space-y-1">
+                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Chyby:</p>
+                    <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
                       {sendResult.errors.map((error, idx) => (
                         <li key={idx}>• {error}</li>
                       ))}
@@ -235,73 +235,73 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
           </div>
 
           <div className="grid grid-cols-4 gap-4">
-            <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-              <div className="text-sm text-teal-600 uppercase mb-1">Celkové náklady</div>
-              <div className="text-2xl font-bold text-teal-900">
+            <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4">
+              <div className="text-sm text-teal-600 dark:text-teal-400 uppercase mb-1">Celkové náklady</div>
+              <div className="text-2xl font-bold text-teal-900 dark:text-teal-100">
                 {currentPeriod.totalCosts.toLocaleString('cs-CZ')} Kč
               </div>
             </div>
             
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="text-sm text-green-600 uppercase mb-1">Rozúčtováno</div>
-              <div className="text-2xl font-bold text-green-900">
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <div className="text-sm text-green-600 dark:text-green-400 uppercase mb-1">Rozúčtováno</div>
+              <div className="text-2xl font-bold text-green-900 dark:text-green-100">
                 {currentPeriod.results.reduce((sum, r) => sum + r.totalCost, 0).toLocaleString('cs-CZ')} Kč
               </div>
             </div>
 
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-              <div className="text-sm text-purple-600 uppercase mb-1">Zálohy</div>
-              <div className="text-2xl font-bold text-purple-900">
+            <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+              <div className="text-sm text-purple-600 dark:text-purple-400 uppercase mb-1">Zálohy</div>
+              <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">
                 {currentPeriod.results.reduce((sum, r) => sum + r.totalAdvancePrescribed, 0).toLocaleString('cs-CZ')} Kč
               </div>
             </div>
 
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-              <div className="text-sm text-orange-600 uppercase mb-1">Bilance</div>
-              <div className="text-2xl font-bold text-orange-900">
+            <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+              <div className="text-sm text-orange-600 dark:text-orange-400 uppercase mb-1">Bilance</div>
+              <div className="text-2xl font-bold text-orange-900 dark:text-orange-100">
                 {currentPeriod.results.reduce((sum, r) => sum + r.result, 0).toLocaleString('cs-CZ')} Kč
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                 Výsledky vyúčtování pro {currentPeriod.results.length} jednotek
               </h3>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
+                <thead className="bg-gray-50 dark:bg-slate-700/50">
                   <tr>
-                    <th className="px-2 py-3 text-left font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 z-10 border-r border-gray-200 min-w-[150px]">
+                    <th className="px-2 py-3 text-left font-medium text-gray-500 dark:text-gray-400 uppercase sticky left-0 bg-gray-50 dark:bg-slate-800 z-10 border-r border-gray-200 dark:border-slate-700 min-w-[150px]">
                       Jednotka
                     </th>
                     {services.map(service => (
-                      <th key={service.id} className="px-2 py-3 text-right font-medium text-gray-500 uppercase min-w-[100px]">
+                      <th key={service.id} className="px-2 py-3 text-right font-medium text-gray-500 dark:text-gray-400 uppercase min-w-[100px]">
                         {service.name}
                       </th>
                     ))}
-                    <th className="px-2 py-3 text-right font-bold text-gray-900 uppercase bg-gray-100 border-l border-gray-200">
+                    <th className="px-2 py-3 text-right font-bold text-gray-900 dark:text-white uppercase bg-gray-100 dark:bg-slate-700 border-l border-gray-200 dark:border-slate-600">
                       Náklady celkem
                     </th>
-                    <th className="px-2 py-3 text-right font-bold text-gray-900 uppercase bg-gray-100">
+                    <th className="px-2 py-3 text-right font-bold text-gray-900 dark:text-white uppercase bg-gray-100 dark:bg-slate-700">
                       Zálohy
                     </th>
-                    <th className="px-2 py-3 text-right font-bold text-gray-900 uppercase bg-gray-100">
+                    <th className="px-2 py-3 text-right font-bold text-gray-900 dark:text-white uppercase bg-gray-100 dark:bg-slate-700">
                       Přeplatek / Nedoplatek
                     </th>
-                    <th className="px-2 py-3 text-center font-medium text-gray-500 uppercase">
+                    <th className="px-2 py-3 text-center font-medium text-gray-500 dark:text-gray-400 uppercase">
                       Kontrola
                     </th>
                     <th className="px-2 py-3"></th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
                   {/* Řádek se součty */}
-                  <tr className="bg-gray-100 font-bold">
-                    <td className="px-2 py-3 text-gray-900 sticky left-0 bg-gray-100 z-10 border-r border-gray-200">
+                  <tr className="bg-gray-100 dark:bg-slate-700 font-bold">
+                    <td className="px-2 py-3 text-gray-900 dark:text-white sticky left-0 bg-gray-100 dark:bg-slate-700 z-10 border-r border-gray-200 dark:border-slate-600">
                       CELKEM (Rozúčtováno)
                     </td>
                     {services.map(service => {
@@ -310,29 +310,29 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                         return sum + (sc?.unitCost || 0)
                       }, 0)
                       return (
-                        <td key={service.id} className="px-2 py-3 text-right text-gray-900">
+                        <td key={service.id} className="px-2 py-3 text-right text-gray-900 dark:text-white">
                           {serviceTotal.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
                       )
                     })}
-                    <td className="px-2 py-3 text-right text-gray-900 border-l border-gray-200">
+                    <td className="px-2 py-3 text-right text-gray-900 dark:text-white border-l border-gray-200 dark:border-slate-600">
                       {currentPeriod.results.reduce((sum, r) => sum + r.totalCost, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </td>
-                    <td className="px-2 py-3 text-right text-gray-900">
+                    <td className="px-2 py-3 text-right text-gray-900 dark:text-white">
                       {currentPeriod.results.reduce((sum, r) => sum + r.totalAdvancePrescribed, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </td>
-                    <td className="px-2 py-3 text-right text-gray-900">
+                    <td className="px-2 py-3 text-right text-gray-900 dark:text-white">
                       {currentPeriod.results.reduce((sum, r) => sum + r.result, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </td>
-                    <td className="px-2 py-3 text-center text-gray-500">
+                    <td className="px-2 py-3 text-center text-gray-500 dark:text-gray-400">
                       OK
                     </td>
                     <td></td>
                   </tr>
 
                   {/* Řádek Skutečná suma */}
-                  <tr className="bg-blue-50 font-bold border-t border-blue-200">
-                    <td className="px-2 py-3 text-blue-900 sticky left-0 bg-blue-50 z-10 border-r border-blue-200">
+                  <tr className="bg-blue-50 dark:bg-blue-900/20 font-bold border-t border-blue-200 dark:border-blue-800">
+                    <td className="px-2 py-3 text-blue-900 dark:text-blue-100 sticky left-0 bg-blue-50 dark:bg-blue-900/20 z-10 border-r border-blue-200 dark:border-blue-800">
                       SKUTEČNÁ SUMA (Faktury)
                     </td>
                     {services.map(service => {
@@ -344,12 +344,12 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                       const buildingTotal = serviceCost?.buildingTotalCost || 0
 
                       return (
-                        <td key={service.id} className="px-2 py-3 text-right text-blue-900">
+                        <td key={service.id} className="px-2 py-3 text-right text-blue-900 dark:text-blue-100">
                           {buildingTotal.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
                       )
                     })}
-                    <td className="px-2 py-3 text-right text-blue-900 border-l border-blue-200">
+                    <td className="px-2 py-3 text-right text-blue-900 dark:text-blue-100 border-l border-blue-200 dark:border-blue-800">
                       {(() => {
                          const totalRealCost = services.reduce((sum, service) => {
                             const sc = currentPeriod.results
@@ -364,8 +364,8 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                   </tr>
 
                   {/* Řádek Rozdíl */}
-                  <tr className="bg-orange-50 font-bold border-b-2 border-orange-200">
-                    <td className="px-2 py-3 text-gray-900 sticky left-0 bg-orange-50 z-10 border-r border-orange-200">
+                  <tr className="bg-orange-50 dark:bg-orange-900/20 font-bold border-b-2 border-orange-200 dark:border-orange-800">
+                    <td className="px-2 py-3 text-gray-900 dark:text-white sticky left-0 bg-orange-50 dark:bg-orange-900/20 z-10 border-r border-orange-200 dark:border-orange-800">
                       ROZDÍL (Kontrola)
                     </td>
                     {services.map(service => {
@@ -382,12 +382,12 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                       const diff = serviceTotal - buildingTotal
 
                       return (
-                        <td key={service.id} className={`px-2 py-3 text-right ${Math.abs(diff) > 1 ? 'text-red-600' : 'text-green-600'}`}>
+                        <td key={service.id} className={`px-2 py-3 text-right ${Math.abs(diff) > 1 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
                           {diff.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
                       )
                     })}
-                    <td className="px-2 py-3 text-right border-l border-orange-200">
+                    <td className="px-2 py-3 text-right border-l border-orange-200 dark:border-orange-800">
                        {(() => {
                          const totalCalculated = currentPeriod.results.reduce((sum, r) => sum + r.totalCost, 0)
                          const totalReal = services.reduce((sum, service) => {
@@ -398,7 +398,7 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                          }, 0)
                          const diff = totalCalculated - totalReal
                          return (
-                           <span className={Math.abs(diff) > 1 ? 'text-red-600' : 'text-green-600'}>
+                           <span className={Math.abs(diff) > 1 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}>
                              {diff.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                            </span>
                          )
@@ -413,51 +413,51 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                     const isCheckOk = Math.abs(check) < 1
 
                     return (
-                      <tr key={result.id} className="hover:bg-gray-50">
-                        <td className="px-2 py-2 whitespace-nowrap font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 z-10 border-r border-gray-200">
+                      <tr key={result.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                        <td className="px-2 py-2 whitespace-nowrap font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/50 z-10 border-r border-gray-200 dark:border-slate-700">
                           {result.unit.unitNumber}
                         </td>
                         {services.map(service => {
                           const sc = result.serviceCosts.find(c => c.serviceId === service.id)
                           return (
-                            <td key={service.id} className="px-2 py-2 text-right text-gray-900 whitespace-nowrap">
+                            <td key={service.id} className="px-2 py-2 text-right text-gray-900 dark:text-gray-300 whitespace-nowrap">
                               {sc ? sc.unitCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00'}
                             </td>
                           )
                         })}
-                        <td className="px-2 py-2 text-right font-semibold text-gray-900 bg-gray-50 border-l border-gray-200 whitespace-nowrap">
+                        <td className="px-2 py-2 text-right font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-700/50 border-l border-gray-200 dark:border-slate-700 whitespace-nowrap">
                           {result.totalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="px-2 py-2 text-right text-gray-900 bg-gray-50 whitespace-nowrap">
+                        <td className="px-2 py-2 text-right text-gray-900 dark:text-gray-300 bg-gray-50 dark:bg-slate-700/50 whitespace-nowrap">
                           {result.totalAdvancePrescribed.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className={`px-2 py-2 text-right font-bold bg-gray-50 whitespace-nowrap ${
-                          result.result > 0 ? 'text-red-600' : result.result < 0 ? 'text-green-600' : 'text-gray-900'
+                        <td className={`px-2 py-2 text-right font-bold bg-gray-50 dark:bg-slate-700/50 whitespace-nowrap ${
+                          result.result > 0 ? 'text-red-600 dark:text-red-400' : result.result < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'
                         }`}>
                           {result.result.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className={`px-2 py-2 text-center text-xs font-bold ${isCheckOk ? 'text-green-600' : 'text-red-600'}`}>
+                        <td className={`px-2 py-2 text-center text-xs font-bold ${isCheckOk ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                           {isCheckOk ? 'OK' : `${check} Kč`}
                         </td>
                         <td className="px-2 py-2 text-right">
                           <div className="flex justify-end gap-2 items-center">
                             <button
                               onClick={() => handleTestEmail(result.id)}
-                              className="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 rounded hover:bg-blue-50"
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-xs font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
                               title="Odeslat testovací email na kost@onlinesprava.cz"
                             >
                               Test Email
                             </button>
                             <button
                               onClick={() => handleTestSms(result.id)}
-                              className="text-purple-600 hover:text-purple-800 text-xs font-medium px-2 py-1 rounded hover:bg-purple-50"
+                              className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 text-xs font-medium px-2 py-1 rounded hover:bg-purple-50 dark:hover:bg-purple-900/20"
                               title="Odeslat testovací SMS na 777338203"
                             >
                               Test SMS
                             </button>
                             <Link
                               href={`/buildings/${buildingId}/billing/${result.id}`}
-                              className="text-primary hover:text-primary-hover text-xs font-medium px-2 py-1 rounded hover:bg-gray-50"
+                              className="text-primary hover:text-primary-hover text-xs font-medium px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-slate-700"
                             >
                               Detail
                             </Link>

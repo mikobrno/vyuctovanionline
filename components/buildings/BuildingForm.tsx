@@ -75,21 +75,21 @@ export default function BuildingForm({ building }: BuildingFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow">
-      <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-xl font-semibold text-gray-900">Základní údaje</h2>
+    <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 rounded-lg shadow">
+      <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Základní údaje</h2>
       </div>
 
       <div className="px-6 py-4 space-y-6">
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
             {error}
           </div>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="name" className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
               Název domu *
             </label>
             <input
@@ -99,13 +99,13 @@ export default function BuildingForm({ building }: BuildingFormProps) {
               required
               value={formData.name}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
               placeholder="např. Společenství vlastníků pro dům Neptun"
             />
           </div>
 
           <div>
-            <label htmlFor="ico" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="ico" className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
               IČO
             </label>
             <input
@@ -114,13 +114,13 @@ export default function BuildingForm({ building }: BuildingFormProps) {
               name="ico"
               value={formData.ico}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
               placeholder="12345678"
             />
           </div>
 
           <div>
-            <label htmlFor="address" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="address" className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
               Adresa *
             </label>
             <input
@@ -130,13 +130,13 @@ export default function BuildingForm({ building }: BuildingFormProps) {
               required
               value={formData.address}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
               placeholder="Neptunova 123"
             />
           </div>
 
           <div>
-            <label htmlFor="city" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="city" className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
               Město *
             </label>
             <input
@@ -146,13 +146,13 @@ export default function BuildingForm({ building }: BuildingFormProps) {
               required
               value={formData.city}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
               placeholder="Praha"
             />
           </div>
 
           <div>
-            <label htmlFor="zip" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="zip" className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
               PSČ *
             </label>
             <input
@@ -162,13 +162,13 @@ export default function BuildingForm({ building }: BuildingFormProps) {
               required
               value={formData.zip}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
               placeholder="11000"
             />
           </div>
 
           <div>
-            <label htmlFor="bankAccount" className="block text-sm font-medium text-gray-900 mb-2">
+            <label htmlFor="bankAccount" className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
               Číslo účtu
             </label>
             <input
@@ -177,17 +177,17 @@ export default function BuildingForm({ building }: BuildingFormProps) {
               name="bankAccount"
               value={formData.bankAccount}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
               placeholder="123456789/0100"
             />
           </div>
         </div>
       </div>
 
-      <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-4">
+      <div className="px-6 py-4 bg-gray-50 dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-4">
         <Link
           href={building ? `/buildings/${building.id}` : '/buildings'}
-          className="px-6 py-2 border border-gray-300 rounded-lg font-semibold text-gray-900 hover:bg-gray-100 transition-colors"
+          className="px-6 py-2 border border-gray-300 dark:border-slate-600 rounded-lg font-semibold text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
         >
           Zrušit
         </Link>

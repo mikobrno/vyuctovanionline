@@ -55,7 +55,7 @@ export default async function UnitDetailPage({ params }: { params: Promise<{ id:
   const currentOwnership = unit.ownerships.find((o: typeof unit.ownerships[number]) => !o.validTo) || unit.ownerships[0]
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
       <DashboardNav session={session} />
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -63,17 +63,17 @@ export default async function UnitDetailPage({ params }: { params: Promise<{ id:
           <div className="flex items-center gap-4 mb-4">
             <Link 
               href="/units"
-              className="text-gray-400 hover:text-gray-900"
+              className="text-gray-400 hover:text-gray-900 dark:hover:text-white"
             >
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </Link>
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-gray-900">
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
                 Jednotka {unit.unitNumber}
               </h1>
-              <p className="mt-2 text-gray-500">
+              <p className="mt-2 text-gray-500 dark:text-gray-400">
                 {unit.building.name}
               </p>
             </div>
@@ -90,38 +90,38 @@ export default async function UnitDetailPage({ params }: { params: Promise<{ id:
           {/* Levý sloupec - hlavní informace */}
           <div className="lg:col-span-2 space-y-6">
             {/* Základní údaje */}
-            <div className="bg-white rounded-lg shadow">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">Základní údaje</h2>
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Základní údaje</h2>
               </div>
               <div className="px-6 py-4">
                 <div className="grid grid-cols-2 gap-6">
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Číslo jednotky</label>
-                    <p className="mt-1 text-gray-900 text-lg font-semibold">{unit.unitNumber}</p>
+                    <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Číslo jednotky</label>
+                    <p className="mt-1 text-gray-900 dark:text-white text-lg font-semibold">{unit.unitNumber}</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Variabilní symbol</label>
-                    <p className="mt-1 text-gray-900 text-lg font-semibold">{unit.variableSymbol}</p>
+                    <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Variabilní symbol</label>
+                    <p className="mt-1 text-gray-900 dark:text-white text-lg font-semibold">{unit.variableSymbol}</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Celková výměra</label>
-                    <p className="mt-1 text-gray-900">{unit.totalArea} m²</p>
+                    <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Celková výměra</label>
+                    <p className="mt-1 text-gray-900 dark:text-white">{unit.totalArea} m²</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Podíl na společných částech</label>
-                    <p className="mt-1 text-gray-900">{unit.shareNumerator}/{unit.shareDenominator}</p>
+                    <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Podíl na společných částech</label>
+                    <p className="mt-1 text-gray-900 dark:text-white">{unit.shareNumerator}/{unit.shareDenominator}</p>
                   </div>
                   {unit.floorArea && (
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Podlahová plocha</label>
-                      <p className="mt-1 text-gray-900">{unit.floorArea} m²</p>
+                      <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Podlahová plocha</label>
+                      <p className="mt-1 text-gray-900 dark:text-white">{unit.floorArea} m²</p>
                     </div>
                   )}
                   {unit.residents && (
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Počet obyvatel</label>
-                      <p className="mt-1 text-gray-900">{unit.residents}</p>
+                      <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Počet obyvatel</label>
+                      <p className="mt-1 text-gray-900 dark:text-white">{unit.residents}</p>
                     </div>
                   )}
                 </div>
@@ -129,23 +129,23 @@ export default async function UnitDetailPage({ params }: { params: Promise<{ id:
             </div>
 
             {/* Aktuální vlastník */}
-            <div className="bg-white rounded-lg shadow">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">Aktuální vlastník</h2>
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Aktuální vlastník</h2>
               </div>
               <div className="px-6 py-4">
                 {currentOwnership ? (
                   <div className="flex items-start gap-4">
-                    <div className="h-16 w-16 bg-teal-50 rounded-full flex items-center justify-center shrink-0">
-                      <svg className="h-8 w-8 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div className="h-16 w-16 bg-teal-50 dark:bg-teal-900/30 rounded-full flex items-center justify-center shrink-0">
+                      <svg className="h-8 w-8 text-teal-600 dark:text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </svg>
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                         {currentOwnership.owner.firstName} {currentOwnership.owner.lastName}
                       </h3>
-                      <div className="mt-2 space-y-1 text-sm text-gray-500">
+                      <div className="mt-2 space-y-1 text-sm text-gray-500 dark:text-gray-400">
                         <div className="flex items-center">
                           <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -160,7 +160,7 @@ export default async function UnitDetailPage({ params }: { params: Promise<{ id:
                             {currentOwnership.owner.phone}
                           </div>
                         )}
-                        <div className="flex items-center text-gray-500 mt-2">
+                        <div className="flex items-center text-gray-500 dark:text-gray-400 mt-2">
                           <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
@@ -170,42 +170,42 @@ export default async function UnitDetailPage({ params }: { params: Promise<{ id:
                     </div>
                   </div>
                 ) : (
-                  <p className="text-gray-500">Jednotka nemá přiřazeného vlastníka</p>
+                  <p className="text-gray-500 dark:text-gray-400">Jednotka nemá přiřazeného vlastníka</p>
                 )}
               </div>
             </div>
 
             {/* Měřidla */}
-            <div className="bg-white rounded-lg shadow">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">Měřidla</h2>
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Měřidla</h2>
               </div>
               <div className="px-6 py-4">
                 {unit.meters.length === 0 ? (
-                  <p className="text-gray-500">Zatím nejsou evidována žádná měřidla</p>
+                  <p className="text-gray-500 dark:text-gray-400">Zatím nejsou evidována žádná měřidla</p>
                 ) : (
                   <div className="space-y-4">
                     {unit.meters.map((meter: typeof unit.meters[number]) => (
-                      <div key={meter.id} className="border border-gray-200 rounded-lg p-4">
+                      <div key={meter.id} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4">
                         <div className="flex justify-between items-start mb-2">
                           <div>
-                            <h3 className="font-medium text-gray-900">{meter.service?.name || 'Služba neuvedena'}</h3>
-                            <p className="text-sm text-gray-500">Výrobní číslo: {meter.serialNumber}</p>
+                            <h3 className="font-medium text-gray-900 dark:text-white">{meter.service?.name || 'Služba neuvedena'}</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Výrobní číslo: {meter.serialNumber}</p>
                           </div>
                           <span className={`px-2 py-1 text-xs rounded-full ${
                             meter.isActive 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-gray-100 text-gray-800'
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400' 
+                              : 'bg-gray-100 dark:bg-slate-700 text-gray-800 dark:text-gray-300'
                           }`}>
                             {meter.isActive ? 'Aktivní' : 'Neaktivní'}
                           </span>
                         </div>
                         {meter.readings.length > 0 && (
-                          <div className="mt-3 pt-3 border-t border-gray-100">
-                            <p className="text-sm text-gray-500 mb-2">Poslední odečet:</p>
-                            <p className="text-lg font-semibold text-gray-900">
+                          <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-700">
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Poslední odečet:</p>
+                            <p className="text-lg font-semibold text-gray-900 dark:text-white">
                               {meter.readings[0].value} {meter.service?.measurementUnit || ''}
-                              <span className="text-sm font-normal text-gray-500 ml-2">
+                              <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
                                 ({new Date(meter.readings[0].readingDate).toLocaleDateString('cs-CZ')})
                               </span>
                             </p>
@@ -222,24 +222,24 @@ export default async function UnitDetailPage({ params }: { params: Promise<{ id:
           {/* Pravý sloupec - platby */}
           <div className="space-y-6">
             {/* Platby */}
-            <div className="bg-white rounded-lg shadow">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">Poslední platby</h2>
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Poslední platby</h2>
               </div>
               <div className="px-6 py-4">
                 {unit.payments.length === 0 ? (
-                  <p className="text-gray-500 text-sm">Zatím nejsou evidovány žádné platby</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">Zatím nejsou evidovány žádné platby</p>
                 ) : (
                   <div className="space-y-3">
                     {unit.payments.map((payment: typeof unit.payments[number]) => (
-                      <div key={payment.id} className="flex justify-between items-start py-3 border-b border-gray-100 last:border-0">
+                      <div key={payment.id} className="flex justify-between items-start py-3 border-b border-gray-100 dark:border-slate-700 last:border-0">
                         <div>
-                          <p className="text-sm font-medium text-gray-900">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
                             {new Date(payment.paymentDate).toLocaleDateString('cs-CZ')}
                           </p>
-                          <p className="text-xs text-gray-500">VS: {payment.variableSymbol}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">VS: {payment.variableSymbol}</p>
                         </div>
-                        <p className="text-sm font-semibold text-green-600">
+                        <p className="text-sm font-semibold text-green-600 dark:text-green-400">
                           {payment.amount.toLocaleString('cs-CZ')} Kč
                         </p>
                       </div>
@@ -251,18 +251,18 @@ export default async function UnitDetailPage({ params }: { params: Promise<{ id:
 
             {/* Historie vlastnictví */}
             {unit.ownerships.length > 1 && (
-              <div className="bg-white rounded-lg shadow">
-                <div className="px-6 py-4 border-b border-gray-200">
-                  <h2 className="text-xl font-semibold text-gray-900">Historie vlastnictví</h2>
+              <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
+                <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Historie vlastnictví</h2>
                 </div>
                 <div className="px-6 py-4">
                   <div className="space-y-3">
                     {unit.ownerships.map((ownership: typeof unit.ownerships[number]) => (
                       <div key={ownership.id} className="text-sm">
-                        <p className="font-medium text-gray-900">
+                        <p className="font-medium text-gray-900 dark:text-white">
                           {ownership.owner.firstName} {ownership.owner.lastName}
                         </p>
-                        <p className="text-gray-500">
+                        <p className="text-gray-500 dark:text-gray-400">
                           {new Date(ownership.validFrom).toLocaleDateString('cs-CZ')}
                           {ownership.validTo 
                             ? ` - ${new Date(ownership.validTo).toLocaleDateString('cs-CZ')}`

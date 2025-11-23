@@ -238,12 +238,12 @@ export default function CompleteImport({ year = new Date().getFullYear(), buildi
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">📊 Nahrát kompletní vyúčtování</h2>
+    <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
+      <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">📊 Nahrát kompletní vyúčtování</h2>
       
       {!buildingId && (
         <div className="mb-6">
-          <label htmlFor="buildingName" className="block text-sm font-medium text-gray-500 mb-2">
+          <label htmlFor="buildingName" className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
             Název domu (volitelné)
           </label>
           <input
@@ -252,21 +252,21 @@ export default function CompleteImport({ year = new Date().getFullYear(), buildi
             value={buildingName}
             onChange={(e) => setBuildingName(e.target.value)}
             placeholder="Např. Bytový dům č.p. 318, Brno"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-gray-900"
+            className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-gray-900 dark:text-white bg-white dark:bg-slate-900"
           />
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Pokud dům s tímto názvem už existuje, použije se. Jinak se vytvoří nový. Pokud necháte prázdné, vytvoří se &quot;Importovaná budova&quot;.
           </p>
         </div>
       )}
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-500 mb-2">
+        <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
           Rok vyúčtování: <strong>{year}</strong>
         </label>
       </div>
 
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center transition-colors">
+      <div className="border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg p-8 text-center transition-colors">
         <input
           ref={inputRef}
           id="complete-upload"
@@ -281,11 +281,11 @@ export default function CompleteImport({ year = new Date().getFullYear(), buildi
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          className={`block ${uploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${dragActive ? 'text-teal-600' : ''}`}
+          className={`block ${uploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${dragActive ? 'text-teal-600 dark:text-teal-400' : ''}`}
         >
-          <div className="mx-auto h-16 w-16 text-gray-400 mb-4">
+          <div className="mx-auto h-16 w-16 text-gray-400 dark:text-gray-500 mb-4">
             {uploading ? (
-              <svg className="animate-spin h-16 w-16 text-teal-600" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin h-16 w-16 text-teal-600 dark:text-teal-400" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -295,28 +295,28 @@ export default function CompleteImport({ year = new Date().getFullYear(), buildi
               </svg>
             )}
           </div>
-          <p className="text-lg font-medium text-gray-900 mb-2">
+          <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
             {uploading ? currentStep : 'Klikněte pro výběr souboru'}
           </p>
           {uploading && (
-            <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2 max-w-md mx-auto">
-              <div className="bg-teal-600 h-2.5 rounded-full transition-all duration-300" style={{ width: `${percentage}%` }}></div>
+            <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2.5 mb-2 max-w-md mx-auto">
+              <div className="bg-teal-600 dark:bg-teal-500 h-2.5 rounded-full transition-all duration-300" style={{ width: `${percentage}%` }}></div>
             </div>
           )}
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             {uploading ? 'Prosím čekejte...' : 'nebo přetáhněte soubor sem'}
           </p>
-          <p className="text-xs text-gray-500 mt-2">Podporované formáty: .xlsx, .xls</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Podporované formáty: .xlsx, .xls</p>
         </label>
       </div>
 
       {/* Průběh importu */}
       {uploading && progress.length > 0 && (
-        <div className="mt-4 bg-teal-50 border border-teal-200 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-teal-900 mb-2">📋 Průběh importu</h3>
+        <div className="mt-4 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4">
+          <h3 className="text-sm font-semibold text-teal-900 dark:text-teal-100 mb-2">📋 Průběh importu</h3>
           <div className="space-y-1 max-h-48 overflow-y-auto">
             {progress.map((step, index) => (
-              <div key={index} className="text-sm text-teal-800 flex items-start">
+              <div key={index} className="text-sm text-teal-800 dark:text-teal-200 flex items-start">
                 <span className="mr-2">•</span>
                 <span>{step}</span>
               </div>
@@ -326,63 +326,63 @@ export default function CompleteImport({ year = new Date().getFullYear(), buildi
       )}
 
       {error && (
-        <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+        <div className="mt-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-200 px-4 py-3 rounded-lg text-sm">
           ⚠️ {error}
         </div>
       )}
 
       {result && (
         <div className="mt-6 space-y-4">
-          <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg text-sm">
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg text-sm">
             ✅ {result.message}
           </div>
 
-          <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-teal-900 mb-3">Souhrn importu</h3>
+          <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-teal-900 dark:text-teal-100 mb-3">Souhrn importu</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div>
-                <p className="text-xs text-teal-700">Dům</p>
-                <p className="text-lg font-semibold text-teal-900">
+                <p className="text-xs text-teal-700 dark:text-teal-300">Dům</p>
+                <p className="text-lg font-semibold text-teal-900 dark:text-teal-100">
                   {result.summary.building.name}
-                  {result.summary.building.created && <span className="ml-2 text-xs text-teal-600">(nový)</span>}
+                  {result.summary.building.created && <span className="ml-2 text-xs text-teal-600 dark:text-teal-400">(nový)</span>}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-teal-700">Jednotky</p>
-                <p className="text-lg font-semibold text-teal-900">
+                <p className="text-xs text-teal-700 dark:text-teal-300">Jednotky</p>
+                <p className="text-lg font-semibold text-teal-900 dark:text-teal-100">
                   {result.summary.units.total}
-                  <span className="ml-2 text-xs text-teal-600">
+                  <span className="ml-2 text-xs text-teal-600 dark:text-teal-400">
                     (+{result.summary.units.created} nových)
                   </span>
                 </p>
               </div>
               <div>
-                <p className="text-xs text-teal-700">Služby</p>
-                <p className="text-lg font-semibold text-teal-900">
+                <p className="text-xs text-teal-700 dark:text-teal-300">Služby</p>
+                <p className="text-lg font-semibold text-teal-900 dark:text-teal-100">
                   {result.summary.services.total}
-                  <span className="ml-2 text-xs text-teal-600">
+                  <span className="ml-2 text-xs text-teal-600 dark:text-teal-400">
                     (+{result.summary.services.created} nových)
                   </span>
                 </p>
               </div>
               <div>
-                <p className="text-xs text-teal-700">Náklady (faktury)</p>
-                <p className="text-lg font-semibold text-teal-900">{result.summary.costs.total}</p>
+                <p className="text-xs text-teal-700 dark:text-teal-300">Náklady (faktury)</p>
+                <p className="text-lg font-semibold text-teal-900 dark:text-teal-100">{result.summary.costs.total}</p>
               </div>
               <div>
-                <p className="text-xs text-teal-700">Odečty</p>
-                <p className="text-lg font-semibold text-teal-900">{result.summary.readings.total}</p>
+                <p className="text-xs text-teal-700 dark:text-teal-300">Odečty</p>
+                <p className="text-lg font-semibold text-teal-900 dark:text-teal-100">{result.summary.readings.total}</p>
               </div>
               <div>
-                <p className="text-xs text-teal-700">Platby</p>
-                <p className="text-lg font-semibold text-teal-900">{result.summary.payments.total}</p>
+                <p className="text-xs text-teal-700 dark:text-teal-300">Platby</p>
+                <p className="text-lg font-semibold text-teal-900 dark:text-teal-100">{result.summary.payments.total}</p>
               </div>
               {result.summary.advances && (
                 <div>
-                  <p className="text-xs text-teal-700">Předpis záloh</p>
-                  <p className="text-lg font-semibold text-teal-900">
+                  <p className="text-xs text-teal-700 dark:text-teal-300">Předpis záloh</p>
+                  <p className="text-lg font-semibold text-teal-900 dark:text-teal-100">
                     {result.summary.advances.total}
-                    <span className="ml-2 text-xs text-teal-600">
+                    <span className="ml-2 text-xs text-teal-600 dark:text-teal-400">
                       (+{result.summary.advances.created} nových, {result.summary.advances.updated} upraveno)
                     </span>
                   </p>
@@ -401,9 +401,9 @@ export default function CompleteImport({ year = new Date().getFullYear(), buildi
 
           {result.summary.warnings.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Upozornění</h3>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <ul className="text-sm text-yellow-800 space-y-1">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Upozornění</h3>
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                <ul className="text-sm text-yellow-800 dark:text-yellow-200 space-y-1">
                   {result.summary.warnings.map((warn, index) => (
                     <li key={index}>⚠️ {warn}</li>
                   ))}
@@ -414,9 +414,9 @@ export default function CompleteImport({ year = new Date().getFullYear(), buildi
 
           {result.summary.errors.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Chyby při importu</h3>
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <ul className="text-sm text-red-800 space-y-1">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Chyby při importu</h3>
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                <ul className="text-sm text-red-800 dark:text-red-200 space-y-1">
                   {result.summary.errors.map((err, index) => (
                     <li key={index}>❌ {err}</li>
                   ))}

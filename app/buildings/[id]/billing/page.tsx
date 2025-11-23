@@ -3,7 +3,10 @@ import { PrismaClient } from '@prisma/client';
 import { BillingSummaryCards } from '@/components/billing/BillingSummaryCards';
 import { BillingUnitTable } from '@/components/billing/BillingUnitTable';
 import { BillingControls } from '@/components/billing/BillingControls';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import AppLayout from '@/components/layout/AppLayout';
 
 const prisma = new PrismaClient();
 
@@ -13,6 +16,12 @@ interface PageProps {
 }
 
 export default async function BillingDashboardPage({ params, searchParams }: PageProps) {
+  const session = await getServerSession(authOptions);
+
+  if (!session) {
+    redirect('/login');
+  }
+
   const { id } = await params;
   const { year } = await searchParams;
   
@@ -91,50 +100,52 @@ export default async function BillingDashboardPage({ params, searchParams }: Pag
   });
 
   return (
-    <div className="container mx-auto py-10 px-4 max-w-7xl">
-      {/* Hlavička stránky */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-        <div>
-          <div className="mb-2">
-            <a href={`/buildings/${id}`} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
-              ← Zpět na detail budovy
+    <AppLayout user={session.user}>
+      <div className="container mx-auto py-10 px-4 max-w-7xl">
+        {/* Hlavička stránky */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+          <div>
+            <div className="mb-2">
+              <a href={`/buildings/${id}`} className="text-sm text-muted-foreground hover:text-foreground dark:text-gray-400 dark:hover:text-white flex items-center gap-1">
+                ← Zpět na detail budovy
+              </a>
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Vyúčtování služeb</h1>
+            <p className="text-muted-foreground dark:text-gray-400 mt-1">
+              {building.name} • Rok {currentYear}
+            </p>
+          </div>
+          <div>
+            <a 
+              href={`/buildings/${id}?tab=results`} 
+              className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-blue-600 text-white hover:bg-blue-700 h-10 px-4 py-2"
+            >
+              Přehled výsledků
             </a>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Vyúčtování služeb</h1>
-          <p className="text-muted-foreground mt-1">
-            {building.name} • Rok {currentYear}
-          </p>
         </div>
-        <div>
-          <a 
-            href={`/buildings/${id}?tab=results`} 
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-blue-600 text-white hover:bg-blue-700 h-10 px-4 py-2"
-          >
-            Přehled výsledků
-          </a>
+
+        {/* Ovládací prvky */}
+        <BillingControls 
+          buildingId={id} 
+          year={currentYear} 
+          status={billingPeriod?.status || 'DRAFT'} 
+          billingPeriodId={billingPeriod?.id}
+        />
+
+        {/* Karty s přehledem */}
+        <BillingSummaryCards 
+          totalCost={summary.totalCost}
+          totalAdvance={summary.totalAdvance}
+          balance={summary.balance}
+        />
+
+        {/* Tabulka jednotek */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold tracking-tight dark:text-white">Detailní přehled jednotek</h2>
+          <BillingUnitTable buildingId={id} results={tableData} />
         </div>
       </div>
-
-      {/* Ovládací prvky */}
-      <BillingControls 
-        buildingId={id} 
-        year={currentYear} 
-        status={billingPeriod?.status || 'DRAFT'} 
-        billingPeriodId={billingPeriod?.id}
-      />
-
-      {/* Karty s přehledem */}
-      <BillingSummaryCards 
-        totalCost={summary.totalCost}
-        totalAdvance={summary.totalAdvance}
-        balance={summary.balance}
-      />
-
-      {/* Tabulka jednotek */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold tracking-tight">Detailní přehled jednotek</h2>
-        <BillingUnitTable buildingId={id} results={tableData} />
-      </div>
-    </div>
+    </AppLayout>
   );
 }

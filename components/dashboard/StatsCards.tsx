@@ -93,11 +93,11 @@ export default async function StatsCards({ buildingId }: StatsCardsProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       {stats.map((stat) => (
-        <div key={stat.name} className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-shadow">
+        <div key={stat.name} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-6 border border-gray-100 dark:border-slate-700 hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">{stat.name}</p>
-              <h3 className="text-3xl font-bold text-gray-900">{stat.value}</h3>
+              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">{stat.name}</p>
+              <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{stat.value}</h3>
             </div>
             <div className={`p-3 rounded-full ${stat.iconBg} shadow-sm`}>
               {stat.icon}
@@ -105,7 +105,7 @@ export default async function StatsCards({ buildingId }: StatsCardsProps) {
           </div>
           
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">{stat.description}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-300">{stat.description}</p>
             
             <div className="flex items-center gap-2 text-xs font-medium">
               {stat.trendColor === 'text-teal-500' ? (
@@ -120,7 +120,7 @@ export default async function StatsCards({ buildingId }: StatsCardsProps) {
               <span className={stat.trendColor}>{stat.trend}</span>
             </div>
 
-            <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+            <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
               <div 
                 className={`h-1.5 rounded-full ${stat.progressColor}`} 
                 style={{ width: `${stat.progress}%` }}

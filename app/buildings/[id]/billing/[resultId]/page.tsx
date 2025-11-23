@@ -90,22 +90,104 @@ export default async function BillingResultDetailPage({
     orderBy: { paymentDate: 'asc' }
   });
 
-  // Použití JSON polí pro měsíční data (pokud existují)
-  const monthlyPaymentsJson = (billingResult.monthlyPayments as number[]) || [];
-  const monthlyPrescriptionsJson = (billingResult.monthlyPrescriptions as number[]) || [];
+  // Načíst předpisy záloh (AdvanceMonthly) pro případ, že nejsou v JSONu
+  const advanceMonthlies = await prisma.advanceMonthly.findMany({
+    where: {
+      unitId: billingResult.unitId,
+      year: year
+    },
+    include: {
+      service: true
+    }
+  });
 
-  // Pokud máme JSON data, použijeme je, jinak fallback na DB tabulku payments
-  const paymentsData = monthlyPaymentsJson.length > 0 
-    ? Array.from({ length: 12 }, (_, i) => ({
-        month: i + 1,
-        prescribed: monthlyPrescriptionsJson[i] || 0,
-        paid: monthlyPaymentsJson[i] || 0
-      }))
-    : payments.map(p => ({
-        month: p.paymentDate.getMonth() + 1,
-        prescribed: 0,
-        paid: p.amount
-      }));
+  // Agregace záloh podle služby pro doplnění do tabulky služeb
+  const advanceByService = new Map<string, number>();
+  advanceMonthlies.forEach(a => {
+    const current = advanceByService.get(a.serviceId) || 0;
+    advanceByService.set(a.serviceId, current + a.amount);
+  });
+
+  // Helper pro popis metodiky (sloupec Jednotka)
+  const getMethodologyLabel = (service: any) => {
+    switch (service.methodology) {
+      case 'OWNERSHIP_SHARE': return 'vlastnický podíl';
+      case 'AREA': return 'm2 plochy';
+      case 'PERSON_MONTHS': return 'osobo-měsíce';
+      case 'METER_READING': return service.measurementUnit === 'kWh' ? 'odečet tepla' : `odečet ${service.measurementUnit || ''}`.trim();
+      case 'FIXED_PER_UNIT': return 'na byt';
+      case 'EQUAL_SPLIT': return 'rovným dílem';
+      case 'UNIT_PARAMETER': return 'dle parametru';
+      default: return service.measurementUnit || '';
+    }
+  };
+
+  // 1. Příprava předpisů (Prescriptions)
+  let prescriptions = (billingResult.monthlyPrescriptions as number[]) || [];
+  
+  // Pokud nejsou předpisy v JSONu nebo jsou nulové, zkusíme je spočítat z DB
+  if (prescriptions.length === 0 || prescriptions.every(v => v === 0)) {
+      const calculatedPrescriptions = Array(12).fill(0);
+      
+      // Zkusíme najít "Celková záloha" nebo "TOTAL_ADVANCE"
+      const totalAdvanceRecords = advanceMonthlies.filter(a => 
+        a.service.code === 'TOTAL_ADVANCE' || a.service.name === 'Celková záloha'
+      );
+      
+      if (totalAdvanceRecords.length > 0) {
+        totalAdvanceRecords.forEach(rec => {
+          if (rec.month >= 1 && rec.month <= 12) {
+            calculatedPrescriptions[rec.month - 1] = rec.amount;
+          }
+        });
+      } else {
+        // Pokud není celková záloha, sečteme všechny zálohy
+        advanceMonthlies.forEach(rec => {
+          if (rec.month >= 1 && rec.month <= 12) {
+            calculatedPrescriptions[rec.month - 1] += rec.amount;
+          }
+        });
+      }
+      
+      if (calculatedPrescriptions.some(v => v > 0)) {
+          prescriptions = calculatedPrescriptions;
+      }
+  }
+  
+  // Zajistit délku 12
+  if (prescriptions.length < 12) {
+      prescriptions = [...prescriptions, ...Array(12 - prescriptions.length).fill(0)];
+  }
+
+  // 2. Příprava plateb (Payments)
+  let paid = (billingResult.monthlyPayments as number[]) || [];
+  
+  // Pokud nejsou platby v JSONu nebo jsou nulové, zkusíme je spočítat z DB
+  if (paid.length === 0 || paid.every(v => v === 0)) {
+      const calculatedPaid = Array(12).fill(0);
+      payments.forEach(p => {
+          const m = p.paymentDate.getMonth(); // 0-11
+          if (m >= 0 && m < 12) {
+              calculatedPaid[m] += p.amount;
+          }
+      });
+      
+      if (calculatedPaid.some(v => v > 0)) {
+          paid = calculatedPaid;
+      }
+  }
+  
+  // Zajistit délku 12
+  if (paid.length < 12) {
+      paid = [...paid, ...Array(12 - paid.length).fill(0)];
+  }
+
+  // 3. Kombinace do výsledného pole
+  const paymentsData = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1,
+    prescribed: prescriptions[i] || 0,
+    paid: paid[i] || 0
+  }));
 
   // Generování QR kódu pro nedoplatek
   let qrCodeUrl = undefined;
@@ -151,14 +233,14 @@ export default async function BillingResultDetailPage({
     },
     services: billingResult.serviceCosts.map(cost => ({
       name: cost.service.name,
-      unit: cost.service.measurementUnit || '',
+      unit: getMethodologyLabel(cost.service),
       share: activeOwner?.sharePercent ?? 100,
       buildingCost: cost.buildingTotalCost,
       buildingUnits: cost.buildingConsumption || 0,
       pricePerUnit: cost.unitPricePerUnit || 0,
       userUnits: cost.unitConsumption || 0,
       userCost: cost.unitCost,
-      advance: cost.unitAdvance,
+      advance: cost.unitAdvance || advanceByService.get(cost.serviceId) || 0,
       result: cost.unitBalance
     })),
     totals: {
