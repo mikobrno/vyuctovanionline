@@ -236,8 +236,8 @@ export default async function BuildingDetailPage({
 
         {/* Záložky - Moderní Pills */}
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 mb-6 overflow-hidden">
-          <div className="p-2 overflow-x-auto">
-            <nav className="flex space-x-1 min-w-max">
+          <div className="p-2">
+            <nav className="flex flex-wrap gap-1">
               {tabs.map((t) => (
                 <Link
                   key={t.id}

@@ -45,6 +45,151 @@ function stripUnitPrefixes(value: string) {
     .trim()
 }
 
+const METHOD_RULES: Array<{ method: CalculationMethod; tests: RegExp[] }> = [
+  {
+    method: CalculationMethod.NO_BILLING,
+    tests: [/nevyuct/, /neuctuj/, /bez vyuct/, /neuctovat/, /neuctuje/]
+  },
+  {
+    method: CalculationMethod.METER_READING,
+    tests: [
+      /odecet sv/,
+      /odecetsv/,
+      /odecet tuv/,
+      /odecty tuv/,
+      /odecet/,
+      /odect/,
+      /spotreb/,
+      /meridl/,
+      /mereni/,
+      /vodomer/,
+      /studen/,
+      /tuv/,
+      /tepl/,
+      /ohrev/,
+      /elektr/,
+      /plyn/,
+      /kwh/,
+      /m3/,
+      /gj/,
+      /kalor/,
+      /patni/,
+      /alokac/,
+      /externi/,
+      /extern/
+    ]
+  },
+  {
+    method: CalculationMethod.AREA,
+    tests: [
+      /m2 celkov/,
+      /m2celkov/,
+      /m2 celk/,
+      /m 2 celk/,
+      /celkov.*plocha/,
+      /plocha/,
+      /vymer/,
+      /m2/,
+      /m 2/,
+      /m\^2/,
+      /ctverecn/
+    ]
+  },
+  {
+    method: CalculationMethod.PERSON_MONTHS,
+    tests: [/osob/, /osobo/, /os\/m/, /obyvatel/, /hlav/, /popeln/, /odpad/, /odpady/, /komunal/]
+  },
+  {
+    method: CalculationMethod.FIXED_PER_UNIT,
+    tests: [/kc\/byt/, /kc\/jed/, /pau/, /paus/, /fixn/]
+  },
+  {
+    method: CalculationMethod.EQUAL_SPLIT,
+    tests: [
+      /na byt/,
+      /nabyt/,
+      /rovnym dilem/,
+      /rovnymdilem/,
+      /rovnym/,
+      /rovnomer/,
+      /po bytech/,
+      /per flat/,
+      /per unit/,
+      /kazdy byt/,
+      /1\/22/,
+      /1\/23/,
+      /1\/\d+/,
+      /dilem/
+    ]
+  },
+  {
+    method: CalculationMethod.UNIT_PARAMETER,
+    tests: [/parametr/, /koeficient/, /radiator/]
+  },
+  {
+    method: CalculationMethod.OWNERSHIP_SHARE,
+    tests: [/vlastnick/, /vlastni/, /podil/, /spoluvlast/, /fond oprav/]
+  }
+]
+
+const METHOD_OVERRIDES: Record<string, CalculationMethod> = {
+  'na byt': CalculationMethod.EQUAL_SPLIT,
+  'nabyt': CalculationMethod.EQUAL_SPLIT,
+  'kazdy byt': CalculationMethod.EQUAL_SPLIT,
+  'rovnym dilem': CalculationMethod.EQUAL_SPLIT,
+  'rovnym dilem 1/22': CalculationMethod.EQUAL_SPLIT,
+  'rovnym dilem 1/23': CalculationMethod.EQUAL_SPLIT,
+  'dilem': CalculationMethod.EQUAL_SPLIT,
+  'vlastnicky podil': CalculationMethod.OWNERSHIP_SHARE,
+  'vlastnicky podilu': CalculationMethod.OWNERSHIP_SHARE,
+  'podil': CalculationMethod.OWNERSHIP_SHARE,
+  'nevyuctovava se': CalculationMethod.NO_BILLING,
+  'nevyuctovavat': CalculationMethod.NO_BILLING,
+  'odecet sv': CalculationMethod.METER_READING,
+  'odecet tuv': CalculationMethod.METER_READING,
+  'odecet meridel': CalculationMethod.METER_READING,
+  'externi': CalculationMethod.METER_READING,
+  'extern': CalculationMethod.METER_READING,
+  'm2 celkove plochy': CalculationMethod.AREA,
+  'm2 celkova plocha': CalculationMethod.AREA,
+  'celkova plocha': CalculationMethod.AREA,
+  'plocha': CalculationMethod.AREA
+}
+
+function matchMethodFromValue(value?: string | null): CalculationMethod | null {
+  const normalized = normalizeHeaderCell(String(value ?? ''))
+  if (!normalized) return null
+  if (METHOD_OVERRIDES[normalized]) {
+    return METHOD_OVERRIDES[normalized]
+  }
+  for (const rule of METHOD_RULES) {
+    if (rule.tests.some(pattern => pattern.test(normalized))) {
+      return rule.method
+    }
+  }
+  return null
+}
+
+function detectCalculationMethodFromCells(input: { methodCell?: string | null; unitCell?: string | null; serviceName?: string | null }): CalculationMethod | null {
+  // Priority: metodika > jednotka > defaultně podle názvu služby
+  const fromMethod = matchMethodFromValue(input.methodCell)
+  if (fromMethod) return fromMethod
+  
+  const fromUnit = matchMethodFromValue(input.unitCell)
+  if (fromUnit) return fromUnit
+  
+  // Jen pokud ani metodika ani jednotka nic neříkají, podíváme se na název služby
+  // ale s omezenou sadou pravidel
+  const serviceName = normalizeHeaderCell(String(input.serviceName ?? ''))
+  if (serviceName) {
+    if (/fond oprav/.test(serviceName)) return CalculationMethod.OWNERSHIP_SHARE
+    if (/pojist/.test(serviceName)) return CalculationMethod.OWNERSHIP_SHARE
+    if (/rezerv/.test(serviceName)) return CalculationMethod.OWNERSHIP_SHARE
+  }
+  
+  return null
+}
+
 interface ImportSummary {
   building: {
     id: string
@@ -313,6 +458,7 @@ export async function POST(req: NextRequest) {
            smsBody = `${smsCommon} Brnoreal s.r.o.`
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const updateData: any = {}
         if (emailBody) updateData.emailTemplateBody = emailBody
         if (smsBody) updateData.smsTemplateBody = smsBody
@@ -641,80 +787,186 @@ export async function POST(req: NextRequest) {
 
       // (Mazání již proběhlo v kroku 1)
       
+      const allSheets = workbook.SheetNames.map(name => `"${name}"`).join(', ')
+      await log(`[Faktury SEARCH] Všechny dostupné záložky: [${allSheets}]`)
+      
       const invoicesSheetName = workbook.SheetNames.find(name => 
         name.toLowerCase().includes('faktur') || name.toLowerCase().includes('invoice')
       )
-
+      
       if (invoicesSheetName) {
+        await log(`[Faktury FOUND] Nalezena záložka: "${invoicesSheetName}"`)
         const invoicesSheet = workbook.Sheets[invoicesSheetName]
         const rawData = utils.sheet_to_json<unknown[]>(invoicesSheet, { header: 1, defval: '' })
-        const headerRowIndex = rawData.findIndex(row => {
-          const norm = (row as unknown[]).map(c => normalizeHeaderCell(String(c ?? '')))
-          return norm.some(c => /zpusob|metod|rozuct/.test(c)) && norm.some(c => /naklad.*rok|naklad za rok|celkem.*rok/.test(c))
+        
+        await log(`[Faktury RAW] Celkem řádků z Excelu: ${rawData.length}`)
+        
+        // HARDCODED KONFIGURACE DLE POŽADAVKU UŽIVATELE
+        // A (0) = Název služby
+        // B (1) = Nic
+        // C (2) = Způsob rozúčtování
+        // D (3) = Podíl (zatím jen logujeme, případně lze využít)
+        // E (4) = Náklad
+        
+        const idxService = 0;
+        const idxMethod = 2;
+        const idxShare = 3;
+        const idxAmount = 4;
+
+        await log(`[Faktury] Používám pevnou strukturu: A=Služba, C=Metoda, D=Podíl, E=Náklad`)
+        
+        // Vypiš prvních 5 řádků jak vypadají
+        for (let i = 0; i < Math.min(5, rawData.length); i++) {
+          const row = rawData[i] as unknown[]
+          await log(`[RAW EXCEL ${i}] [0]="${row[0]}" [2]="${row[2]}" [3]="${row[3]}" [4]="${row[4]}"`)
+        }
+
+        const looksLikeHeader = (value: string) => /služb|způsob|jednotk|popis|souhrn|celkem|záloha|jednotka č|jednotka c/.test(value.toLowerCase())
+
+        let detectedStartIndex = rawData.findIndex(row => {
+          const arr = row as unknown[]
+          const serviceCell = String(arr[idxService] ?? '').trim()
+          const methodCell = String(arr[idxMethod] ?? '').trim()
+          const amountCell = String(arr[idxAmount] ?? '').trim()
+          const amountVal = parseNumberCell(amountCell)
+          if (!serviceCell) return false
+          if (looksLikeHeader(serviceCell)) return false
+          if (/^jednotka\s*c?\.?/.test(serviceCell.toLowerCase())) return false
+          if (/prázdn/i.test(serviceCell) || /součet|sum/i.test(serviceCell)) return false
+          if (/služba|název|položka/i.test(serviceCell)) return false
+          const normalizedMethod = normalizeHeaderCell(methodCell)
+          return Boolean(amountVal !== undefined || normalizedMethod.length > 0)
         })
 
-        if (headerRowIndex !== -1) {
-          const header = (rawData[headerRowIndex] || []).map(c => String(c ?? ''))
-          const normHeader = header.map(c => normalizeHeaderCell(c))
-          const findIdx = (...pats: RegExp[]) => normHeader.findIndex(h => pats.some(p => p.test(h)))
+        if (detectedStartIndex === -1) detectedStartIndex = rawData.length > 2 ? 2 : 0
 
-          const idxService = findIdx(/sluzb|polozk|popis|nazev/) >= 0 ? findIdx(/sluzb|polozk|popis|nazev/) : 0
-          const idxMethod = findIdx(/zpusob|metod|rozuct/)
-          const idxUnit = findIdx(/jednotk|mj/)
-          const idxAmount = findIdx(/naklad.*rok|naklad za rok/) >= 0 ? findIdx(/naklad.*rok|naklad za rok/) : findIdx(/naklad|celkem/)
+        await log(`[Faktury] Data začínají na řádku ${detectedStartIndex + 1}`)
 
-          const dataRows = rawData.slice(headerRowIndex + 1)
+        const dataRows = rawData.slice(detectedStartIndex)
           
-          // Cache services
-          const dbServices = await prisma.service.findMany({ where: { buildingId: building.id } })
-          const serviceMap = new Map<string, Service>()
-          dbServices.forEach(s => serviceMap.set(s.name.toLowerCase(), s))
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const costsToCreate: any[] = []
-
-          for (let i = 0; i < dataRows.length; i++) {
-            const row = dataRows[i] as unknown[]
-            if (!row || row.length === 0) continue
-            const serviceName = String(row[idxService] ?? '').trim()
-            const methodology = idxMethod >= 0 ? String(row[idxMethod] ?? '').trim() : ''
-            const unitVal = idxUnit >= 0 ? String(row[idxUnit] ?? '').trim() : ''
-            const amountStr = idxAmount >= 0 ? String(row[idxAmount] ?? '0').trim() : '0'
-
-            if (!serviceName || /prázdn/i.test(serviceName) || /^\s*$/.test(serviceName)) continue
-            const amount = parseFloat(amountStr.replace(/\s/g, '').replace(',', '.'))
-            if (!Number.isFinite(amount) || amount === 0) continue
-
-            let service = serviceMap.get(serviceName.toLowerCase())
-
-            const m = methodology.toLowerCase()
-            const u = unitVal.toLowerCase()
-            
-            let calculationMethod = 'OWNERSHIP_SHARE' // Default
-
-            if (m) {
-               calculationMethod = m.includes('měřidl') || m.includes('odečet') ? 'METER_READING' :
-                                      (m.includes('plocha') || m.includes('výměr')) ? 'AREA' :
-                                      (m.includes('osob')) ? 'PERSON_MONTHS' :
-                                      (m.includes('byt') || m.includes('jednotk')) ? 'FIXED_PER_UNIT' :
-                                      m.includes('rovn') ? 'EQUAL_SPLIT' :
-                                      (m.includes('podil')) ? 'OWNERSHIP_SHARE' : 'OWNERSHIP_SHARE'
-            } else if (u) {
-               // Fallback: Odvození metody z jednotky (m2, osob, ks, kwh...)
-               if (u.includes('m2') || u.includes('m²')) calculationMethod = 'AREA'
-               else if (u.includes('os') || u.includes('osob')) calculationMethod = 'PERSON_MONTHS'
-               else if (u.includes('kwh') || u.includes('m3') || u.includes('m³')) calculationMethod = 'METER_READING'
-               else if (u.includes('ks') || u.includes('jedn')) calculationMethod = 'FIXED_PER_UNIT'
+        // Cache services
+        const dbServices = await prisma.service.findMany({ where: { buildingId: building.id } })
+        const serviceKey = (value: string) => normalizeHeaderCell(value || '')
+        const serviceMap = new Map<string, Service>()
+        dbServices.forEach(s => serviceMap.set(serviceKey(s.name), s))
+        
+        // Funkce pro hledání služby s fuzzy matchingem
+        const findServiceByName = (name: string): Service | undefined => {
+          const normalizedName = serviceKey(name)
+          // 1. Zkus přesnou shodu
+          const found = serviceMap.get(normalizedName)
+          if (found) return found
+          
+          // 2. Zkus najít službu, která obsahuje část názvu nebo naopak
+          for (const [key, service] of serviceMap.entries()) {
+            if (key.includes(normalizedName) || normalizedName.includes(key)) {
+              return service
             }
+          }
+          
+          return undefined
+        }
 
-            const src = (() => {
-              if (calculationMethod === 'METER_READING') return { dataSourceType: 'METER_DATA', unitAttributeName: null, measurementUnit: null }
-              if (calculationMethod === 'AREA') return { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'CELKOVA_VYMERA', measurementUnit: 'm²' }
-              if (calculationMethod === 'PERSON_MONTHS') return { dataSourceType: 'PERSON_MONTHS', unitAttributeName: null, measurementUnit: 'osobo-měsíc' }
-              if (calculationMethod === 'FIXED_PER_UNIT') return { dataSourceType: 'UNIT_COUNT', unitAttributeName: null, measurementUnit: null }
-              if (calculationMethod === 'EQUAL_SPLIT') return { dataSourceType: 'UNIT_COUNT', unitAttributeName: null, measurementUnit: null }
-              if (calculationMethod === 'OWNERSHIP_SHARE') return { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'VLASTNICKY_PODIL', measurementUnit: null }
-              return { dataSourceType: null, unitAttributeName: null, measurementUnit: null }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const costsToCreate: any[] = []
+
+        for (let i = 0; i < dataRows.length; i++) {
+          const row = dataRows[i] as unknown[]
+          if (!row || row.length === 0) continue
+          
+          const serviceName = String(row[idxService] ?? '').trim()
+          const methodology = String(row[idxMethod] ?? '').trim()
+          const shareStr = String(row[idxShare] ?? '').trim()
+          const amountStr = String(row[idxAmount] ?? '0').trim()
+
+          // DEBUG prvních 15 řádků
+          if (i < 15) {
+            await log(`[Faktury DETAIL ${i}] Služba="${serviceName}" | Metoda RAW="${methodology}" | Metoda norm="${normalizeHeaderCell(methodology)}" | Podíl="${shareStr}" | Částka="${amountStr}"`)
+          }
+
+          if (!serviceName || /prázdn/i.test(serviceName) || /^\s*$/.test(serviceName)) {
+            if (i < 15) await log(`[SKIP ${i}] Prázdné jméno služby`)
+            continue
+          }
+          
+          // Skip if it looks like a header repeated
+          if (/služba|název|položka/i.test(serviceName)) {
+            if (i < 15) await log(`[SKIP ${i}] Vypadá jako hlavička`)
+            continue
+          }
+
+          const parsedAmount = parseNumberCell(amountStr)
+          const amount = parsedAmount ?? 0
+          if (parsedAmount === undefined && amountStr.length > 0) {
+            await log(`[Faktury WARNING ${i}] "${serviceName}" - částka není číslo: "${amountStr}", použiji 0`)
+          }
+          
+          if (i < 15) await log(`[PARSED ${i}] Částka="${amountStr}" -> ${amount}`)
+
+          let service = findServiceByName(serviceName)
+
+          const inferredMethod = detectCalculationMethodFromCells({
+            methodCell: methodology,
+            unitCell: null, // Unit cell not used
+            serviceName
+          })
+          const calculationMethod: CalculationMethod = inferredMethod ?? 'OWNERSHIP_SHARE'
+          await log(`[Faktury] ${serviceName} → ${calculationMethod} (metoda="${methodology || '-'}", podíl="${shareStr}")`)
+
+          const src = (() => {
+              if (calculationMethod === 'NO_BILLING') {
+                return { dataSourceType: 'NONE', unitAttributeName: null, measurementUnit: null, dataSourceName: null }
+              }
+
+              if (calculationMethod === 'METER_READING') {
+                const meterHints = `${methodology} ${serviceName}`.toLowerCase() // Removed unitVal
+                let dsName = 'Měřidla'
+                let measurementUnit = 'jednotek'
+
+                if (
+                  meterHints.includes('vodomer sv') ||
+                  meterHints.includes('sv voda') ||
+                  meterHints.includes('studen') ||
+                  meterHints.includes('pitn') ||
+                  meterHints.includes('vodne')
+                ) {
+                  dsName = 'Vodoměry SV'
+                  measurementUnit = 'm³'
+                } else if (
+                  meterHints.includes('vodomer tuv') ||
+                  meterHints.includes('tuv') ||
+                  meterHints.includes('tepla voda') ||
+                  meterHints.includes('ohrev') ||
+                  meterHints.includes('bojler')
+                ) {
+                  dsName = 'Vodoměry TUV'
+                  measurementUnit = 'm³'
+                } else if (
+                  meterHints.includes('teplo') ||
+                  meterHints.includes('vytap') ||
+                  meterHints.includes('radiator') ||
+                  meterHints.includes('patni') ||
+                  meterHints.includes('plyn') ||
+                  meterHints.includes('externi') ||
+                  meterHints.includes('kalor')
+                ) {
+                  dsName = 'Teplo'
+                  measurementUnit = 'kWh'
+                } else if (meterHints.includes('elektr')) {
+                  dsName = 'Elektroměry'
+                  measurementUnit = 'kWh'
+                }
+
+                return { dataSourceType: 'METER_DATA', unitAttributeName: null, measurementUnit, dataSourceName: dsName }
+              }
+
+              if (calculationMethod === 'AREA') return { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'CELKOVA_VYMERA', measurementUnit: 'm²', dataSourceName: null }
+              if (calculationMethod === 'PERSON_MONTHS') return { dataSourceType: 'PERSON_MONTHS', unitAttributeName: null, measurementUnit: 'osobo-měsíc', dataSourceName: null }
+              if (calculationMethod === 'FIXED_PER_UNIT') return { dataSourceType: 'UNIT_COUNT', unitAttributeName: null, measurementUnit: 'ks', dataSourceName: null }
+              if (calculationMethod === 'EQUAL_SPLIT') return { dataSourceType: 'UNIT_COUNT', unitAttributeName: null, measurementUnit: 'ks', dataSourceName: null }
+              if (calculationMethod === 'OWNERSHIP_SHARE') return { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'VLASTNICKY_PODIL', measurementUnit: '%', dataSourceName: null }
+
+              return { dataSourceType: null, unitAttributeName: null, measurementUnit: null, dataSourceName: null }
             })()
 
             if (!service) {
@@ -726,51 +978,62 @@ export async function POST(req: NextRequest) {
                   created = await prisma.service.create({
                     data: {
                       buildingId: building.id, name: serviceName, code: candidate, methodology: calculationMethod as CalculationMethod,
-                      dataSourceType: (src.dataSourceType as DataSourceType) ?? undefined, unitAttributeName: src.unitAttributeName ?? undefined,
+                      dataSourceType: (src.dataSourceType as DataSourceType) ?? undefined, 
+                      dataSourceName: src.dataSourceName ?? undefined,
+                      unitAttributeName: src.unitAttributeName ?? undefined,
                       measurementUnit: src.measurementUnit ?? undefined, isActive: true, order: summary.services.total
                     }
                   })
                   service = created
-                  serviceMap.set(serviceName.toLowerCase(), service)
+                  serviceMap.set(serviceKey(serviceName), service)
                 } catch (e) { if (e instanceof Error && e.message.includes('Unique constraint failed')) continue; throw e; }
               }
               if (!service) throw new Error(`Nepodařilo se vytvořit službu '${serviceName}'`)
               summary.services.created++
             } else {
-              // Update existing service methodology to match Excel
-              if (service.methodology !== calculationMethod) {
-                 await prisma.service.update({
-                    where: { id: service.id },
-                    data: { 
-                       methodology: calculationMethod as CalculationMethod,
-                       dataSourceType: (src.dataSourceType as DataSourceType) ?? undefined, 
-                       unitAttributeName: src.unitAttributeName ?? undefined,
-                       measurementUnit: src.measurementUnit ?? undefined
-                    }
-                 })
-              }
+              // VŽDY aktualizuj metodiku a název podle Excelu
+              const oldName = service.name
+              await log(`[Faktury] AKTUALIZUJI službu "${oldName}" → "${serviceName}": ${service.methodology} → ${calculationMethod}`)
+              service = await prisma.service.update({
+                where: { id: service.id },
+                data: { 
+                  name: serviceName,
+                  methodology: calculationMethod as CalculationMethod,
+                  dataSourceType: (src.dataSourceType as DataSourceType) ?? undefined, 
+                  dataSourceName: src.dataSourceName ?? undefined,
+                  unitAttributeName: src.unitAttributeName ?? undefined,
+                  measurementUnit: src.measurementUnit ?? undefined
+                }
+              })
+              // Aktualizuj cache s novým názvem
+              serviceMap.set(serviceKey(serviceName), service)
               summary.services.existing++
             }
             summary.services.total++
 
-            costsToCreate.push({
-              buildingId: building.id, 
-              serviceId: service.id, 
-              amount, 
-              description: `Import z Excelu - ${serviceName}`,
-              invoiceDate: new Date(`${billingPeriod}-12-31`), 
-              period: parseInt(billingPeriod)
-            })
+            if (amount !== 0) {
+              if (i < 15) await log(`[COST PUSH ${i}] Přidávám náklad: ${serviceName} = ${amount} Kč`)
+              costsToCreate.push({
+                buildingId: building.id, 
+                serviceId: service.id, 
+                amount, 
+                description: `Import z Excelu - ${serviceName}`,
+                invoiceDate: new Date(`${billingPeriod}-12-31`), 
+                period: parseInt(billingPeriod)
+              })
+            }
           }
 
           if (costsToCreate.length > 0) {
+            await log(`[Faktury SAVE] Ukládám ${costsToCreate.length} nákladů do databáze`)
             await prisma.cost.createMany({ data: costsToCreate })
             summary.costs.created += costsToCreate.length
             summary.costs.total += costsToCreate.length
-            await log(`[Faktury] Vytvořeno ${costsToCreate.length} nákladů.`)
+            await log(`[Faktury OK] Vytvořeno ${costsToCreate.length} nákladů.`)
+          } else {
+            await log(`[Faktury EMPTY] Žádné náklady k uložení (costsToCreate je prázdné)`)
           }
         }
-      }
 
       // 4. IMPORT ODEČTŮ
       await send({ type: 'progress', percentage: 60, step: 'Importuji odečty měřidel...' })
@@ -842,7 +1105,6 @@ export async function POST(req: NextRequest) {
           // Zkusíme najít službu v cache (serviceMap z kroku 3, nebo dbServices)
           // Musíme zajistit, že serviceMap je dostupná. V kroku 3 jsem ji definoval lokálně.
           // Takže ji musíme definovat znovu nebo globálněji.
-          // Pro zjednodušení ji načtu znovu nebo použiju findFirst s cache.
           
           // Zkusíme najít službu podle kódu
           let service: Service | null | undefined = undefined
@@ -1232,7 +1494,7 @@ export async function POST(req: NextRequest) {
              const units = await prisma.unit.findMany({ where: { buildingId: building.id } })
              summary.advances = { created: 0, updated: 0, total: 0 }
              
-             const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ')
+             const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
              
              // eslint-disable-next-line @typescript-eslint/no-explicit-any
              const advancesToCreate: any[] = []
@@ -1324,7 +1586,7 @@ export async function POST(req: NextRequest) {
             const units = await prisma.unit.findMany({ where: { buildingId: building.id } })
             summary.advances = { created: 0, updated: 0, total: 0 }
 
-            const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ')
+            const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
             const serviceNameMap = new Map<string, { id: string; name: string }>()
             services.forEach(s => serviceNameMap.set(normalize(s.name), { id: s.id, name: s.name }))
 

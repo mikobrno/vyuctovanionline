@@ -460,41 +460,99 @@ async function runImport() {
     )
 
     if (invoicesSheetName) {
+      log(`[Faktury] Zpracovávám list "${invoicesSheetName}"...`);
       const invoicesSheet = workbook.Sheets[invoicesSheetName]
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawData = utils.sheet_to_json<any[]>(invoicesSheet, { header: 1, defval: '' })
 
       // Najdi hlavičku podle textu sloupců
-      const headerRowIndex = rawData.findIndex(row => {
+      let headerRowIndex = rawData.findIndex(row => {
         const norm = (row as unknown[]).map(c => normalizeHeaderCell(String(c ?? '')))
         const hasMethod = norm.some(c => /zpusob|metod|rozuct/.test(c))
         const hasAmount = norm.some(c => /naklad.*rok|naklad za rok|celkem.*rok/.test(c))
         return hasMethod && hasAmount
       })
+      
+      log(`[Faktury] Detekován headerRowIndex: ${headerRowIndex}`);
 
-      if (headerRowIndex !== -1) {
-        const header = (rawData[headerRowIndex] || []).map(c => String(c ?? ''))
-        const normHeader = header.map(c => normalizeHeaderCell(c))
-        const findIdx = (...pats: RegExp[]) => normHeader.findIndex(h => pats.some(p => p.test(h)))
+      // Fallback: Pokud se nenašla standardní hlavička, zkusíme najít řádek s "Služba" nebo "Název"
+      if (headerRowIndex === -1) {
+         headerRowIndex = rawData.findIndex(row => {
+            const norm = (row as unknown[]).map(c => normalizeHeaderCell(String(c ?? '')))
+            return norm.some(c => /sluzba|nazev|polozka/.test(c))
+         });
+         log(`[Faktury] Fallback headerRowIndex (Služba/Název): ${headerRowIndex}`);
+      }
 
-        const idxService = findIdx(/sluzb|polozk|popis|nazev/) >= 0 ? findIdx(/sluzb|polozk|popis|nazev/) : 0
-        const idxMethod = findIdx(/zpusob|metod|rozuct/)
-        const idxAmountSpecific = findIdx(/naklad.*rok|naklad za rok/)
-        const idxAmountFallback = findIdx(/naklad|celkem/)
-        const idxAmount = idxAmountSpecific >= 0 ? idxAmountSpecific : idxAmountFallback
+      // Pokud se našla hlavička nebo použijeme fallback na pevné sloupce
+      if (headerRowIndex !== -1 || rawData.length > 0) {
+        let idxService = 0;
+        let idxMethod = 1;
+        let idxAmount = 2; // Default C per user request
+
+        if (headerRowIndex !== -1) {
+            const header = (rawData[headerRowIndex] || []).map(c => String(c ?? ''))
+            const normHeader = header.map(c => normalizeHeaderCell(c))
+            const findIdx = (...pats: RegExp[]) => normHeader.findIndex(h => pats.some(p => p.test(h)))
+
+            const foundService = findIdx(/sluzb|polozk|popis|nazev/)
+            if (foundService >= 0) idxService = foundService
+
+            const foundMethod = findIdx(/zpusob|metod|rozuct/)
+            if (foundMethod >= 0) idxMethod = foundMethod
+
+            const foundAmount = findIdx(/naklad.*rok|naklad za rok|celkem.*rok|castka|suma/)
+            if (foundAmount >= 0) idxAmount = foundAmount
+            else {
+                // Pokud nenajdeme sloupec s částkou, zkusíme C (index 2) jako fallback
+                const fallbackAmount = findIdx(/naklad|celkem/)
+                if (fallbackAmount >= 0) idxAmount = fallbackAmount
+                else idxAmount = 2 // Fallback na C
+            }
+            log(`[Faktury] Sloupce detekovány (před override): Service=${idxService}, Method=${idxMethod}, Amount=${idxAmount}`);
+
+            // OVERRIDE: Uživatel upřesnil strukturu (dle screenshotu a popisu):
+            // Sloupec A (0) = Název služby
+            // Sloupec B (1) = Prázdné
+            // Sloupec C (2) = Způsob rozúčtování (Metodika)
+            // Sloupec E (4) = Náklad za rok (dle screenshotu)
+            idxService = 0; // A
+            idxMethod = 2;  // C
+            idxAmount = 4;  // E
+
+            log(`[Faktury] Sloupce po override: Service=${idxService}, Method=${idxMethod}, Amount=${idxAmount}`);
+        } else {
+            // Pokud hlavička nebyla nalezena vůbec, předpokládáme data od řádku 1 (po hlavičce na 0) nebo 0
+            // Zkusíme detekovat, kde začínají data
+            headerRowIndex = 0; 
+            idxService = 0; // A
+            idxMethod = 1;  // B
+            idxAmount = 2;  // C
+            log(`[Faktury] Hlavička nenalezena, používám výchozí sloupce: A=Služba, B=Metoda, C=Náklad`)
+        }
 
         const dataRows = rawData.slice(headerRowIndex + 1)
+        log(`[Faktury] Počet řádků k zpracování: ${dataRows.length}`);
 
         for (let i = 0; i < dataRows.length; i++) {
           const row = dataRows[i] as unknown[]
           if (!row || row.length === 0) continue
           const serviceName = String(row[idxService] ?? '').trim()
           const methodology = idxMethod >= 0 ? String(row[idxMethod] ?? '').trim() : ''
-          const amountStr = idxAmount >= 0 ? String(row[idxAmount] ?? '0').trim() : '0'
+          const amountStr = String(row[idxAmount] ?? '0').trim()
+
+          log(`[Faktury] Řádek ${i}: Služba="${serviceName}", Částka="${amountStr}"`);
 
           if (!serviceName || /prázdn/i.test(serviceName) || /^\s*$/.test(serviceName)) continue
+          
+          // Skip header-like rows if we are in fallback mode
+          if (normalizeHeaderCell(serviceName).includes('sluzba') || normalizeHeaderCell(serviceName).includes('nazev')) continue;
+
           const amount = parseFloat(amountStr.replace(/\s/g, '').replace(',', '.'))
-          if (!Number.isFinite(amount) || amount === 0) continue
+          if (!Number.isFinite(amount) || amount === 0) {
+              // log(`[Faktury] Přeskakuji řádek - neplatná částka: ${amount}`);
+              continue
+          }
 
           // Najít nebo vytvořit službu
           let service = await prisma.service.findFirst({
@@ -622,8 +680,14 @@ async function runImport() {
             'vlastnický podíl': { method: 'OWNERSHIP_SHARE', dataSource: null, unitAttribute: 'VLASTNICKY_PODIL' },
             'odečet sv': { method: 'METER_READING', dataSource: 'METER_DATA', unitAttribute: null },
             'odečet tuv': { method: 'METER_READING', dataSource: 'METER_DATA', unitAttribute: null },
+            'odečty tuv': { method: 'METER_READING', dataSource: 'METER_DATA', unitAttribute: null },
             'externí (pro teplo)': { method: 'METER_READING', dataSource: 'METER_DATA', unitAttribute: null },
-            'nevyúčtovává se': { method: 'NO_BILLING', dataSource: null, unitAttribute: null }
+            'externí': { method: 'METER_READING', dataSource: 'METER_DATA', unitAttribute: null },
+            'nevyúčtovává se': { method: 'NO_BILLING', dataSource: null, unitAttribute: null },
+            'nevýúčtovává se': { method: 'NO_BILLING', dataSource: null, unitAttribute: null },
+            'rovným dílem 1/22': { method: 'EQUAL_SPLIT', dataSource: null, unitAttribute: null },
+            'rovným dílem': { method: 'EQUAL_SPLIT', dataSource: null, unitAttribute: null },
+            'm2 celkové plochy': { method: 'AREA', dataSource: null, unitAttribute: 'CELKOVA_VYMERA' }
           };
 
           const mapped = methodMapping[billingMethod] || { method: 'NO_BILLING', dataSource: null, unitAttribute: null };

@@ -804,7 +804,7 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
             <tr>
               <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Služba</th>
               <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Náklad</th>
-              <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Metodika výpočtu</th>
+              <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Způsob rozúčtování</th>
               <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Parametry</th>
               <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider bg-blue-50/50 dark:bg-blue-900/10">Náhled výpočtu</th>
             </tr>
@@ -859,7 +859,7 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <select
-                      aria-label="Metodika výpočtu"
+                      aria-label="Způsob rozúčtování"
                       value={
                         service.methodology === 'METER_READING' 
                           ? (service.dataSourceType === 'FIXED_AMOUNT' 
