@@ -108,8 +108,10 @@ type UnitLite = { id: string; meters?: { id: string; type: MeterType; isActive: 
 
 async function runImport() {
   try {
-    const fileName = 'vyuctovani2024 (20).xlsx'
-    const buildingName = 'Kníničky 318'
+    const args = process.argv.slice(2);
+    const fileName = args[0] || 'vyuctovani2024 (20).xlsx'
+    const buildingArg = args[1];
+
     const filePath = path.join(process.cwd(), 'public', fileName)
 
     if (!fs.existsSync(filePath)) {
@@ -139,7 +141,6 @@ async function runImport() {
     const log = (msg: string) => { logs.push(msg); console.log(msg) }
 
     // 1. NAJÍT NEBO VYTVOŘIT DŮM
-    const finalBuildingName = buildingName || 'Importovaná budova ' + new Date().toLocaleDateString('cs-CZ')
     
     // Načíst adresu a období ze záložky "Vstupní data"
     let buildingAddress = 'Adresu upravte v detailu budovy'
@@ -186,16 +187,37 @@ async function runImport() {
       }
     }
     
-    let building = await prisma.building.findFirst({
-      where: {
-        name: {
-          contains: finalBuildingName,
-          mode: 'insensitive'
+    let building;
+    
+    if (buildingArg) {
+       building = await prisma.building.findFirst({
+        where: {
+          OR: [
+            { id: buildingArg },
+            { name: { contains: buildingArg, mode: 'insensitive' } }
+          ]
         }
-      }
-    })
+      })
+    } else {
+       // Fallback to hardcoded name if no arg provided (for backward compatibility or testing)
+       const buildingName = 'Kníničky 318'
+       building = await prisma.building.findFirst({
+        where: {
+          name: {
+            contains: buildingName,
+            mode: 'insensitive'
+          }
+        }
+      })
+    }
 
     if (!building) {
+      if (buildingArg) {
+         console.error(`Building '${buildingArg}' not found.`);
+         return;
+      }
+      
+      const finalBuildingName = 'Kníničky 318'
       building = await prisma.building.create({
         data: {
           name: finalBuildingName,

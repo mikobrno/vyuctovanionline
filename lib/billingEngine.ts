@@ -351,15 +351,10 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
               basisText = `Chyba vzorce: ${e instanceof Error ? e.message : 'Unknown'}`;
             }
           } else {
-            // Fallback na externí náklad (stará logika)
-            const externalReading = unit.meters
-              .flatMap(m => m.readings)
-              .find(r => r.precalculatedCost !== null && r.precalculatedCost > 0);
-
-            if (externalReading && externalReading.precalculatedCost) {
-              calculatedCost = safeNumber(externalReading.precalculatedCost);
-              basisText = "Externí náklad (převzato)";
-            }
+            // Pokud není vzorec, a nezafungovala "Nová logika" nahoře (protože není spárovaný měřák),
+            // tak je náklad 0. Stará logika brala jakýkoliv měřák, což způsobovalo chyby.
+            calculatedCost = 0;
+            basisText = "Vlastní metoda bez vzorce";
           }
           break;
 

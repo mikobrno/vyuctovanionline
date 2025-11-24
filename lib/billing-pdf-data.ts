@@ -24,6 +24,11 @@ export async function getBillingPdfData(billingResultId: string) {
       serviceCosts: {
         include: {
           service: true
+        },
+        orderBy: {
+          service: {
+            order: 'asc'
+          }
         }
       }
     }

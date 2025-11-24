@@ -62,6 +62,10 @@ export async function POST(
       unitPrice: s.unitPrice,
       fixedAmountPerUnit: s.fixedAmountPerUnit,
       showOnStatement: s.showOnStatement,
+      isActive: s.isActive,
+      order: s.order,
+      customFormula: s.customFormula,
+      divisor: s.divisor,
     }))
 
     const config = await prisma.calculationConfig.create({

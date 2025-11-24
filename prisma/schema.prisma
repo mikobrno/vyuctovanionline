@@ -221,6 +221,7 @@ model Service {
   divisor             Float?              // ruční dělitel (např. pro Rovným dílem - místo počtu jednotek)
   customFormula       String?             // vlastní vzorec pro výpočet
   advancePaymentColumn String?            // odkaz na sloupec v předpisu záloh
+  excelColumn         String?             // EXPLICITNÍ ADRESOVÁNÍ: Sloupec v Excelu (např. "BN")
   order               Int                 @default(0)
   isActive            Boolean             @default(true)
   showOnStatement     Boolean             @default(true) // zobrazit na výpisu

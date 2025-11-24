@@ -6,7 +6,7 @@ import CalculationEngineTest from './CalculationEngineTest'
 import BillingGenerator from './BillingGenerator'
 import BillingResultsViewer from './BillingResultsViewer'
 import BuildingOverview from './BuildingOverview'
-import ServiceConfigTable from './ServiceConfigTable'
+import BillingSettingsEditor from './BillingSettingsEditor'
 import { BuildingTemplates } from './BuildingTemplates'
  
 
@@ -15,144 +15,6 @@ interface BuildingDetailTabsProps {
   uniqueOwners: any[]
   payments: any[]
   tab: string
-}
-
-function ImportInvoicesWidget({ buildingId, buildingName }: { buildingId: string; buildingName: string }) {
-  const [file, setFile] = useState('vyuctovani2024 (20).xlsx')
-  const [sheet, setSheet] = useState('faktury')
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<any>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const runImport = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      setResult(null)
-      const url = `/api/buildings/${buildingId}/import/invoices?file=${encodeURIComponent(file)}&sheet=${encodeURIComponent(sheet)}`
-      const res = await fetch(url, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'Import selhal')
-      setResult(data)
-    } catch (e: any) {
-      setError(e.message || 'Chyba importu')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const runLoadFormulas = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      setResult(null)
-      const url = `/api/buildings/${buildingId}/import/formulas?file=${encodeURIComponent(file)}&sheet=${encodeURIComponent(sheet)}`
-      const res = await fetch(url, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'Načtení vzorců selhalo')
-      setResult(data)
-    } catch (e: any) {
-      setError(e.message || 'Chyba načítání vzorců')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div>
-      <div className="flex flex-col md:flex-row gap-3 items-start md:items-end">
-        <div>
-          <label className="block text-sm font-medium text-gray-900 dark:text-white">Soubor v public</label>
-          <input
-            className="mt-1 w-80 px-3 py-2 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-md text-sm text-gray-900 dark:text-white focus:ring-primary focus:border-primary"
-            value={file}
-            onChange={(e) => setFile(e.target.value)}
-            placeholder="vyuctovani2024 (19).xlsx"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-900 dark:text-white">List</label>
-          <input
-            className="mt-1 w-48 px-3 py-2 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-md text-sm text-gray-900 dark:text-white focus:ring-primary focus:border-primary"
-            value={sheet}
-            onChange={(e) => setSheet(e.target.value)}
-            placeholder="faktury"
-          />
-        </div>
-        <button
-          onClick={runImport}
-          disabled={loading}
-          className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-hover disabled:opacity-60 transition-colors"
-        >
-          {loading ? 'Importuji…' : 'Načíst faktury z public'}
-        </button>
-        <button
-          onClick={runLoadFormulas}
-          disabled={loading}
-          className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-60 transition-colors"
-        >
-          {loading ? 'Načítám…' : 'Načíst vzorce z Excelu'}
-        </button>
-        <button
-          onClick={async () => {
-            try {
-              setLoading(true)
-              setError(null)
-              setResult(null)
-              const url = `/api/import/public/complete?file=${encodeURIComponent(file)}&buildingName=${encodeURIComponent(buildingName)}`
-              const res = await fetch(url, { method: 'POST' })
-              const data = await res.json()
-              if (!res.ok) throw new Error(data?.error || 'Plný import selhal')
-              setResult(data)
-            } catch (e: any) {
-              setError(e.message || 'Chyba plného importu')
-            } finally {
-              setLoading(false)
-            }
-          }}
-          disabled={loading}
-          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-60 transition-colors"
-        >
-          {loading ? 'Probíhá…' : 'Plný import z public'}
-        </button>
-      </div>
-      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
-      {result && (
-        <div className="mt-3 text-sm text-gray-900 dark:text-gray-300">
-          {result.updated !== undefined ? (
-             <div>
-               <div className="font-medium text-green-700 dark:text-green-400 mb-1">✅ Vzorce úspěšně načteny</div>
-               <div>Aktualizováno služeb: <span className="font-medium">{result.updated}</span></div>
-               {result.details && (
-                 <div className="mt-2 text-xs text-gray-600 dark:text-gray-400 max-h-40 overflow-y-auto border border-gray-200 dark:border-slate-700 rounded p-2 bg-gray-50 dark:bg-slate-800">
-                   {result.details.map((d: any, i: number) => (
-                     <div key={i} className="flex justify-between py-0.5 border-b border-gray-100 dark:border-slate-700 last:border-0">
-                       <span>{d.name}</span>
-                       <span className="font-mono text-gray-800 dark:text-gray-300">{d.method}</span>
-                     </div>
-                   ))}
-                 </div>
-               )}
-             </div>
-          ) : (
-             <>
-              <div>List: <span className="font-medium">{result.sheet}</span></div>
-              <div>Období: <span className="font-medium">{result.period}</span></div>
-              <div>Služby: vytvořeno {result.services?.created ?? 0}, existující {result.services?.existing ?? 0} (celkem {result.services?.total ?? 0})</div>
-              <div>Náklady: vytvořeno {result.costs?.created ?? 0} (celkem {result.costs?.total ?? 0})</div>
-             </>
-          )}
-          {result.warnings && result.warnings.length > 0 && (
-            <ul className="mt-2 list-disc ml-6 text-yellow-800 dark:text-yellow-400">
-              {result.warnings.map((w: string, i: number) => (
-                <li key={i}>{w}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  )
 }
 
 export default function BuildingDetailTabs({ building, uniqueOwners, payments, tab }: BuildingDetailTabsProps) {
@@ -268,8 +130,8 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
   return (
     <div>
       {/* Vyhledávací pole a filtry */}
-      {tab !== 'billing' && (
-        <div className="mb-4 space-y-3">
+      {tab !== 'billing' && tab !== 'settings' && tab !== 'overview' && tab !== 'results' && tab !== 'templates' && (
+        <div className="mb-6 space-y-3 bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
           <div className="flex gap-3">
             <div className="flex-1 relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -289,7 +151,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                 }`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md leading-5 bg-white dark:bg-slate-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-primary focus:border-primary sm:text-sm"
+                className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-slate-600 rounded-xl leading-5 bg-gray-50 dark:bg-slate-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               />
               {searchTerm && (
                 <button
@@ -308,10 +170,10 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
             {tab !== 'owners' && tab !== 'invoices' && (
               <button
                 onClick={() => setShowUnitFilter(!showUnitFilter)}
-                className={`px-4 py-2 border rounded-md text-sm font-medium transition-colors ${
+                className={`px-4 py-2.5 border rounded-xl text-sm font-medium transition-all ${
                   showUnitFilter || selectedUnits.size > 0
-                    ? 'border-primary bg-teal-50 dark:bg-teal-900/30 text-primary-hover dark:text-primary-light'
-                    : 'border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-slate-600'
+                    ? 'border-blue-200 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                    : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-600'
                 }`}
               >
                 <span className="flex items-center gap-2">
@@ -320,7 +182,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                   </svg>
                   Filtr jednotek
                   {selectedUnits.size > 0 && (
-                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold leading-none text-white bg-primary rounded-full">
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold leading-none text-white bg-blue-600 rounded-full">
                       {selectedUnits.size}
                     </span>
                   )}
@@ -331,67 +193,52 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
 
           {/* Panel s filtrem jednotek */}
           {showUnitFilter && tab !== 'owners' && tab !== 'invoices' && (
-            <div className="border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 p-4 shadow-sm">
+            <div className="border-t border-gray-100 dark:border-slate-700 pt-4 mt-2">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Vyberte jednotky</h3>
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <button
                     onClick={selectAllUnits}
-                    className="text-xs text-primary hover:text-primary-hover dark:text-primary-light dark:hover:text-primary font-medium"
+                    className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
                   >
                     Vybrat vše
                   </button>
                   <span className="text-gray-300 dark:text-gray-600">|</span>
                   <button
                     onClick={clearAllUnits}
-                    className="text-xs text-gray-900 hover:text-gray-800 dark:text-gray-300 dark:hover:text-white font-medium"
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium"
                   >
                     Zrušit výběr
                   </button>
                 </div>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-60 overflow-y-auto">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-60 overflow-y-auto custom-scrollbar">
                 {buildingUnits.map((unit: any) => (
                   <label
                     key={unit.id}
-                    className="flex items-center gap-2 px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-md hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                    className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-all ${
+                      selectedUnits.has(unit.id)
+                        ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800'
+                        : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700'
+                    }`}
                   >
                     <input
                       type="checkbox"
                       checked={selectedUnits.has(unit.id)}
                       onChange={() => toggleUnit(unit.id)}
-                      className="h-4 w-4 text-primary focus:ring-primary border-gray-300 dark:border-slate-600 rounded dark:bg-slate-700"
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-slate-600 rounded dark:bg-slate-700"
                     />
-                    <span className="text-sm text-gray-900 dark:text-gray-300 font-medium">
+                    <span className={`text-sm font-medium ${
+                      selectedUnits.has(unit.id)
+                        ? 'text-blue-700 dark:text-blue-300'
+                        : 'text-gray-700 dark:text-gray-300'
+                    }`}>
                       {unit.unitNumber}
                     </span>
                   </label>
                 ))}
               </div>
-              {selectedUnits.size > 0 && (
-                <p className="mt-3 text-xs text-gray-900 dark:text-gray-400">
-                  Vybráno {selectedUnits.size} z {buildingUnits.length} jednotek
-                </p>
-              )}
             </div>
-          )}
-
-          {/* Počet výsledků */}
-          {(searchTerm || selectedUnits.size > 0) && (
-            <p className="text-sm text-gray-900 dark:text-gray-300">
-              Nalezeno: {
-                tab === 'units' ? filteredUnits.length :
-                tab === 'owners' ? filteredOwners.length :
-                tab === 'invoices' ? filteredCosts.length :
-                tab === 'payments' ? filteredPayments.length :
-                tab === 'person_months' ? filteredUnits.length :
-                getFilteredReadings(
-                  tab === 'hot_water' ? 'HOT_WATER' : 
-                  tab === 'cold_water' ? 'COLD_WATER' : 
-                  'HEATING'
-                ).length
-              } záznamů
-            </p>
           )}
         </div>
       )}
@@ -404,93 +251,97 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
       {/* JEDNOTKY */}
       {tab === 'units' && (
         <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Jednotky v domě</h2>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Jednotky v domě</h2>
             <Link
               href={`/units/new?buildingId=${building.id}`}
-              className="bg-primary text-white px-4 py-2 rounded-lg font-semibold hover:bg-primary-hover transition-colors text-sm"
+              className="bg-blue-600 text-white px-4 py-2.5 rounded-xl font-semibold hover:bg-blue-700 transition-all shadow-sm hover:shadow flex items-center gap-2"
             >
-              + Přidat jednotku
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+              Přidat jednotku
             </Link>
           </div>
           {filteredUnits.length === 0 ? (
-            <p className="text-gray-900 dark:text-gray-300 text-center py-8">
-              {searchTerm ? 'Žádné jednotky nenalezeny' : 'Zatím nejsou žádné jednotky'}
-            </p>
+            <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-slate-700 mb-4">
+                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+              </div>
+              <p className="text-gray-500 dark:text-gray-400 text-lg font-medium">
+                {searchTerm ? 'Žádné jednotky nenalezeny' : 'Zatím nejsou žádné jednotky'}
+              </p>
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-                <thead className="bg-gray-50 dark:bg-slate-800">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase tracking-wider">
-                      Jednotka
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase tracking-wider">
-                      Vlastník
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase tracking-wider">
-                      Výměra
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase tracking-wider">
-                      Podíl
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase tracking-wider">
-                      VS
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-900 dark:text-gray-300 uppercase tracking-wider">
-                      Akce
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
-                  {filteredUnits.map((unit: any) => (
-                    <tr key={unit.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          {unit.unitNumber}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {unit.ownerships[0] ? (
-                          <div>
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">
-                              {unit.ownerships[0].owner.firstName} {unit.ownerships[0].owner.lastName}
-                            </div>
-                            <div className="text-sm text-gray-900 dark:text-gray-400">
-                              {unit.ownerships[0].owner.email}
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+                  <thead className="bg-gray-50/50 dark:bg-slate-800/50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Jednotka</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Vlastník</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Výměra</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Podíl</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">VS</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Akce</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                    {filteredUnits.map((unit: any) => (
+                      <tr key={unit.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="h-10 w-10 flex-shrink-0 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm">
+                              {unit.unitNumber}
                             </div>
                           </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">Bez vlastníka</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                        {unit.totalArea} m²
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                        {unit.shareNumerator}/{unit.shareDenominator}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                        {unit.variableSymbol}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <Link
-                          href={`/units/${unit.id}`}
-                          className="text-primary hover:text-primary-hover dark:text-primary-light dark:hover:text-primary mr-4"
-                        >
-                          Detail
-                        </Link>
-                        <Link
-                          href={`/units/${unit.id}/edit`}
-                          className="text-gray-900 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                        >
-                          Upravit
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {unit.ownerships[0] ? (
+                            <div>
+                              <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                                {unit.ownerships[0].owner.firstName} {unit.ownerships[0].owner.lastName}
+                              </div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                {unit.ownerships[0].owner.email}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                              Bez vlastníka
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300 font-medium">
+                          {unit.totalArea} m²
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {unit.shareNumerator}/{unit.shareDenominator}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="font-mono text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-slate-700 px-2 py-1 rounded">
+                            {unit.variableSymbol}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex justify-end gap-3">
+                            <Link
+                              href={`/units/${unit.id}`}
+                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 font-semibold"
+                            >
+                              Detail
+                            </Link>
+                            <Link
+                              href={`/units/${unit.id}/edit`}
+                              className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                            >
+                              Upravit
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -499,40 +350,67 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
       {/* VLASTNÍCI */}
       {tab === 'owners' && (
         <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Vlastníci v domě</h2>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Vlastníci v domě</h2>
           </div>
           {filteredOwners.length === 0 ? (
-            <p className="text-gray-900 dark:text-gray-300 text-center py-8">
-              {searchTerm ? 'Žádní vlastníci nenalezeni' : 'Zatím nejsou žádní vlastníci'}
-            </p>
+            <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
+              <p className="text-gray-500 dark:text-gray-400 text-lg font-medium">
+                {searchTerm ? 'Žádní vlastníci nenalezeni' : 'Zatím nejsou žádní vlastníci'}
+              </p>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredOwners.map((owner: any) => {
                 const ownerUnits = buildingUnits.filter((unit: any) => 
                   unit.ownerships.some((o: any) => o.ownerId === owner.id)
                 )
                 return (
-                  <div key={owner.id} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 hover:shadow-md transition-shadow bg-white dark:bg-slate-800">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="h-10 w-10 bg-teal-100 dark:bg-teal-900/30 rounded-full flex items-center justify-center">
-                        <svg className="h-5 w-5 text-primary dark:text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div key={owner.id} className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-md transition-all group">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="h-12 w-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <svg className="h-6 w-6 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                         </svg>
                       </div>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                        {ownerUnits.length} {ownerUnits.length === 1 ? 'jednotka' : ownerUnits.length < 5 ? 'jednotky' : 'jednotek'}
+                      </span>
                     </div>
-                    <h3 className="font-medium text-gray-900 dark:text-white mb-1">
+                    
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
                       {owner.firstName} {owner.lastName}
                     </h3>
-                    <div className="text-sm text-gray-900 dark:text-gray-300 space-y-1">
-                      {owner.email && <p>📧 {owner.email}</p>}
-                      {owner.phone && <p>📱 {owner.phone}</p>}
-                      {owner.address && <p className="text-xs">📍 {owner.address}</p>}
-                      <p className="text-primary dark:text-primary-light font-medium mt-2">
-                        Vlastní {ownerUnits.length} {ownerUnits.length === 1 ? 'jednotku' : ownerUnits.length < 5 ? 'jednotky' : 'jednotek'}
-                      </p>
-                      <div className="text-xs text-gray-900 dark:text-gray-400">
-                        {ownerUnits.map((u: any) => u.unitNumber).join(', ')}
+                    
+                    <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                      {owner.email && (
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                          {owner.email}
+                        </div>
+                      )}
+                      {owner.phone && (
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                          {owner.phone}
+                        </div>
+                      )}
+                      {owner.address && (
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                          {owner.address}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-700">
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Jednotky</p>
+                      <div className="flex flex-wrap gap-2">
+                        {ownerUnits.map((u: any) => (
+                          <span key={u.id} className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-300">
+                            {u.unitNumber}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -546,65 +424,58 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
       {/* FAKTURY */}
       {tab === 'invoices' && (
         <div className="space-y-6">
-          {/* Služby a nastavení výpočtů */}
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">⚙️ Nastavení služeb a výpočtů</h2>
-            </div>
-
-            {/* Import faktur z public */}
-            <div className="mb-6 border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/20 rounded-lg p-4">
-              <ImportInvoicesWidget buildingId={building.id} buildingName={building.name} />
-            </div>
-            
-            {/* Nová tabulka nastavení služeb */}
-            <ServiceConfigTable 
-              buildingId={building.id}
-              services={servicesState}
-              units={buildingUnits}
-              costs={buildingCosts}
-            />
-          </div>
-
           {/* Faktury (náklady) */}
           <div>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">🧾 Faktury (náklady)</h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">🧾 Faktury (náklady)</h2>
             </div>
             {filteredCosts.length === 0 ? (
-              <p className="text-gray-900 dark:text-gray-300 text-center py-8">
-                {searchTerm ? 'Žádné faktury nenalezeny' : 'Zatím nejsou žádné faktury'}
-              </p>
+              <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
+                <p className="text-gray-500 dark:text-gray-400 text-lg font-medium">
+                  {searchTerm ? 'Žádné faktury nenalezeny' : 'Zatím nejsou žádné faktury'}
+                </p>
+              </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-                  <thead className="bg-gray-50 dark:bg-slate-800">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Služba</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Částka</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Datum faktury</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Období</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
-                    {filteredCosts.map((cost: any) => (
-                      <tr key={cost.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                          {cost.service?.name || 'Neznámá služba'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                          {cost.amount.toLocaleString('cs-CZ')} Kč
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                          {new Date(cost.invoiceDate).toLocaleDateString('cs-CZ')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                          {cost.period}
-                        </td>
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+                    <thead className="bg-gray-50/50 dark:bg-slate-800/50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Služba</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Částka</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Datum faktury</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Období</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                      {filteredCosts.map((cost: any) => (
+                        <tr key={cost.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              {cost.service?.name || 'Neznámá služba'}
+                            </div>
+                            {cost.description && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{cost.description}</div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="text-sm font-bold text-gray-900 dark:text-white">
+                              {cost.amount.toLocaleString('cs-CZ')} Kč
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                            {new Date(cost.invoiceDate).toLocaleDateString('cs-CZ')}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                              {cost.period}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -614,8 +485,8 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
       {/* ODEČTY MĚŘIDEL */}
       {(tab === 'hot_water' || tab === 'cold_water' || tab === 'heating') && (
         <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
               {tab === 'hot_water' && '💧 Odečty TUV'}
               {tab === 'cold_water' && '❄️ Odečty SV'}
               {tab === 'heating' && '🔥 Odečty topení'}
@@ -626,51 +497,59 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
             const filteredReadings = getFilteredReadings(meterType)
 
             return filteredReadings.length === 0 ? (
-              <p className="text-gray-900 dark:text-gray-300 text-center py-8">
-                {searchTerm ? 'Žádné odečty nenalezeny' : 'Zatím nejsou žádné odečty'}
-              </p>
+              <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
+                <p className="text-gray-500 dark:text-gray-400 text-lg font-medium">
+                  {searchTerm ? 'Žádné odečty nenalezeny' : 'Zatím nejsou žádné odečty'}
+                </p>
+              </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-                  <thead className="bg-gray-50 dark:bg-slate-800">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Jednotka</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Měřidlo</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Datum</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Hodnota</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Spotřeba</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Náklad</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">ID</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
-                    {filteredReadings.map((reading: any) => (
-                      <tr key={reading.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                          {reading.unit.unitNumber}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                          {reading.meter.serialNumber}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                          {new Date(reading.readingDate).toLocaleDateString('cs-CZ')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                          {reading.value}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 dark:text-blue-400 font-medium">
-                          {reading.consumption || 0}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                          {reading.precalculatedCost ? `${reading.precalculatedCost.toLocaleString('cs-CZ')} Kč` : '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                          {reading.note || '-'}
-                        </td>
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+                    <thead className="bg-gray-50/50 dark:bg-slate-800/50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Jednotka</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Měřidlo</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Datum</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Hodnota</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Spotřeba</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Náklad</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Poznámka</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                      {filteredReadings.map((reading: any) => (
+                        <tr key={reading.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="font-medium text-gray-900 dark:text-white bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded">
+                              {reading.unit.unitNumber}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400 font-mono">
+                            {reading.meter.serialNumber}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                            {new Date(reading.readingDate).toLocaleDateString('cs-CZ')}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                            {reading.value}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                              {reading.consumption !== undefined && reading.consumption !== null ? Number(reading.consumption).toFixed(3) : 0}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                            {reading.precalculatedCost ? `${reading.precalculatedCost.toLocaleString('cs-CZ')} Kč` : '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 italic">
+                            {reading.note || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )
           })()}
@@ -680,47 +559,59 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
       {/* PLATBY */}
       {tab === 'payments' && (
         <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Platby vlastníků</h2>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Platby vlastníků</h2>
           </div>
           {filteredPayments.length === 0 ? (
-            <p className="text-gray-900 dark:text-gray-300 text-center py-8">
-              {searchTerm ? 'Žádné platby nenalezeny' : 'Zatím nejsou žádné platby'}
-            </p>
+            <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
+              <p className="text-gray-500 dark:text-gray-400 text-lg font-medium">
+                {searchTerm ? 'Žádné platby nenalezeny' : 'Zatím nejsou žádné platby'}
+              </p>
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-                <thead className="bg-gray-50 dark:bg-slate-800">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Jednotka</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Částka</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Datum platby</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">VS</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Období</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
-                  {filteredPayments.map((payment: any) => (
-                    <tr key={payment.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                        {payment.unit.unitNumber}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 dark:text-green-400 font-medium">
-                        {payment.amount.toLocaleString('cs-CZ')} Kč
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                        {new Date(payment.paymentDate).toLocaleDateString('cs-CZ')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                        {payment.variableSymbol}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
-                        {payment.period}
-                      </td>
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+                  <thead className="bg-gray-50/50 dark:bg-slate-800/50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Jednotka</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Částka</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Datum platby</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">VS</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Období</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                    {filteredPayments.map((payment: any) => (
+                      <tr key={payment.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="font-medium text-gray-900 dark:text-white bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded">
+                            {payment.unit.unitNumber}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                            +{payment.amount.toLocaleString('cs-CZ')} Kč
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                          {new Date(payment.paymentDate).toLocaleDateString('cs-CZ')}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="font-mono text-sm text-gray-600 dark:text-gray-400">
+                            {payment.variableSymbol}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                            {payment.period}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -729,28 +620,39 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
       {/* POČET OSOB (OSOBO-MĚSÍCE) */}
       {tab === 'person_months' && (
         <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Počet osob v jednotkách</h2>
-            <div className="text-sm text-gray-900 dark:text-gray-400">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Počet osob v jednotkách</h2>
+            <div className="text-sm text-gray-500 dark:text-gray-400 bg-white dark:bg-slate-800 px-3 py-1 rounded-lg border border-gray-200 dark:border-slate-700">
               Importováno ze záložky Evidence (sloupce N, O, P)
             </div>
           </div>
           
-          <div className="mb-6 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">📊 Jak funguje výpočet osobo-měsíců?</h3>
-            <ul className="text-sm text-gray-900 dark:text-gray-300 space-y-1">
-              <li>• <strong>Počet osob</strong> (sloupec N) - kolik osob bydlí v jednotce</li>
-              <li>• <strong>Evidence od</strong> (sloupec O) - od kdy jsou osoby evidovány</li>
-              <li>• <strong>Evidence do</strong> (sloupec P) - do kdy jsou osoby evidovány</li>
-              <li>• Systém automaticky vypočítá osobo-měsíce pro každý měsíc v období</li>
-              <li>• Použití: Rozúčtování služeb podle počtu osob (např. voda, odvoz odpadu)</li>
-            </ul>
+          <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-2xl p-6">
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <svg className="h-6 w-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">Jak funguje výpočet osobo-měsíců?</h3>
+                <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+                  <li>• <strong>Počet osob</strong> (sloupec N) - kolik osob bydlí v jednotce</li>
+                  <li>• <strong>Evidence od</strong> (sloupec O) - od kdy jsou osoby evidovány</li>
+                  <li>• <strong>Evidence do</strong> (sloupec P) - do kdy jsou osoby evidovány</li>
+                  <li>• Systém automaticky vypočítá osobo-měsíce pro každý měsíc v období</li>
+                  <li>• Použití: Rozúčtování služeb podle počtu osob (např. voda, odvoz odpadu)</li>
+                </ul>
+              </div>
+            </div>
           </div>
 
           {filteredUnits.length === 0 ? (
-            <p className="text-gray-900 dark:text-gray-300 text-center py-8">
-              {searchTerm ? 'Žádné jednotky nenalezeny' : 'Zatím nejsou žádné jednotky'}
-            </p>
+            <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
+              <p className="text-gray-500 dark:text-gray-400 text-lg font-medium">
+                {searchTerm ? 'Žádné jednotky nenalezeny' : 'Zatím nejsou žádné jednotky'}
+              </p>
+            </div>
           ) : (
             <div className="space-y-6">
               {filteredUnits.map((unit: any) => {
@@ -767,48 +669,56 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                 const years = Object.keys(groupedByYear).map(Number).sort((a, b) => b - a)
                 
                 return (
-                  <div key={unit.id} className="border border-gray-200 dark:border-slate-700 rounded-lg p-6 bg-white dark:bg-slate-800">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                          Jednotka {unit.unitNumber}
-                        </h3>
-                        {unit.ownerships[0] && (
-                          <p className="text-sm text-gray-900 dark:text-gray-300">
-                            {unit.ownerships[0].owner.firstName} {unit.ownerships[0].owner.lastName}
-                          </p>
-                        )}
+                  <div key={unit.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
+                    <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100 dark:border-slate-700">
+                      <div className="flex items-center gap-4">
+                        <div className="h-12 w-12 bg-gray-100 dark:bg-slate-700 rounded-xl flex items-center justify-center text-gray-600 dark:text-gray-300 font-bold text-lg">
+                          {unit.unitNumber}
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                            Jednotka {unit.unitNumber}
+                          </h3>
+                          {unit.ownerships[0] && (
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              {unit.ownerships[0].owner.firstName} {unit.ownerships[0].owner.lastName}
+                            </p>
+                          )}
+                        </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm text-gray-900 dark:text-gray-400">Aktuální počet osob</div>
-                        <div className="text-2xl font-bold text-primary dark:text-primary-light">
+                        <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Aktuální počet osob</div>
+                        <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
                           {unit.residents || 0}
                         </div>
                       </div>
                     </div>
 
                     {personMonths.length === 0 ? (
-                      <div className="text-center py-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-                        <p className="text-gray-900 dark:text-gray-300 text-sm">
+                      <div className="text-center py-8 bg-gray-50 dark:bg-slate-700/30 rounded-xl border border-dashed border-gray-200 dark:border-slate-600">
+                        <p className="text-gray-500 dark:text-gray-400 text-sm">
                           Zatím nejsou importována data o počtu osob pro tuto jednotku
                         </p>
                       </div>
                     ) : (
-                      <div className="space-y-4">
+                      <div className="space-y-6">
                         {years.map(year => {
                           const yearMonths = groupedByYear[year].sort((a: any, b: any) => a.month - b.month)
                           const totalPersonMonths = yearMonths.reduce((sum: number, pm: any) => sum + pm.personCount, 0)
                           
                           return (
-                            <div key={year} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4">
-                              <div className="flex items-center justify-between mb-3">
-                                <h4 className="font-semibold text-gray-900 dark:text-white">Rok {year}</h4>
-                                <div className="text-sm text-gray-900 dark:text-gray-300">
-                                  Celkem: <span className="font-bold text-primary dark:text-primary-light">{totalPersonMonths}</span> osobo-měsíců
+                            <div key={year} className="bg-gray-50 dark:bg-slate-700/30 rounded-xl p-5 border border-gray-100 dark:border-slate-700">
+                              <div className="flex items-center justify-between mb-4">
+                                <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                  Rok {year}
+                                </h4>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-600 px-3 py-1 rounded-lg shadow-sm">
+                                  Celkem: <span className="font-bold text-blue-600 dark:text-blue-400">{totalPersonMonths}</span> osobo-měsíců
                                 </div>
                               </div>
                               
-                              <div className="grid grid-cols-12 gap-2">
+                              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-3">
                                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => {
                                   const monthData = yearMonths.find((pm: any) => pm.month === month)
                                   const personCount = monthData?.personCount || 0
@@ -817,17 +727,17 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                                   return (
                                     <div 
                                       key={month}
-                                      className={`text-center p-2 rounded ${
+                                      className={`text-center p-3 rounded-lg transition-all ${
                                         hasData 
-                                          ? 'bg-teal-100 dark:bg-teal-900/40 border border-teal-300 dark:border-teal-700' 
-                                          : 'bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600'
+                                          ? 'bg-white dark:bg-slate-600 shadow-sm border border-blue-100 dark:border-blue-900/30' 
+                                          : 'bg-gray-100/50 dark:bg-slate-700/50 border border-transparent'
                                       }`}
                                     >
-                                      <div className="text-xs text-gray-900 dark:text-gray-300 mb-1">
-                                        {month}.
+                                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider font-medium">
+                                        {new Date(2000, month - 1, 1).toLocaleString('cs-CZ', { month: 'short' })}
                                       </div>
-                                      <div className={`text-lg font-bold ${
-                                        hasData ? 'text-primary dark:text-primary-light' : 'text-gray-400 dark:text-gray-500'
+                                      <div className={`text-xl font-bold ${
+                                        hasData ? 'text-blue-600 dark:text-blue-400' : 'text-gray-300 dark:text-gray-600'
                                       }`}>
                                         {personCount}
                                       </div>
@@ -848,67 +758,13 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
         </div>
       )}
 
-      {/* VYÚČTOVÁNÍ */}
-      {tab === 'billing' && (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Vyúčtování domu</h2>
-            <div className="flex gap-3">
-              <Link
-                href={`/buildings/${building.id}/billing/calculate?year=${new Date().getFullYear()}`}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition-colors text-sm"
-              >
-                🧮 Vypočítat vyúčtování
-              </Link>
-              <Link
-                href={`/billing/import?buildingId=${building.id}`}
-                className="bg-primary text-white px-4 py-2 rounded-lg font-semibold hover:bg-primary-hover transition-colors text-sm"
-              >
-                📊 Import vyúčtování
-              </Link>
-            </div>
-          </div>
-          <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg p-6 text-center">
-            <svg className="h-16 w-16 text-primary dark:text-primary-light mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Vypočítat vyúčtování automaticky</h3>
-            <p className="text-gray-900 dark:text-gray-300 mb-4">
-              Systém automaticky rozpočítá náklady podle nastavených metod pro každou službu
-            </p>
-            <Link
-              href={`/buildings/${building.id}/billing/calculate?year=${new Date().getFullYear()}`}
-              className="inline-flex items-center px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors"
-            >
-              🧮 Spustit výpočet vyúčtování
-            </Link>
-            {building._count.costs > 0 && (
-              <div className="mt-4 text-sm text-gray-900 dark:text-gray-300">
-                <p>✓ Náklady: {building._count.costs} záznamů</p>
-              </div>
-            )}
-            
-            <div className="mt-6 border-t border-teal-200 dark:border-teal-800 pt-6">
-              <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Nebo importovat z Excelu</h4>
-              <p className="text-gray-900 dark:text-gray-300 mb-4 text-sm">
-                Nahrajte Excel soubor s kompletním vyúčtováním (faktury, odečty, platby)
-              </p>
-              <Link
-                href={`/billing/import?buildingId=${building.id}`}
-                className="inline-flex items-center px-6 py-3 bg-primary text-white rounded-lg font-semibold hover:bg-primary-hover transition-colors"
-              >
-                📊 Importovat z Excelu
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* PŘEDPIS PO MĚSÍCI */}
       {tab === 'advances' && (
         <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Měsíční předpis záloh</h2>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Měsíční předpis záloh</h2>
           </div>
           
           <AdvancesMatrix buildingId={building.id} />
@@ -918,139 +774,152 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
       {/* PARAMETRY */}
       {tab === 'parameters' && (
         <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Parametry jednotek pro výpočet</h2>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Parametry jednotek pro výpočet</h2>
           </div>
           
-          <p className="text-gray-900 dark:text-gray-300 mb-4">
-            Přehled všech parametrů jednotek používaných při výpočtu vyúčtování (vlastnický podíl, plocha, počet osob).
-          </p>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800 rounded-lg shadow">
-              <thead className="bg-gray-50 dark:bg-slate-800">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Jednotka</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Vlastník</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Podíl</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Plocha celkem</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Podlahová pl.</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Počet osob</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Osobo-měsíce</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-900 dark:text-gray-300 uppercase">Měřidla</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                {filteredUnits.map((unit: any) => {
-                  const ownership = unit.ownerships[0]
-                  const shareNum = unit.shareNumerator ?? 0
-                  const shareDen = unit.shareDenominator === 0 ? 1 : (unit.shareDenominator ?? 1)
-                  const ownershipPercent = ((shareNum / shareDen) * 100).toFixed(3)
-                  const activeMeters = unit.meters.filter((m: any) => m.isActive)
-                  const personMonths = unit.personMonths?.reduce((sum: number, pm: any) => sum + pm.personCount, 0) || 0
-                  
-                  return (
-                    <tr key={unit.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-gray-900 dark:text-white">{unit.unitNumber}</div>
-                        <div className="text-xs text-gray-900 dark:text-gray-400">VS: {unit.variableSymbol}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {ownership ? (
-                          <div className="text-sm text-gray-900 dark:text-gray-300">
-                            {ownership.owner.firstName} {ownership.owner.lastName}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">Bez vlastníka</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="font-medium text-gray-900 dark:text-gray-300">{ownershipPercent}%</div>
-                        <div className="text-xs text-gray-900 dark:text-gray-400">{unit.shareNumerator}/{unit.shareDenominator}</div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="font-medium text-gray-900 dark:text-gray-300">{(unit.totalArea ?? 0).toFixed(2)} m²</div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="text-gray-900 dark:text-gray-300">{(unit.floorArea ?? 0).toFixed(2)} m²</div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="text-gray-900 dark:text-gray-300">{unit.residents || 0}</div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="font-medium text-gray-900 dark:text-gray-300">{personMonths}</div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex flex-wrap gap-1 justify-center">
-                          {activeMeters.map((meter: any) => {
-                            const typeIcons: Record<string, string> = {
-                              'COLD_WATER': '❄️',
-                              'HOT_WATER': '💧',
-                              'HEATING': '🔥',
-                              'ELECTRICITY': '⚡',
-                              'GAS': '🔥'
-                            }
-                            return (
-                              <span 
-                                key={meter.id} 
-                                className="inline-block text-lg" 
-                                title={`${meter.type}: ${meter.serialNumber}`}
-                              >
-                                {typeIcons[meter.type] || '📊'}
-                              </span>
-                            )
-                          })}
-                          {activeMeters.length === 0 && (
-                            <span className="text-gray-400 text-xs">Bez měřidel</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-              <tfoot className="bg-gray-50 dark:bg-slate-800 font-semibold">
-                <tr>
-                  <td className="px-4 py-3 text-gray-900 dark:text-white">CELKEM</td>
-                  <td className="px-4 py-3 text-gray-900 dark:text-white">{filteredUnits.length} jednotek</td>
-                  <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
-                    {filteredUnits.reduce((sum: number, u: any) => {
-                      const sn = u.shareNumerator ?? 0
-                      const sd = u.shareDenominator === 0 ? 1 : (u.shareDenominator ?? 1)
-                      return sum + (sn / sd)
-                    }, 0).toFixed(3)}%
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
-                    {filteredUnits.reduce((sum: number, u: any) => sum + (u.totalArea ?? 0), 0).toFixed(2)} m²
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
-                    {filteredUnits.reduce((sum: number, u: any) => sum + (u.floorArea ?? 0), 0).toFixed(2)} m²
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
-                    {filteredUnits.reduce((sum: number, u: any) => sum + (u.residents || 0), 0)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
-                    {filteredUnits.reduce((sum: number, u: any) => {
-                      const pm = u.personMonths?.reduce((s: number, p: any) => s + p.personCount, 0) || 0
-                      return sum + pm
-                    }, 0)}
-                  </td>
-                  <td className="px-4 py-3"></td>
-                </tr>
-              </tfoot>
-            </table>
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl p-4 mb-6">
+            <p className="text-blue-800 dark:text-blue-200 text-sm">
+              Přehled všech parametrů jednotek používaných při výpočtu vyúčtování (vlastnický podíl, plocha, počet osob).
+            </p>
           </div>
 
-          <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">💡 Vysvětlení parametrů:</h3>
-            <ul className="space-y-2 text-sm text-gray-900 dark:text-gray-300">
-              <li><strong>Vlastnický podíl:</strong> Používá se pro výpočet nákladů podle podílu (elektřina, pojištění)</li>
-              <li><strong>Plocha celkem:</strong> Celková plocha jednotky včetně sklepů a příslušenství</li>
-              <li><strong>Podlahová plocha:</strong> Čistá obytná plocha bytu</li>
-              <li><strong>Počet osob:</strong> Aktuální počet obyvatel v jednotce</li>
-              <li><strong>Osobo-měsíce:</strong> Součet měsíců za rok (pro výpočet výtahu, úklidu podle osob)</li>
-              <li><strong>Měřidla:</strong> Aktivní měřidla pro odečty (voda, teplo, elektřina)</li>
-            </ul>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+                <thead className="bg-gray-50/50 dark:bg-slate-800/50">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Jednotka</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Vlastník</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Podíl</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Plocha celkem</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Podlahová pl.</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Počet osob</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Osobo-měsíce</th>
+                    <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Měřidla</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                  {filteredUnits.map((unit: any) => {
+                    const ownership = unit.ownerships[0]
+                    const shareNum = unit.shareNumerator ?? 0
+                    const shareDen = unit.shareDenominator === 0 ? 1 : (unit.shareDenominator ?? 1)
+                    const ownershipPercent = ((shareNum / shareDen) * 100).toFixed(3)
+                    const activeMeters = unit.meters.filter((m: any) => m.isActive)
+                    const personMonths = unit.personMonths?.reduce((sum: number, pm: any) => sum + pm.personCount, 0) || 0
+                    
+                    return (
+                      <tr key={unit.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-gray-900 dark:text-white">{unit.unitNumber}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-0.5">VS: {unit.variableSymbol}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {ownership ? (
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              {ownership.owner.firstName} {ownership.owner.lastName}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-gray-400 italic">Bez vlastníka</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="font-bold text-gray-900 dark:text-white">{ownershipPercent}%</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{unit.shareNumerator}/{unit.shareDenominator}</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="font-medium text-gray-900 dark:text-gray-300">{(unit.totalArea ?? 0).toFixed(2)} m²</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="text-gray-900 dark:text-gray-300">{(unit.floorArea ?? 0).toFixed(2)} m²</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="font-bold text-blue-600 dark:text-blue-400">{unit.residents || 0}</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="font-medium text-gray-900 dark:text-gray-300">{personMonths}</div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex flex-wrap gap-1.5 justify-center">
+                            {activeMeters.map((meter: any) => {
+                              const typeIcons: Record<string, string> = {
+                                'COLD_WATER': '❄️',
+                                'HOT_WATER': '💧',
+                                'HEATING': '🔥',
+                                'ELECTRICITY': '⚡',
+                                'GAS': '🔥'
+                              }
+                              return (
+                                <span 
+                                  key={meter.id} 
+                                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 dark:bg-slate-700 text-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors cursor-help" 
+                                  title={`${meter.type}: ${meter.serialNumber}`}
+                                >
+                                  {typeIcons[meter.type] || '📊'}
+                                </span>
+                              )
+                            })}
+                            {activeMeters.length === 0 && (
+                              <span className="text-gray-400 text-xs italic">Bez měřidel</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot className="bg-gray-50 dark:bg-slate-800/80 font-semibold border-t border-gray-200 dark:border-slate-700">
+                  <tr>
+                    <td className="px-6 py-4 text-gray-900 dark:text-white">CELKEM</td>
+                    <td className="px-6 py-4 text-gray-900 dark:text-white">{filteredUnits.length} jednotek</td>
+                    <td className="px-6 py-4 text-right text-gray-900 dark:text-white">
+                      {filteredUnits.reduce((sum: number, u: any) => {
+                        const sn = u.shareNumerator ?? 0
+                        const sd = u.shareDenominator === 0 ? 1 : (u.shareDenominator ?? 1)
+                        return sum + (sn / sd)
+                      }, 0).toFixed(3)}%
+                    </td>
+                    <td className="px-6 py-4 text-right text-gray-900 dark:text-white">
+                      {filteredUnits.reduce((sum: number, u: any) => sum + (u.totalArea ?? 0), 0).toFixed(2)} m²
+                    </td>
+                    <td className="px-6 py-4 text-right text-gray-900 dark:text-white">
+                      {filteredUnits.reduce((sum: number, u: any) => sum + (u.floorArea ?? 0), 0).toFixed(2)} m²
+                    </td>
+                    <td className="px-6 py-4 text-right text-gray-900 dark:text-white">
+                      {filteredUnits.reduce((sum: number, u: any) => sum + (u.residents || 0), 0)}
+                    </td>
+                    <td className="px-6 py-4 text-right text-gray-900 dark:text-white">
+                      {filteredUnits.reduce((sum: number, u: any) => {
+                        const pm = u.personMonths?.reduce((s: number, p: any) => s + p.personCount, 0) || 0
+                        return sum + pm
+                      }, 0)}
+                    </td>
+                    <td className="px-6 py-4"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm">
+              <h4 className="font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                <span className="w-2 h-2 bg-blue-500 rounded-full"></span> Vlastnický podíl
+              </h4>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Používá se pro výpočet nákladů podle podílu (elektřina, pojištění, fond oprav).</p>
+            </div>
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm">
+              <h4 className="font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Plochy
+              </h4>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Celková plocha pro teplo, podlahová pro specifické služby. Zahrnuje i sklepy.</p>
+            </div>
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm">
+              <h4 className="font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                <span className="w-2 h-2 bg-purple-500 rounded-full"></span> Osoby
+              </h4>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Osobo-měsíce zohledňují změny počtu osob v průběhu roku (výtah, odpad).</p>
+            </div>
           </div>
         </div>
       )}
@@ -1065,19 +934,33 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
         />
       )}
 
-      {/* Test výpočetního enginu */}
-      {tab === 'calc_test' && (
-        <CalculationEngineTest
-          buildingId={building.id}
-          services={buildingServices.map((s: any) => ({
-            id: s.id,
-            name: s.name,
-            code: s.code,
-            dataSourceType: s.dataSourceType,
-            dataSourceName: s.dataSourceName,
-            unitAttributeName: s.unitAttributeName,
-          }))}
-        />
+      {/* Nastavení */}
+      {tab === 'settings' && (
+        <div className="space-y-8">
+          <div>
+            <BillingSettingsEditor 
+              buildingId={building.id}
+              services={servicesState}
+              units={buildingUnits}
+              costs={buildingCosts}
+            />
+          </div>
+
+          <div className="pt-8 border-t border-gray-200 dark:border-slate-700">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">🧪 Test výpočetního enginu</h3>
+            <CalculationEngineTest
+              buildingId={building.id}
+              services={buildingServices.map((s: any) => ({
+                id: s.id,
+                name: s.name,
+                code: s.code,
+                dataSourceType: s.dataSourceType,
+                dataSourceName: s.dataSourceName,
+                unitAttributeName: s.unitAttributeName,
+              }))}
+            />
+          </div>
+        </div>
       )}
 
       {/* Generování vyúčtování */}
@@ -1204,44 +1087,44 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4 bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-        <label className="text-sm font-medium text-gray-700">Rok:</label>
+      <div className="flex items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Rok:</label>
         <input 
           type="number" 
           value={year} 
           onChange={(e) => setYear(parseInt(e.target.value || String(new Date().getFullYear()), 10))} 
-          className="w-24 px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:ring-primary focus:border-primary" 
+          className="w-24 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white bg-white dark:bg-slate-700 focus:ring-blue-500 focus:border-blue-500" 
         />
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+            <thead className="bg-gray-50 dark:bg-slate-800">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-slate-800 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   JEDNOTKA
                 </th>
                 {services.map((s) => (
-                  <th key={s.id} className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider min-w-[120px]">
+                  <th key={s.id} className="px-4 py-4 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">
                     {s.name}
                   </th>
                 ))}
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 sticky right-0 z-10">
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-slate-800 sticky right-0 z-10 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   CELKEM
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
               {units.map((u) => {
                 const unitRowTotals = services.reduce((sum, s) => sum + (data[u.id]?.[s.id]?.total || 0), 0)
                 
                 return (
-                  <tr key={u.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white hover:bg-gray-50 z-10 border-r border-gray-100">
+                  <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/30 z-10 border-r border-gray-100 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                       <div className="flex flex-col">
-                        <span className="text-base">{u.unitNumber}</span>
-                        {u.variableSymbol && <span className="text-xs text-gray-400">VS: {u.variableSymbol}</span>}
+                        <span className="text-base font-bold">{u.unitNumber}</span>
+                        {u.variableSymbol && <span className="text-xs text-gray-400 font-mono">VS: {u.variableSymbol}</span>}
                       </div>
                     </td>
                     {services.map((s) => {
@@ -1255,7 +1138,7 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
                           <div className="flex flex-col items-center gap-1">
                             <input
                               type="number"
-                              className="w-24 px-2 py-1.5 border border-gray-200 rounded text-center text-sm text-gray-900 focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                              className="w-24 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg text-center text-sm text-gray-900 dark:text-white bg-white dark:bg-slate-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                               defaultValue={monthlyVal}
                               onBlur={async (e) => {
                                 const val = parseFloat(e.target.value)
@@ -1264,11 +1147,11 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
                               }}
                             />
                             <div className="flex flex-col items-center">
-                              <span className="text-xs text-gray-400">
+                              <span className="text-xs text-gray-400 dark:text-gray-500">
                                 {total > 0 ? `${total.toLocaleString('cs-CZ')} Kč` : '-'}
                               </span>
                               {paidSrv > 0 && (
-                                <span className="text-[10px] text-green-600 font-medium">
+                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
                                   uhrazeno {paidSrv.toLocaleString('cs-CZ')}
                                 </span>
                               )}
@@ -1277,7 +1160,7 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
                         </td>
                       )
                     })}
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-gray-900 sticky right-0 bg-white hover:bg-gray-50 z-10 border-l border-gray-100">
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-gray-900 dark:text-white sticky right-0 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/30 z-10 border-l border-gray-100 dark:border-slate-700 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                       {unitRowTotals.toLocaleString('cs-CZ')} Kč
                     </td>
                   </tr>
@@ -1288,8 +1171,8 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
         </div>
       </div>
 
-      <div className="text-sm text-gray-500 bg-blue-50 p-3 rounded-md border border-blue-100 flex items-center gap-2">
-        <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="text-sm text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800 flex items-center gap-3">
+        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <span>Změna částky v poli automaticky přepočítá předpis pro všech 12 měsíců.</span>

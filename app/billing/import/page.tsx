@@ -4,13 +4,18 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import DashboardNav from '@/components/dashboard/DashboardNav'
 import CompleteImport from '@/components/buildings/CompleteImport'
 
-export default async function CompleteImportPage() {
+export default async function CompleteImportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ buildingId?: string }>
+}) {
   const session = await getServerSession(authOptions)
 
   if (!session) {
     redirect('/login')
   }
 
+  const { buildingId } = await searchParams
   const currentYear = new Date().getFullYear()
 
   return (
@@ -26,7 +31,7 @@ export default async function CompleteImportPage() {
             </p>
           </div>
 
-          <CompleteImport year={currentYear} />
+          <CompleteImport year={currentYear} buildingId={buildingId} />
 
           <div className="mt-8 bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">📋 Co bude importováno</h2>

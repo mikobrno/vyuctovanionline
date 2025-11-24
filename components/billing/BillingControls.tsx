@@ -115,10 +115,10 @@ export function BillingControls({ buildingId, year, status = 'DRAFT', billingPer
       <button 
         onClick={handleCalculate} 
         disabled={isCalculating || isLocked} 
-        className={`inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-11 px-8 text-white ${
+        className={`inline-flex items-center justify-center rounded-xl text-sm font-medium transition-colors h-11 px-8 text-white shadow-sm ${
           isLocked 
             ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed' 
-            : 'bg-black dark:bg-slate-700 hover:bg-gray-800 dark:hover:bg-slate-600'
+            : 'bg-teal-600 dark:bg-teal-500 hover:bg-teal-700 dark:hover:bg-teal-600'
         }`}
       >
         {isCalculating ? (
@@ -138,10 +138,10 @@ export function BillingControls({ buildingId, year, status = 'DRAFT', billingPer
       <button 
         onClick={handleDelete} 
         disabled={isDeleting || isLocked} 
-        className={`inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-11 px-4 border ${
+        className={`inline-flex items-center justify-center rounded-xl text-sm font-medium transition-colors h-11 px-4 border shadow-sm ${
           isLocked 
             ? 'border-gray-200 dark:border-slate-700 text-gray-400 dark:text-gray-500 cursor-not-allowed' 
-            : 'border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+            : 'border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 bg-white dark:bg-slate-800'
         }`}
       >
         {isDeleting ? 'Mazání...' : '🗑️ Smazat vyúčtování'}
@@ -151,10 +151,10 @@ export function BillingControls({ buildingId, year, status = 'DRAFT', billingPer
       <button 
         onClick={handleLock} 
         disabled={isLocking} 
-        className={`inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-11 px-4 border ${
+        className={`inline-flex items-center justify-center rounded-xl text-sm font-medium transition-colors h-11 px-4 border shadow-sm ${
           isLocked 
             ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/30' 
-            : 'border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700'
+            : 'border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 bg-white dark:bg-slate-800'
         }`}
       >
         {isLocking ? 'Ukládám...' : (
@@ -170,7 +170,7 @@ export function BillingControls({ buildingId, year, status = 'DRAFT', billingPer
         <button 
           onClick={handleSendAll} 
           disabled={isSending} 
-          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-11 px-4 bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 disabled:bg-blue-400 dark:disabled:bg-blue-800"
+          className="inline-flex items-center justify-center rounded-xl text-sm font-medium transition-colors h-11 px-4 bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 disabled:bg-blue-400 dark:disabled:bg-blue-800 shadow-sm"
         >
           {isSending ? 'Odesílám...' : '🚀 Odeslat vše (Email + SMS)'}
         </button>

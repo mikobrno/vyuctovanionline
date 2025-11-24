@@ -43,6 +43,10 @@ export async function POST(
           unitPrice: item.unitPrice,
           fixedAmountPerUnit: item.fixedAmountPerUnit,
           showOnStatement: item.showOnStatement,
+          isActive: item.isActive,
+          order: item.order,
+          customFormula: item.customFormula,
+          divisor: item.divisor,
         }
       })
     }

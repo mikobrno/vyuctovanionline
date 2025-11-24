@@ -9,6 +9,7 @@ export async function POST(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const file = searchParams.get('file')
     const buildingName = searchParams.get('buildingName') || ''
+    const buildingId = searchParams.get('buildingId') || ''
     const year = searchParams.get('year') || ''
 
     if (!file) return NextResponse.json({ error: "Missing 'file' query param" }, { status: 400 })
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
     const form = new FormData()
     form.set('file', fileObj)
     if (buildingName) form.set('buildingName', buildingName)
+    if (buildingId) form.set('buildingId', buildingId)
     if (year) form.set('year', year)
 
     const proto = req.headers.get('x-forwarded-proto') ?? 'http'

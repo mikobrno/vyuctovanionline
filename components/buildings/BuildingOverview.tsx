@@ -54,129 +54,138 @@ export default function BuildingOverview({ building }: BuildingOverviewProps) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">
-            🏢 Přehled a nastavení domu
-          </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Globální parametry budovy používané pro výpočty a reporty.
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Základní informace */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Název domu
-              </label>
-              <input
-                type="text"
-                disabled
-                value={building.name}
-                className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm text-gray-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Adresa
-              </label>
-              <input
-                type="text"
-                disabled
-                value={`${building.address}, ${building.city}`}
-                className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm text-gray-500 sm:text-sm"
-              />
+    <form onSubmit={handleSubmit} className="space-y-8 animate-fade-in">
+      {/* Header Section */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-3xl p-8 text-white shadow-lg relative overflow-hidden">
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-white opacity-10 rounded-full blur-3xl"></div>
+        <div className="relative z-10 flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">{building.name}</h1>
+            <div className="flex items-center gap-2 text-blue-100">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              <span className="text-lg">{building.address}, {building.city}</span>
             </div>
           </div>
+          <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 border border-white/30">
+            <div className="text-xs uppercase tracking-wider font-semibold text-blue-100 mb-1">Počet jednotek</div>
+            <div className="text-3xl font-bold">{building.units.length}</div>
+          </div>
+        </div>
+      </div>
 
-          <div className="border-t border-gray-200 pt-6">
-            <h4 className="text-base font-medium text-gray-900 mb-4">
-              ⚙️ Parametry pro výpočty
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Column 1: Areas */}
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl text-blue-600 dark:text-blue-400">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Plochy domu</h3>
+            </div>
+            
+            <div className="space-y-4">
               <div>
-                <label htmlFor="totalArea" className="block text-sm font-medium text-gray-700">
-                  Užitná plocha domu - celková (m²)
+                <label htmlFor="totalArea" className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                  Celková plocha
                 </label>
-                <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="relative">
                   <input
                     type="number"
                     name="totalArea"
                     id="totalArea"
                     step="0.01"
                     defaultValue={building.totalArea ?? ''}
-                    className="focus:ring-primary focus:border-primary block w-full pl-3 pr-12 sm:text-sm border-gray-300 rounded-md"
+                    className="block w-full pl-4 pr-12 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-0 rounded-xl text-gray-900 dark:text-white font-semibold transition-all"
                     placeholder="0.00"
                   />
-                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                    <span className="text-gray-500 sm:text-sm">m²</span>
+                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                    <span className="text-gray-400 font-medium">m²</span>
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  Používá se pro kontrolní výpočty a statistiky.
-                </p>
               </div>
 
               <div>
-                <label htmlFor="chargeableArea" className="block text-sm font-medium text-gray-700">
-                  Užitná plocha domu - započitatelná (m²)
+                <label htmlFor="chargeableArea" className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                  Započitatelná plocha
                 </label>
-                <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="relative">
                   <input
                     type="number"
                     name="chargeableArea"
                     id="chargeableArea"
                     step="0.01"
                     defaultValue={building.chargeableArea ?? ''}
-                    className="focus:ring-primary focus:border-primary block w-full pl-3 pr-12 sm:text-sm border-gray-300 rounded-md"
+                    className="block w-full pl-4 pr-12 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-0 rounded-xl text-gray-900 dark:text-white font-semibold transition-all"
                     placeholder="0.00"
                   />
-                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                    <span className="text-gray-500 sm:text-sm">m²</span>
+                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                    <span className="text-gray-400 font-medium">m²</span>
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  Může být použita jako základna pro rozúčtování některých služeb.
-                </p>
               </div>
+            </div>
+          </div>
+        </div>
 
-              <div>
-                <label htmlFor="unitCountOverride" className="block text-sm font-medium text-gray-700">
-                  Počet jednotek (pro výpočet)
-                </label>
-                <div className="mt-1 flex gap-2">
-                  <input
-                    type="number"
-                    name="unitCountOverride"
-                    id="unitCountOverride"
-                    defaultValue={building.unitCountOverride ?? ''}
-                    className="focus:ring-primary focus:border-primary block w-full sm:text-sm border-gray-300 rounded-md"
-                    placeholder={building.units.length.toString()}
-                  />
-                </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  Pokud není vyplněno, použije se skutečný počet jednotek v databázi ({building.units.length}).
-                </p>
+        {/* Column 2: People & Units */}
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-purple-50 dark:bg-purple-900/30 rounded-xl text-purple-600 dark:text-purple-400">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
               </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Osoby a jednotky</h3>
+            </div>
 
+            <div className="space-y-4">
               <div>
-                <label htmlFor="totalPeople" className="block text-sm font-medium text-gray-700">
-                  Počet osob (celkem/výtah)
+                <label htmlFor="totalPeople" className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                  Počet osob (celkem)
                 </label>
                 <input
                   type="number"
                   name="totalPeople"
                   id="totalPeople"
                   defaultValue={building.totalPeople ?? ''}
-                  className="mt-1 focus:ring-primary focus:border-primary block w-full sm:text-sm border-gray-300 rounded-md"
+                  className="block w-full px-4 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:border-purple-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-0 rounded-xl text-gray-900 dark:text-white font-semibold transition-all"
                 />
               </div>
 
               <div>
-                <label htmlFor="chimneysCount" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="unitCountOverride" className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                  Počet jednotek (override)
+                </label>
+                <input
+                  type="number"
+                  name="unitCountOverride"
+                  id="unitCountOverride"
+                  defaultValue={building.unitCountOverride ?? ''}
+                  placeholder={building.units.length.toString()}
+                  className="block w-full px-4 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:border-purple-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-0 rounded-xl text-gray-900 dark:text-white font-semibold transition-all"
+                />
+                <p className="mt-2 text-xs text-gray-400">
+                  Nechte prázdné pro použití automatického počtu ({building.units.length}).
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Column 3: Technical & Admin */}
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl text-emerald-600 dark:text-emerald-400">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Správa a technické</h3>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="chimneysCount" className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">
                   Počet komínů
                 </label>
                 <input
@@ -184,68 +193,74 @@ export default function BuildingOverview({ building }: BuildingOverviewProps) {
                   name="chimneysCount"
                   id="chimneysCount"
                   defaultValue={building.chimneysCount ?? ''}
-                  className="mt-1 focus:ring-primary focus:border-primary block w-full sm:text-sm border-gray-300 rounded-md"
+                  className="block w-full px-4 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-0 rounded-xl text-gray-900 dark:text-white font-semibold transition-all"
                 />
               </div>
-            </div>
-          </div>
 
-          <div className="border-t border-gray-200 pt-6">
-            <h4 className="text-base font-medium text-gray-900 mb-4">
-              🏦 Bankovní spojení a správa
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label htmlFor="bankAccount" className="block text-sm font-medium text-gray-700">
-                  Číslo účtu společenství
+                <label htmlFor="bankAccount" className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                  Číslo účtu
                 </label>
                 <input
                   type="text"
                   name="bankAccount"
                   id="bankAccount"
                   defaultValue={building.bankAccount ?? ''}
-                  className="mt-1 focus:ring-primary focus:border-primary block w-full sm:text-sm border-gray-300 rounded-md"
                   placeholder="123456789/0100"
+                  className="block w-full px-4 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-0 rounded-xl text-gray-900 dark:text-white font-semibold transition-all"
                 />
               </div>
 
               <div>
-                <label htmlFor="managerName" className="block text-sm font-medium text-gray-700">
-                  Správce nemovitosti
+                <label htmlFor="managerName" className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                  Správce
                 </label>
                 <input
                   type="text"
                   name="managerName"
                   id="managerName"
                   defaultValue={building.managerName ?? ''}
-                  className="mt-1 focus:ring-primary focus:border-primary block w-full sm:text-sm border-gray-300 rounded-md"
+                  className="block w-full px-4 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-0 rounded-xl text-gray-900 dark:text-white font-semibold transition-all"
                 />
               </div>
             </div>
           </div>
-
-          {/* Akce */}
-          <div className="pt-4 flex items-center justify-end gap-4">
-            {error && (
-              <span className="text-sm text-red-600 bg-red-50 px-3 py-1 rounded">
-                {error}
-              </span>
-            )}
-            {success && (
-              <span className="text-sm text-green-600 bg-green-50 px-3 py-1 rounded animate-fade-in">
-                ✅ Uloženo
-              </span>
-            )}
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50"
-            >
-              {loading ? 'Ukládám...' : 'Uložit změny'}
-            </button>
-          </div>
-        </form>
+        </div>
       </div>
-    </div>
+
+      {/* Action Bar */}
+      <div className="flex items-center justify-end gap-4 pt-4">
+        {error && (
+          <div className="flex items-center gap-2 text-red-600 bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-xl animate-fade-in">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <span className="font-medium">{error}</span>
+          </div>
+        )}
+        {success && (
+          <div className="flex items-center gap-2 text-green-600 bg-green-50 dark:bg-green-900/20 px-4 py-2 rounded-xl animate-fade-in">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+            <span className="font-bold">Uloženo úspěšně</span>
+          </div>
+        )}
+        
+        <button
+          type="submit"
+          disabled={loading}
+          className="px-8 py-4 bg-teal-600 text-white rounded-2xl hover:bg-teal-700 disabled:opacity-50 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all flex items-center gap-3"
+        >
+          {loading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+              Ukládám...
+            </>
+          ) : (
+            <>
+              <span>Uložit změny</span>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+            </>
+          )}
+        </button>
+      </div>
+    </form>
   )
 }

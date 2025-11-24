@@ -36,8 +36,15 @@ export async function GET(
                 service: {
                   select: {
                     name: true,
-                    code: true
+                    code: true,
+                    isActive: true,
+                    order: true
                   }
+                }
+              },
+              orderBy: {
+                service: {
+                  order: 'asc'
                 }
               }
             }

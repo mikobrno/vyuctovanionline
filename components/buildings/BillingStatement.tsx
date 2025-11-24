@@ -72,7 +72,7 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
   return (
     <div className="max-w-[297mm] mx-auto bg-white p-8 text-sm font-sans print:p-0 print:max-w-none">
       {/* Header */}
-      <div className="flex justify-between items-start mb-8 border-b pb-4">
+      <div className="flex justify-between items-start mb-4 border-b pb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">{data.unit.owner}</h1>
           <div className="grid grid-cols-[120px_1fr] gap-1 text-gray-600">
@@ -107,7 +107,7 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
         </div>
       </div>
 
-      <h2 className="text-center text-xl font-bold mb-6 border-b-2 border-gray-800 pb-2">
+      <h2 className="text-center text-lg font-bold mb-6 bg-gray-100 py-1 border-y border-gray-300 text-gray-800">
         Vyúčtování služeb: {data.period.year}
       </h2>
 

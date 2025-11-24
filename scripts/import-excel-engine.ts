@@ -9,22 +9,128 @@ const prisma = new PrismaClient();
 // KONFIGURACE
 const FILE_PATH = path.join(process.cwd(), 'public', 'import', 'data.xlsx');
 const SHEET_INPUT = 'Vstupní data';
-const CELL_INPUT_UNIT = 'B4'; // Kde se přepíná byt
 const SHEET_OUTPUT = 'Faktury'; // Zde je výsledná tabulka
 const SHEET_EVIDENCE = 'Evidence'; // Zde je seznam bytů
 
-// Rozsah dat na listu Faktury (řádky s daty služeb)
-// Podle screenshotu data začínají cca na řádku 10 a končí před "Celkem náklady"
-const ROW_START = 10; // Řádek 10 (index 9)
-const ROW_END = 30;   // Řádek 30 (index 29) - odhad, upravíme dynamicky
+// Rozsah dat na listu Faktury
+const ROW_START = 10; 
+const ROW_END = 40;   
 
 // Mapování sloupců na listu Faktury (0-indexed)
-// A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9, K=10, L=11
 const COL_SERVICE_NAME = 0; // A - Položka
 const COL_TOTAL_COST = 4;   // E - Náklad (dům)
 const COL_UNIT_COST = 9;    // J - Náklad (uživatel)
 const COL_ADVANCE = 10;     // K - Záloha
 const COL_RESULT = 11;      // L - Přeplatek/Nedoplatek
+const COL_EXCEL_POINTER = 12; // M - Explicitní odkaz na sloupec (např. "BN")
+
+// Helper function for string normalization
+const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+// Helper: Convert Excel column (e.g. "AA") to 0-based index
+function excelColToIndex(colName: string): number {
+  let index = 0;
+  const cleanName = colName.toUpperCase().trim();
+  for (let i = 0; i < cleanName.length; i++) {
+    index = index * 26 + cleanName.charCodeAt(i) - 64;
+  }
+  return index - 1;
+}
+
+async function importAdvancePayments(hf: HyperFormula, sheetName: string, buildingId: string, year: number, fakturySheetId: number) {
+  console.log(`\n🚀 Spouštím import záloh (EXPLICITNÍ ADRESOVÁNÍ) z listu: "${sheetName}"...`);
+
+  const sheetId = hf.getSheetId(sheetName);
+  if (sheetId === undefined) {
+    console.warn(`⚠️ List "${sheetName}" nenalezen. Přeskakuji import záloh.`);
+    return;
+  }
+
+  const dims = hf.getSheetDimensions(sheetId);
+  const width = dims.width;
+  const height = dims.height;
+
+  // 1. NAČTENÍ KONFIGURACE Z LISTU FAKTURY (Sloupec M)
+  console.log(`   🔍 Čtu konfiguraci sloupců z listu Faktury (sloupec M)...`);
+  const dbServices = await prisma.service.findMany({ where: { buildingId: buildingId } });
+  const serviceColMap = new Map<string, number>(); // ServiceID -> Start Column Index
+
+  for (let row = ROW_START - 1; row < ROW_END; row++) {
+      const serviceNameVal = hf.getCellValue({ sheet: fakturySheetId, col: COL_SERVICE_NAME, row: row });
+      if (!serviceNameVal || typeof serviceNameVal !== 'string') continue;
+      
+      const serviceName = serviceNameVal.trim();
+      if (serviceName === '' || serviceName.includes('Celkem')) continue;
+
+      // Přečíst pointer ze sloupce M (index 12)
+      const pointerVal = hf.getCellValue({ sheet: fakturySheetId, col: COL_EXCEL_POINTER, row: row });
+      
+      if (pointerVal && typeof pointerVal === 'string' && pointerVal.trim() !== '') {
+          const colLetter = pointerVal.trim().toUpperCase();
+          
+          // Najít službu v DB
+          const service = dbServices.find(s => normalize(s.name) === normalize(serviceName));
+          
+          if (service) {
+              // Uložit do DB
+              await prisma.service.update({
+                  where: { id: service.id },
+                  data: { excelColumn: colLetter }
+              });
+
+              const colIndex = excelColToIndex(colLetter);
+              serviceColMap.set(service.id, colIndex);
+              console.log(`   ✅ Služba "${service.name}" -> Sloupec ${colLetter} (Index ${colIndex})`);
+          } else {
+              console.warn(`   ⚠️ Služba "${serviceName}" má definovaný sloupec ${colLetter}, ale nebyla nalezena v DB.`);
+          }
+      }
+  }
+
+  if (serviceColMap.size === 0) {
+      console.warn('   ❌ Žádné služby nemají definovaný sloupec v Excelu (sloupec M). Končím import záloh.');
+      return;
+  }
+
+  // 2. EXTRAKCE DAT
+  const START_ROW = 2; 
+  let importedCount = 0;
+  const units = await prisma.unit.findMany({ where: { buildingId } });
+  const unitMap = new Map(units.map(u => [normalize(u.unitNumber), u.id]));
+  units.forEach(u => unitMap.set(normalize(`Jednotka č. ${u.unitNumber}`), u.id));
+
+  for (let row = START_ROW; row < height; row++) {
+    const unitNameVal = hf.getCellValue({ sheet: sheetId, col: 0, row: row });
+    if (!unitNameVal) continue;
+    const unitName = String(unitNameVal).trim();
+    const unitId = unitMap.get(normalize(unitName));
+    if (!unitId) continue;
+
+    for (const [serviceId, startColIndex] of serviceColMap.entries()) {
+      for (let month = 1; month <= 12; month++) {
+        // Předpokládáme, že data jsou v po sobě jdoucích sloupcích (Leden, Únor...)
+        const targetCol = startColIndex + (month - 1);
+        
+        if (targetCol >= width) continue;
+        
+        const val = hf.getCellValue({ sheet: sheetId, col: targetCol, row: row });
+        let amount = 0;
+        if (typeof val === 'number') amount = val;
+        else if (typeof val === 'string') amount = parseFloat(val.replace(/\s/g, '').replace(',', '.'));
+
+        if (!isNaN(amount)) {
+          await prisma.advanceMonthly.upsert({
+            where: { unitId_serviceId_year_month: { unitId: unitId, serviceId: serviceId, year: year, month: month } },
+            update: { amount },
+            create: { unitId: unitId, serviceId: serviceId, year: year, month: month, amount }
+          });
+          importedCount++;
+        }
+      }
+    }
+  }
+  console.log(`✅ Import záloh dokončen. Zpracováno ${importedCount} záznamů.`);
+}
 
 async function main() {
   console.log('🚀 Startuji Excel Engine Import...');
@@ -34,8 +140,8 @@ async function main() {
     return;
   }
 
-  // 1. Načtení Excelu pomocí XLSX a konverze pro HyperFormula
-  console.log('📚 Načítám Excel do paměti (včetně vzorců)...');
+  // 1. Načtení Excelu
+  console.log('📚 Načítám Excel do paměti...');
   const workbook = XLSX.readFile(FILE_PATH);
   const sheets: Record<string, any[][]> = {};
   
@@ -57,16 +163,12 @@ async function main() {
           row.push('');
         } else if (cell.f) {
           let formula = `=${cell.f}`;
-          // PATCH: Oprava VLOOKUP(BYT, ...) na exact match, pokud je tam approximate match (1)
-          // HyperFormula je striktní na řazení u approximate match, což Excel někdy promine
+          // Fix VLOOKUP approximate match
           if (formula.includes('VLOOKUP(BYT') && (formula.endsWith(',1)') || formula.endsWith(',TRUE)'))) {
-             console.log(`🔧 Patching formula at ${sheetName}!${cellAddress}: ${formula}`);
              formula = formula.replace(/,1\)$/, ',0)').replace(/,TRUE\)$/, ',0)');
           }
-
-          // PATCH: HyperFormula nepodporuje klíčová slova TRUE/FALSE, nahradíme je za 1/0
+          // Fix booleans
           if (formula.includes('FALSE') || formula.includes('TRUE')) {
-             const original = formula;
              formula = formula
                .replace(/,FALSE\)/g, ',0)')
                .replace(/,TRUE\)/g, ',1)')
@@ -74,14 +176,10 @@ async function main() {
                .replace(/\(TRUE\)/g, '(1)')
                .replace(/,FALSE,/g, ',0,')
                .replace(/,TRUE,/g, ',1,');
-             
-             if (formula !== original) {
-                // console.log(`🔧 Patching booleans at ${sheetName}!${cellAddress}`);
-             }
           }
           row.push(formula); 
         } else {
-          row.push(cell.v !== undefined ? cell.v : ''); // Načteme hodnotu
+          row.push(cell.v !== undefined ? cell.v : '');
         }
       }
       sheetData.push(row);
@@ -94,19 +192,12 @@ async function main() {
     useColumnIndex: false
   });
 
-  // Načtení definovaných názvů (Named Ranges)
+  // Named Ranges
   if (workbook.Workbook && workbook.Workbook.Names) {
-    console.log(`🔖 Načítám ${workbook.Workbook.Names.length} definovaných názvů...`);
     workbook.Workbook.Names.forEach(name => {
       try {
-        // HyperFormula potřebuje výraz s rovnitkem, např. "=List1!$A$1"
-        // XLSX vrací Ref bez rovnitka
-        if (name.Ref) {
-           hf.addNamedExpression(name.Name, `=${name.Ref}`);
-        }
-      } catch (e: any) {
-        console.warn(`   ⚠️ Chyba při načítání názvu '${name.Name}': ${e.message}`);
-      }
+        if (name.Ref) hf.addNamedExpression(name.Name, `=${name.Ref}`);
+      } catch (e) {}
     });
   }
 
@@ -117,23 +208,14 @@ async function main() {
 
   if (inputSheetId === undefined || outputSheetId === undefined || evidenceSheetId === undefined) {
     console.error('❌ Nenalezeny požadované listy.');
-    console.log('Dostupné listy:', sheetNames);
     return;
   }
 
-  // 2. Získání seznamu jednotek a vlastníků
-  console.log('📋 Načítám seznam jednotek a vlastníků...');
-  const units: Array<{
-    name: string;
-    ownerName: string;
-    address: string;
-    email: string;
-    phone: string;
-    bankAccount: string;
-  }> = [];
+  // 2. Získání seznamu jednotek
+  console.log('📋 Načítám seznam jednotek...');
+  const units: Array<{ name: string; ownerName: string; address: string; email: string; phone: string; bankAccount: string; }> = [];
   const evidenceDims = hf.getSheetDimensions(evidenceSheetId);
   
-  // Sloupce v Evidence (0-indexed): A=0 (Jednotka), B=1 (Jméno), C=2 (Adresa), D=3 (Email), E=4 (Telefon), K=10 (Účet)
   for (let row = 1; row < evidenceDims.height; row++) {
     const unitName = hf.getCellValue({ sheet: evidenceSheetId, col: 0, row: row });
     if (unitName && typeof unitName === 'string' && unitName.trim() !== '') {
@@ -143,31 +225,37 @@ async function main() {
       const phone = hf.getCellValue({ sheet: evidenceSheetId, col: 4, row: row })?.toString() || '';
       const bankAccount = hf.getCellValue({ sheet: evidenceSheetId, col: 10, row: row })?.toString() || '';
 
-      units.push({
-        name: unitName.toString(),
-        ownerName,
-        address,
-        email,
-        phone,
-        bankAccount
-      });
+      units.push({ name: unitName.toString(), ownerName, address, email, phone, bankAccount });
     }
   }
-  console.log(`   -> Nalezeno ${units.length} jednotek.`);
 
-  // 3. Příprava DB (najdeme budovu a období)
-  // Pro zjednodušení bereme první budovu a rok 2024
-  const building = await prisma.building.findFirst({ where: { name: 'Kníničky 318 - Neptun' } });
-  if (!building) throw new Error('Budova nenalezena');
+  // 3. Příprava DB
+  const args = process.argv.slice(2);
+  const buildingArg = args[0];
 
-  // Načtení čísla účtu SVJ z Vstupní data B22 (col 1, row 21)
+  if (!buildingArg) {
+    console.error('❌ CHYBA: Nebyla specifikována budova. Zadejte název nebo ID budovy jako argument.');
+    return;
+  }
+
+  const building = await prisma.building.findFirst({ 
+    where: { 
+      OR: [
+        { id: buildingArg },
+        { name: { contains: buildingArg, mode: 'insensitive' } }
+      ]
+    } 
+  });
+  
+  if (!building) {
+    console.error(`❌ Budova "${buildingArg}" nenalezena.`);
+    return;
+  }
+  console.log(`✅ Vybrána budova: ${building.name}`);
+
   const svjBankAccount = hf.getCellValue({ sheet: inputSheetId, col: 1, row: 21 })?.toString();
   if (svjBankAccount) {
-    console.log(`🏦 Aktualizuji účet SVJ: ${svjBankAccount}`);
-    await prisma.building.update({
-      where: { id: building.id },
-      data: { bankAccount: svjBankAccount }
-    });
+    await prisma.building.update({ where: { id: building.id }, data: { bankAccount: svjBankAccount } });
   }
 
   const period = await prisma.billingPeriod.upsert({
@@ -176,11 +264,9 @@ async function main() {
     create: { buildingId: building.id, year: 2024 }
   });
 
-  // Smazání starých výsledků pro čistý import
   console.log('🧹 Mazání starých výsledků...');
   await prisma.billingResult.deleteMany({ where: { billingPeriodId: period.id } });
 
-  // Data pro kontrolní modul (Služba -> {celkemDleExcelu, celkemSoucetJednotek})
   const controlData: Record<string, { excelTotal: number, calculatedSum: number }> = {};
 
   // 4. Hlavní smyčka přes jednotky
@@ -188,76 +274,47 @@ async function main() {
     const unitName = unitData.name;
     console.log(`🔄 Zpracovávám: ${unitName}`);
 
-    // A. Nastavit jednotku v Excelu
-    // B4 = col 1, row 3
     hf.setCellContents({ sheet: inputSheetId, col: 1, row: 3 }, [[unitName]]);
 
-    // B. Najít jednotku v DB
     const cleanUnitName = unitName.replace('Jednotka č. ', '').trim();
     const dbUnit = await prisma.unit.findFirst({
-      where: { 
-        buildingId: building.id,
-        OR: [
-          { unitNumber: unitName },
-          { unitNumber: `Jednotka č. ${unitName}` },
-          { unitNumber: cleanUnitName }
-        ]
-      },
+      where: { buildingId: building.id, OR: [{ unitNumber: unitName }, { unitNumber: `Jednotka č. ${unitName}` }, { unitNumber: cleanUnitName }] },
       include: { ownerships: { include: { owner: true } } }
     });
 
-    if (!dbUnit) {
-      console.warn(`   ⚠️ Jednotka ${unitName} nenalezena v DB, přeskakuji.`);
-      continue;
-    }
+    if (!dbUnit) continue;
 
-    // Aktualizace vlastníka
+    // Update Owner
     if (dbUnit.ownerships.length > 0) {
       const owner = dbUnit.ownerships[0].owner;
-      // Rozdělení jména na First/Last pokud je v jednom stringu
-      // Předpoklad: "Příjmení Jméno" nebo "Firma"
-      // Pro jednoduchost uložíme celé do lastName pokud není mezera, jinak rozdělíme
       let firstName = '';
       let lastName = unitData.ownerName;
       if (unitData.ownerName.includes(' ')) {
         const parts = unitData.ownerName.split(' ');
-        lastName = parts[0]; // První slovo je obvykle příjmení
+        lastName = parts[0];
         firstName = parts.slice(1).join(' ');
       }
-
       await prisma.owner.update({
         where: { id: owner.id },
-        data: {
-          firstName: firstName || owner.firstName, // Zachovat pokud je prázdné
-          lastName: lastName || owner.lastName,
-          address: unitData.address,
-          email: unitData.email,
-          phone: unitData.phone,
-          bankAccount: unitData.bankAccount
-        }
+        data: { firstName: firstName || owner.firstName, lastName: lastName || owner.lastName, address: unitData.address, email: unitData.email, phone: unitData.phone, bankAccount: unitData.bankAccount }
       });
     }
 
-    // Načtení měsíčních dat (Platby a Předpisy)
-    // Platby: Řádek 40 (index 39), sloupce A-L (0-11)
-    // Předpisy: Řádek 45 (index 44), sloupce A-L (0-11)
+    // Monthly Payments & Prescriptions (Totals)
     const monthlyPayments: number[] = [];
     const monthlyPrescriptions: number[] = [];
-
     for (let m = 0; m < 12; m++) {
-      const payVal = hf.getCellValue({ sheet: outputSheetId, col: m, row: 39 }); // Řádek 40
-      const presVal = hf.getCellValue({ sheet: outputSheetId, col: m, row: 44 }); // Řádek 45
-      
+      const payVal = hf.getCellValue({ sheet: outputSheetId, col: m, row: 39 });
+      const presVal = hf.getCellValue({ sheet: outputSheetId, col: m, row: 44 });
       monthlyPayments.push(typeof payVal === 'number' ? payVal : 0);
       monthlyPrescriptions.push(typeof presVal === 'number' ? presVal : 0);
     }
 
-    // C. Vytvořit BillingResult
     const billingResult = await prisma.billingResult.create({
       data: {
         billingPeriodId: period.id,
         unitId: dbUnit.id,
-        totalCost: 0, // Dopočítáme později nebo vezmeme z Excelu
+        totalCost: 0,
         totalAdvancePrescribed: 0,
         totalAdvancePaid: 0,
         result: 0,
@@ -270,16 +327,12 @@ async function main() {
     let unitTotalAdvance = 0;
     let unitTotalBalance = 0;
 
-    // D. Číst řádky služeb
+    // Read Service Rows
     for (let row = ROW_START - 1; row < ROW_END; row++) {
       const serviceNameVal = hf.getCellValue({ sheet: outputSheetId, col: COL_SERVICE_NAME, row: row });
-      
-      // Pokud není název služby, konec tabulky nebo prázdný řádek
       if (!serviceNameVal || typeof serviceNameVal !== 'string' || serviceNameVal.trim() === '' || serviceNameVal.includes('Celkem')) continue;
 
       const serviceName = serviceNameVal.toString().trim();
-      
-      // Čtení hodnot (ošetření chyb #VALUE! atd.)
       const getNum = (col: number) => {
         const val = hf.getCellValue({ sheet: outputSheetId, col: col, row: row });
         return typeof val === 'number' ? val : 0;
@@ -290,109 +343,52 @@ async function main() {
       const advance = getNum(COL_ADVANCE);
       const result = getNum(COL_RESULT);
 
-      // Aktualizace kontrolních dat
-      if (!controlData[serviceName]) {
-        controlData[serviceName] = { excelTotal: totalBuildingCost, calculatedSum: 0 };
-      }
+      if (!controlData[serviceName]) controlData[serviceName] = { excelTotal: totalBuildingCost, calculatedSum: 0 };
       controlData[serviceName].calculatedSum += unitCost;
 
-      // Uložení do DB
-      // 1. Najít nebo vytvořit službu
-      let service = await prisma.service.findFirst({
-        where: { buildingId: building.id, name: serviceName }
-      });
-
+      let service = await prisma.service.findFirst({ where: { buildingId: building.id, name: serviceName } });
       if (!service) {
         service = await prisma.service.create({
-          data: {
-            buildingId: building.id,
-            name: serviceName,
-            code: serviceName.toUpperCase().replace(/\s+/g, '_').substring(0, 20),
-            methodology: 'CUSTOM', // Upraveno na existující enum
-          }
+          data: { buildingId: building.id, name: serviceName, code: serviceName.toUpperCase().replace(/\s+/g, '_').substring(0, 20), methodology: 'CUSTOM' }
         });
       }
 
-      // 2. Uložit nebo aktualizovat BillingServiceCost
-      const existingCost = await prisma.billingServiceCost.findUnique({
-        where: {
-          billingResultId_serviceId: {
-            billingResultId: billingResult.id,
-            serviceId: service.id
-          }
+      await prisma.billingServiceCost.create({
+        data: {
+          billingPeriodId: period.id,
+          billingResultId: billingResult.id,
+          serviceId: service.id,
+          unitId: dbUnit.id,
+          buildingTotalCost: totalBuildingCost,
+          unitCost: unitCost,
+          unitAdvance: advance,
+          unitBalance: result,
+          calculationBasis: `Excel Import (Řádek ${row + 1})`
         }
       });
-
-      if (existingCost) {
-        // Pokud již existuje, přičteme hodnoty (agregace řádků se stejným názvem)
-        await prisma.billingServiceCost.update({
-          where: { id: existingCost.id },
-          data: {
-            buildingTotalCost: { increment: totalBuildingCost },
-            unitCost: { increment: unitCost },
-            unitAdvance: { increment: advance },
-            unitBalance: { increment: result },
-            calculationBasis: existingCost.calculationBasis + `, Řádek ${row + 1}`
-          }
-        });
-      } else {
-        await prisma.billingServiceCost.create({
-          data: {
-            billingPeriodId: period.id,
-            billingResultId: billingResult.id,
-            serviceId: service.id,
-            unitId: dbUnit.id,
-            buildingTotalCost: totalBuildingCost,
-            unitCost: unitCost,
-            unitAdvance: advance,
-            unitBalance: result,
-            calculationBasis: `Excel Import (Řádek ${row + 1})`
-          }
-        });
-      }
 
       unitTotalCost += unitCost;
       unitTotalAdvance += advance;
       unitTotalBalance += result;
     }
 
-    // Aktualizace součtů v BillingResult
     await prisma.billingResult.update({
       where: { id: billingResult.id },
-      data: {
-        totalCost: unitTotalCost,
-        totalAdvancePrescribed: unitTotalAdvance,
-        result: unitTotalBalance
-      }
+      data: { totalCost: unitTotalCost, totalAdvancePrescribed: unitTotalAdvance, result: unitTotalBalance }
     });
   }
 
-  // 5. Kontrolní modul - Výpis
+  // 5. Kontrolní modul
   console.log('\n📊 --- KONTROLNÍ MODUL ---');
-  console.log('Služba'.padEnd(40) + ' | ' + 'Excel Celkem (E)'.padStart(15) + ' | ' + 'Součet Jednotek'.padStart(15) + ' | ' + 'Rozdíl'.padStart(15));
-  console.log('-'.repeat(95));
-
-  let totalDiff = 0;
   for (const [service, data] of Object.entries(controlData)) {
     const diff = data.excelTotal - data.calculatedSum;
-    totalDiff += Math.abs(diff);
-    
     const status = Math.abs(diff) < 1 ? '✅' : '❌';
-    
-    console.log(
-      `${status} ${service.padEnd(37)} | ` +
-      `${data.excelTotal.toFixed(2)}`.padStart(15) + ' | ' +
-      `${data.calculatedSum.toFixed(2)}`.padStart(15) + ' | ' +
-      `${diff.toFixed(2)}`.padStart(15)
-    );
-  }
-  console.log('-'.repeat(95));
-  if (totalDiff < 10) {
-    console.log('✅ Všechna data byla úspěšně rozúčtována (rozdíly jsou zanedbatelné zaokrouhlení).');
-  } else {
-    console.log('⚠️ Pozor! Některé služby se nerozúčtovaly celé. Zkontrolujte, zda nechybí jednotky.');
+    console.log(`${status} ${service.padEnd(30)} | Excel: ${data.excelTotal.toFixed(2)} | Sum: ${data.calculatedSum.toFixed(2)} | Diff: ${diff.toFixed(2)}`);
   }
 
+  // 6. IMPORT ZÁLOH (Explicitní)
+  const advanceSheetName = hf.getSheetNames().find(n => normalize(n).includes('predpis') && normalize(n).includes('mesic')) || 'Předpis po mesici';
+  await importAdvancePayments(hf, advanceSheetName, building.id, 2024, outputSheetId);
 }
 
 main()

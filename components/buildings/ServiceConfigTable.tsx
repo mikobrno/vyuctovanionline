@@ -19,6 +19,8 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
   const [savingVersion, setSavingVersion] = useState(false)
   const [newVersionName, setNewVersionName] = useState('')
   const [showVersionModal, setShowVersionModal] = useState(false)
+  const [showHiddenServices, setShowHiddenServices] = useState(false)
+  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null)
   
   // State pro editor vzorců
   const [editingFormulaServiceId, setEditingFormulaServiceId] = useState<string | null>(null)
@@ -143,6 +145,98 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
       router.refresh()
     } catch (e) {
       console.error('Failed to update service methodology', e)
+    }
+  }
+
+  const toggleServiceVisibility = async (serviceId: string, currentStatus: boolean) => {
+    // Optimistic update
+    setLocalServices(prev => prev.map(s => s.id === serviceId ? { ...s, isActive: !currentStatus } : s))
+
+    try {
+      await fetch(`/api/buildings/${buildingId}/services/${serviceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !currentStatus })
+      })
+      router.refresh()
+    } catch (e) {
+      console.error('Failed to toggle service visibility', e)
+      // Revert on error
+      setLocalServices(prev => prev.map(s => s.id === serviceId ? { ...s, isActive: currentStatus } : s))
+    }
+  }
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    const target = e.target as HTMLElement
+    // Prevent dragging when interacting with form elements
+    if (['SELECT', 'INPUT', 'BUTTON', 'TEXTAREA'].includes(target.tagName) || target.closest('select') || target.closest('input') || target.closest('button')) {
+      e.preventDefault()
+      return
+    }
+    setDraggedItemIndex(index)
+    e.dataTransfer.effectAllowed = 'move'
+    // Optional: set drag image or style
+    if (e.currentTarget instanceof HTMLElement) {
+       e.currentTarget.style.opacity = '0.5'
+    }
+  }
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    if (e.currentTarget instanceof HTMLElement) {
+       e.currentTarget.style.opacity = '1'
+    }
+    setDraggedItemIndex(null)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault()
+    if (draggedItemIndex === null || draggedItemIndex === targetIndex) return
+
+    const visible = localServices.filter(s => showHiddenServices || s.isActive !== false)
+    const newVisible = [...visible]
+    const [movedItem] = newVisible.splice(draggedItemIndex, 1)
+    newVisible.splice(targetIndex, 0, movedItem)
+
+    // Assign new orders to visible items
+    const updatedVisible = newVisible.map((s, i) => ({ ...s, order: i + 1 }))
+
+    // Merge back into localServices
+    const newLocalServices = localServices.map(s => {
+      const updated = updatedVisible.find(u => u.id === s.id)
+      return updated ? { ...s, order: updated.order } : s
+    }).sort((a, b) => (a.order || 0) - (b.order || 0))
+
+    setLocalServices(newLocalServices)
+    setDraggedItemIndex(null)
+    
+    if (e.currentTarget instanceof HTMLElement) {
+       e.currentTarget.style.opacity = '1'
+    }
+
+    // Save changes
+    const promises = updatedVisible.map(s => {
+        const original = visible.find(v => v.id === s.id)
+        // Save if order changed or if it's the moved item (to be safe)
+        if (original && original.order !== s.order) {
+             return fetch(`/api/buildings/${buildingId}/services/${s.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order: s.order })
+              })
+        }
+        return Promise.resolve()
+    })
+
+    try {
+        await Promise.all(promises)
+    } catch (err) {
+        console.error('Failed to save order', err)
+        router.refresh()
     }
   }
 
@@ -382,199 +476,221 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
     setTempFormula(service.customFormula || '')
   }
 
-  // Uložení vzorce z editoru
-  const saveFormulaFromEditor = () => {
-    if (editingFormulaServiceId) {
-      updateLocalService(editingFormulaServiceId, 'customFormula', tempFormula)
-      saveServiceChange(editingFormulaServiceId, 'customFormula', tempFormula)
-      setEditingFormulaServiceId(null)
-    }
-  }
-
-  // Vložení textu do vzorce na pozici kurzoru (nebo na konec)
   const insertIntoFormula = (text: string) => {
-    // Jednoduché přidání na konec pro tento prototyp, vylepšení by vyžadovalo ref na textarea
     setTempFormula(prev => prev + text)
   }
 
+  const saveFormulaFromEditor = async () => {
+    if (!editingFormulaServiceId) return
+    
+    // Update local state
+    setLocalServices(prev => prev.map(s => s.id === editingFormulaServiceId ? { ...s, customFormula: tempFormula } : s))
+    
+    // Save to server
+    try {
+      await fetch(`/api/buildings/${buildingId}/services/${editingFormulaServiceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customFormula: tempFormula })
+      })
+      setEditingFormulaServiceId(null)
+      router.refresh()
+    } catch (e) {
+      console.error('Failed to save formula', e)
+    }
+  }
+
+  const visibleServices = localServices.filter(s => showHiddenServices || s.isActive !== false)
+  const totalCostsSum = visibleServices.reduce((sum, service) => {
+    const serviceCost = costs
+      .filter(c => c.serviceId === service.id)
+      .reduce((cSum, c) => cSum + c.amount, 0)
+    return sum + serviceCost
+  }, 0)
+
   return (
     <div className="space-y-6">
-      {/* Editor vzorců (Modal) */}
+      {/* Editor vzorců Modal */}
       {editingFormulaServiceId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
-              <h3 className="text-xl font-bold text-gray-800">🛠️ Editor výpočetního vzorce</h3>
-              <button onClick={() => setEditingFormulaServiceId(null)} className="text-gray-500 hover:text-gray-700" aria-label="Zavřít editor">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto flex-1">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
-                {/* Levý sloupec: Nástroje */}
-                <div className="lg:col-span-2 space-y-6">
-                  
-                  {/* Displej vzorce */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Vzorec</label>
-                    <textarea
-                      value={tempFormula}
-                      onChange={(e) => setTempFormula(e.target.value)}
-                      className="w-full h-32 p-4 font-mono text-lg border-2 border-teal-500 rounded-lg focus:ring-0 focus:border-teal-600 bg-gray-50"
-                      placeholder="Zde sestavte vzorec..."
-                    />
-                  </div>
-
-                  {/* Operátory */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Operátory</label>
-                    <div className="flex flex-wrap gap-2">
-                      {['+', '-', '*', '/', '(', ')'].map(op => (
-                        <button
-                          key={op}
-                          onClick={() => insertIntoFormula(` ${op} `)}
-                          className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded font-mono font-bold text-lg transition-colors"
-                        >
-                          {op}
-                        </button>
-                      ))}
-                      <button onClick={() => setTempFormula('')} className="px-3 h-10 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded text-sm font-medium ml-auto">
-                        Vymazat
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Proměnné */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Proměnné (kliknutím vložíte)</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {[
-                        { code: 'TOTAL_COST', label: 'Celkový náklad (Kč)', desc: 'Suma faktur pro tuto službu' },
-                        { code: 'TOTAL_CONSUMPTION', label: 'Celková spotřeba', desc: 'Součet náměrů všech bytů' },
-                        { code: 'UNIT_CONSUMPTION', label: 'Spotřeba bytu', desc: 'Náměr vybraného bytu' },
-                        { code: 'UNIT_SHARE', label: 'Vlastnický podíl', desc: 'Podíl bytu na domě' },
-                        { code: 'UNIT_AREA', label: 'Plocha bytu (m²)', desc: 'Celková plocha bytu' },
-                        { code: 'UNIT_PEOPLE', label: 'Počet osob', desc: 'Počet osob v bytě' },
-                        { code: 'TOTAL_AREA', label: 'Celková plocha domu', desc: 'Součet ploch všech bytů' },
-                        { code: 'TOTAL_PEOPLE', label: 'Celkem osob v domě', desc: 'Součet osob ve všech bytech' },
-                      ].map(v => (
-                        <button
-                          key={v.code}
-                          onClick={() => insertIntoFormula(v.code)}
-                          className="flex flex-col items-start p-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded text-left transition-colors group"
-                        >
-                          <span className="font-mono font-bold text-blue-700 text-sm">{v.code}</span>
-                          <span className="text-xs text-gray-600">{v.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Čísla */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Čísla</label>
-                    <div className="flex gap-2">
-                      {[0.1, 0.3, 0.5, 0.7, 100, 1000].map(n => (
-                        <button
-                          key={n}
-                          onClick={() => insertIntoFormula(String(n))}
-                          className="px-3 py-1 bg-gray-50 border border-gray-200 rounded text-sm hover:bg-gray-100"
-                        >
-                          {n}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* Pravý sloupec: Náhled */}
-                <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 flex flex-col">
-                  <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <span>👁️ Živý náhled</span>
-                    <span className="text-xs font-normal text-gray-500 bg-white px-2 py-1 rounded border">Byt {units.find(u => u.id === selectedUnitId)?.unitNumber}</span>
-                  </h4>
-                  
-                  <div className="space-y-4 flex-1">
-                    {(() => {
-                      const service = localServices.find(s => s.id === editingFormulaServiceId)
-                      const ctx = service ? getCalculationContext(service, selectedUnitId) : null
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-gray-200 dark:border-slate-700">
+             <div className="p-6 border-b border-gray-200 dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-800/50 rounded-t-2xl">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                  <span className="p-2 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-lg">✏️</span>
+                  Editor vzorce
+                  <span className="text-sm font-normal text-gray-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-3 py-1 rounded-full border border-gray-200 dark:border-slate-700">
+                    {localServices.find(s => s.id === editingFormulaServiceId)?.name}
+                  </span>
+                </h3>
+                <button onClick={() => setEditingFormulaServiceId(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+             </div>
+             
+             <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-slate-900">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
+                   {/* Left Column: Editor */}
+                   <div className="flex flex-col gap-6">
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 dark:text-slate-200 mb-2">Vzorec</label>
+                        <textarea
+                          className="w-full h-32 p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl font-mono text-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 shadow-sm text-gray-900 dark:text-white"
+                          value={tempFormula}
+                          onChange={(e) => setTempFormula(e.target.value)}
+                          placeholder="Např. (TOTAL_COST * UNIT_SHARE) + FIXED_FEE"
+                        />
+                      </div>
                       
-                      if (!ctx) return <div className="text-red-500">Nelze načíst kontext pro vybraný byt.</div>
+                      {/* Operátory */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-3">Operátory</label>
+                        <div className="flex flex-wrap gap-2">
+                          {['+', '-', '*', '/', '(', ')'].map(op => (
+                            <button
+                              key={op}
+                              onClick={() => insertIntoFormula(` ${op} `)}
+                              className="w-12 h-12 flex items-center justify-center bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-700 rounded-xl font-mono font-bold text-lg transition-all shadow-sm hover:shadow text-gray-700 dark:text-slate-200"
+                            >
+                              {op}
+                            </button>
+                          ))}
+                          <button onClick={() => setTempFormula('')} className="px-4 h-12 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl text-sm font-medium ml-auto transition-colors">
+                            Vymazat
+                          </button>
+                        </div>
+                      </div>
 
-                      let previewResult: number | string = '...'
-                      let error = null
-                      try {
-                        let f = tempFormula
-                        Object.entries(ctx).forEach(([k, v]) => { f = f.replace(new RegExp(k, 'g'), String(v)) })
-                        if (f.trim()) {
-                          previewResult = new Function('return ' + f)()
-                        } else {
-                          previewResult = 0
-                        }
-                      } catch (e) {
-                        error = 'Chyba ve vzorci'
-                      }
+                      {/* Proměnné */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-3">Proměnné (kliknutím vložíte)</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {[
+                            { code: 'TOTAL_COST', label: 'Celkový náklad (Kč)', desc: 'Suma faktur pro tuto službu' },
+                            { code: 'TOTAL_CONSUMPTION', label: 'Celková spotřeba', desc: 'Součet náměrů všech bytů' },
+                            { code: 'UNIT_CONSUMPTION', label: 'Spotřeba bytu', desc: 'Náměr vybraného bytu' },
+                            { code: 'UNIT_SHARE', label: 'Vlastnický podíl', desc: 'Podíl bytu na domě' },
+                            { code: 'UNIT_AREA', label: 'Plocha bytu (m²)', desc: 'Celková plocha bytu' },
+                            { code: 'UNIT_PEOPLE', label: 'Počet osob', desc: 'Počet osob v bytě' },
+                            { code: 'TOTAL_AREA', label: 'Celková plocha domu', desc: 'Součet ploch všech bytů' },
+                            { code: 'TOTAL_PEOPLE', label: 'Celkem osob v domě', desc: 'Součet osob ve všech bytech' },
+                          ].map(v => (
+                            <button
+                              key={v.code}
+                              onClick={() => insertIntoFormula(v.code)}
+                              className="flex flex-col items-start p-3 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 border border-blue-100 dark:border-blue-800 rounded-xl text-left transition-all group hover:shadow-sm"
+                            >
+                              <span className="font-mono font-bold text-blue-700 dark:text-blue-400 text-sm mb-1">{v.code}</span>
+                              <span className="text-xs text-gray-600 dark:text-slate-400">{v.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
 
-                      return (
-                        <>
-                          <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                            <div className="text-xs text-gray-500 uppercase mb-1">Výsledek výpočtu</div>
-                            {error ? (
-                              <div className="text-red-600 font-bold">{error}</div>
-                            ) : (
-                              <div className="text-2xl font-bold text-teal-600">
-                                {typeof previewResult === 'number' ? previewResult.toLocaleString('cs-CZ', { maximumFractionDigits: 2 }) : previewResult} Kč
+                      {/* Čísla */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-3">Čísla</label>
+                        <div className="flex gap-2 flex-wrap">
+                          {[0.1, 0.3, 0.5, 0.7, 100, 1000].map(n => (
+                            <button
+                              key={n}
+                              onClick={() => insertIntoFormula(String(n))}
+                              className="px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 transition-colors shadow-sm"
+                            >
+                              {n}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                   </div>
+
+                   {/* Right Column: Preview */}
+                   <div className="bg-gray-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col">
+                      <h4 className="font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-3">
+                        <span>👁️ Živý náhled</span>
+                        <span className="text-xs font-normal text-gray-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-3 py-1 rounded-full border border-gray-200 dark:border-slate-700">Byt {units.find(u => u.id === selectedUnitId)?.unitNumber}</span>
+                      </h4>
+                      
+                      <div className="space-y-6 flex-1">
+                        {(() => {
+                          const service = localServices.find(s => s.id === editingFormulaServiceId)
+                          const ctx = service ? getCalculationContext(service, selectedUnitId) : null
+                          
+                          if (!ctx) return <div className="text-red-500 dark:text-red-400 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 dark:border-red-800">Nelze načíst kontext pro vybraný byt.</div>
+
+                          let previewResult: number | string = '...'
+                          let error = null
+                          try {
+                            let f = tempFormula
+                            Object.entries(ctx).forEach(([k, v]) => { f = f.replace(new RegExp(k, 'g'), String(v)) })
+                            if (f.trim()) {
+                              previewResult = new Function('return ' + f)()
+                            } else {
+                              previewResult = 0
+                            }
+                          } catch (e) {
+                            error = 'Chyba ve vzorci'
+                          }
+
+                          return (
+                            <>
+                              <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
+                                <div className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">Výsledek výpočtu</div>
+                                {error ? (
+                                  <div className="text-red-600 dark:text-red-400 font-bold flex items-center gap-2">
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    {error}
+                                  </div>
+                                ) : (
+                                  <div className="text-3xl font-bold text-teal-600 dark:text-teal-400">
+                                    {typeof previewResult === 'number' ? previewResult.toLocaleString('cs-CZ', { maximumFractionDigits: 2 }) : previewResult} Kč
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
 
-                          <div className="space-y-2">
-                            <div className="text-xs font-semibold text-gray-500 uppercase">Hodnoty proměnných pro tento byt</div>
-                            <div className="bg-white rounded border border-gray-200 divide-y divide-gray-100 text-sm">
-                              {Object.entries(ctx).map(([key, val]) => (
-                                <div key={key} className="flex justify-between p-2">
-                                  <span className="font-mono text-gray-600">{key}</span>
-                                  <span className="font-medium text-gray-900">{typeof val === 'number' ? val.toLocaleString('cs-CZ', { maximumFractionDigits: 4 }) : val}</span>
+                              <div className="space-y-3">
+                                <div className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Hodnoty proměnných pro tento byt</div>
+                                <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-700 text-sm overflow-hidden">
+                                  {Object.entries(ctx).map(([key, val]) => (
+                                    <div key={key} className="flex justify-between p-3 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+                                      <span className="font-mono text-gray-600 dark:text-slate-400">{key}</span>
+                                      <span className="font-medium text-gray-900 dark:text-slate-200">{typeof val === 'number' ? val.toLocaleString('cs-CZ', { maximumFractionDigits: 4 }) : val}</span>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        </>
-                      )
-                    })()}
-                  </div>
+                              </div>
+                            </>
+                          )
+                        })()}
+                      </div>
+                   </div>
                 </div>
-              </div>
-            </div>
+             </div>
 
-            <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-3">
-              <button
-                onClick={() => setEditingFormulaServiceId(null)}
-                className="px-6 py-2 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Zrušit
-              </button>
-              <button
-                onClick={saveFormulaFromEditor}
-                className="px-6 py-2 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 shadow-sm transition-colors"
-              >
-                Uložit vzorec
-              </button>
-            </div>
+             <div className="p-6 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 rounded-b-2xl flex justify-end gap-3">
+                <button
+                  onClick={() => setEditingFormulaServiceId(null)}
+                  className="px-6 py-2.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
+                >
+                  Zrušit
+                </button>
+                <button
+                  onClick={saveFormulaFromEditor}
+                  className="px-6 py-2.5 bg-teal-600 text-white font-medium rounded-xl hover:bg-teal-700 shadow-sm hover:shadow transition-all"
+                >
+                  Uložit vzorec
+                </button>
+             </div>
           </div>
         </div>
       )}
 
       {/* Horní lišta s verzemi */}
-      <div className="flex justify-between items-center bg-gray-50 p-4 rounded-lg border border-gray-200">
+      <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700">
         <div className="flex items-center gap-4">
-          <h3 className="font-semibold text-gray-900">Verze nastavení:</h3>
+          <h3 className="font-semibold text-gray-900 dark:text-white">Verze nastavení:</h3>
           <select 
             aria-label="Vybrat verzi"
-            className="border border-gray-300 rounded px-3 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
             onChange={(e) => {
               if (e.target.value) restoreVersion(e.target.value)
             }}
@@ -590,7 +706,7 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
         </div>
         <button
           onClick={() => setShowVersionModal(true)}
-          className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-50 text-sm font-medium"
+          className="bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 px-5 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 text-sm font-medium transition-colors shadow-sm"
         >
           💾 Uložit aktuální nastavení
         </button>
@@ -598,27 +714,27 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
 
       {/* Modální okno pro uložení verze */}
       {showVersionModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg shadow-xl w-96">
-            <h3 className="text-lg font-bold mb-4">Uložit verzi nastavení</h3>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-2xl w-96 border border-gray-200 dark:border-slate-700">
+            <h3 className="text-xl font-bold mb-6 text-gray-900 dark:text-white">Uložit verzi nastavení</h3>
             <input
               type="text"
               placeholder="Název verze (např. Import 2024)"
-              className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
+              className="w-full border border-gray-300 dark:border-slate-600 rounded-xl px-4 py-3 mb-6 bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
               value={newVersionName}
               onChange={e => setNewVersionName(e.target.value)}
             />
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-3">
               <button 
                 onClick={() => setShowVersionModal(false)}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
+                className="px-5 py-2.5 text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl font-medium transition-colors"
               >
                 Zrušit
               </button>
               <button
                 onClick={saveVersion}
                 disabled={savingVersion || !newVersionName}
-                className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
+                className="px-5 py-2.5 bg-teal-600 text-white rounded-xl hover:bg-teal-700 disabled:opacity-50 font-medium shadow-sm transition-colors"
               >
                 {savingVersion ? 'Ukládám...' : 'Uložit'}
               </button>
@@ -628,17 +744,28 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
       )}
 
       {/* Tabulka služeb */}
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="p-4 border-b border-gray-200">
+      <div className="bg-white dark:bg-slate-800 shadow-sm rounded-2xl overflow-hidden border border-gray-200 dark:border-slate-700">
+        <div className="p-6 border-b border-gray-200 dark:border-slate-700">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold text-gray-900">Nastavení výpočtů</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Náhled pro jednotku:</span>
+            <div className="flex items-center gap-4">
+              <h3 className="font-bold text-lg text-gray-900 dark:text-white">Nastavení výpočtů</h3>
+              <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-slate-400 cursor-pointer select-none hover:text-gray-900 dark:hover:text-slate-200 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={showHiddenServices}
+                  onChange={(e) => setShowHiddenServices(e.target.checked)}
+                  className="rounded border-gray-300 dark:border-slate-600 text-teal-600 focus:ring-teal-500 bg-white dark:bg-slate-900"
+                />
+                Zobrazit skryté služby
+              </label>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-600 dark:text-slate-400">Náhled pro jednotku:</span>
               <select
                 aria-label="Vybrat jednotku pro náhled"
                 value={selectedUnitId}
                 onChange={e => setSelectedUnitId(e.target.value)}
-                className="border border-gray-300 rounded px-2 py-1 text-sm w-32"
+                className="border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-1.5 text-sm w-40 bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
               >
                 {units.map(u => (
                   <option key={u.id} value={u.id}>{u.unitNumber}</option>
@@ -648,53 +775,86 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
           </div>
 
           <details className="group">
-            <summary className="flex items-center gap-2 cursor-pointer text-sm text-teal-600 hover:text-teal-700 font-medium select-none">
+            <summary className="flex items-center gap-2 cursor-pointer text-sm text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium select-none transition-colors">
               <span>ℹ️ Nápověda k rozšířeným možnostem a proměnným</span>
               <svg className="w-4 h-4 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </summary>
-            <div className="mt-3 p-4 bg-teal-50 rounded-lg text-sm text-gray-700 space-y-2 border border-teal-100">
-              <p className="font-semibold">Dostupné proměnné pro vlastní vzorce (CUSTOM):</p>
-              <ul className="list-disc list-inside space-y-1 ml-2">
-                <li><code>TOTAL_COST</code> - Celkový náklad na službu za dům (Kč)</li>
-                <li><code>TOTAL_CONSUMPTION</code> - Celková spotřeba domu (m³, kWh) - <em>pouze pro měřené služby</em></li>
-                <li><code>UNIT_CONSUMPTION</code> - Spotřeba konkrétní jednotky (m³, kWh)</li>
-                <li><code>UNIT_SHARE</code> - Vlastnický podíl jednotky (např. 0.054)</li>
-                <li><code>UNIT_AREA</code> - Celková plocha jednotky (m²)</li>
-                <li><code>UNIT_PEOPLE</code> - Počet osob v jednotce</li>
+            <div className="mt-4 p-5 bg-teal-50 dark:bg-teal-900/20 rounded-xl text-sm text-gray-700 dark:text-slate-300 space-y-3 border border-teal-100 dark:border-teal-800/30">
+              <p className="font-semibold text-teal-900 dark:text-teal-100">Dostupné proměnné pro vlastní vzorce (CUSTOM):</p>
+              <ul className="list-disc list-inside space-y-1 ml-2 text-gray-600 dark:text-slate-400">
+                <li><code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-gray-200 dark:border-slate-700 font-mono text-xs">TOTAL_COST</code> - Celkový náklad na službu za dům (Kč)</li>
+                <li><code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-gray-200 dark:border-slate-700 font-mono text-xs">TOTAL_CONSUMPTION</code> - Celková spotřeba domu (m³, kWh) - <em>pouze pro měřené služby</em></li>
+                <li><code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-gray-200 dark:border-slate-700 font-mono text-xs">UNIT_CONSUMPTION</code> - Spotřeba konkrétní jednotky (m³, kWh)</li>
+                <li><code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-gray-200 dark:border-slate-700 font-mono text-xs">UNIT_SHARE</code> - Vlastnický podíl jednotky (např. 0.054)</li>
+                <li><code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-gray-200 dark:border-slate-700 font-mono text-xs">UNIT_AREA</code> - Celková plocha jednotky (m²)</li>
+                <li><code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-gray-200 dark:border-slate-700 font-mono text-xs">UNIT_PEOPLE</code> - Počet osob v jednotce</li>
               </ul>
-              <p className="mt-2 text-xs text-gray-500">
+              <p className="mt-2 text-xs text-gray-500 dark:text-slate-500">
                 Příklad vzorce pro kombinovaný výpočet (30% plocha, 70% spotřeba):<br/>
-                <code>(TOTAL_COST * 0.3 * UNIT_AREA / TOTAL_AREA) + (TOTAL_COST * 0.7 * UNIT_CONSUMPTION / TOTAL_CONSUMPTION)</code>
+                <code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded border border-gray-200 dark:border-slate-700 font-mono mt-1 block w-fit">(TOTAL_COST * 0.3 * UNIT_AREA / TOTAL_AREA) + (TOTAL_COST * 0.7 * UNIT_CONSUMPTION / TOTAL_CONSUMPTION)</code>
               </p>
             </div>
           </details>
         </div>
         
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+          <thead className="bg-gray-50 dark:bg-slate-800/50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Služba</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Náklad</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metodika výpočtu</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parametry</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">Náhled výpočtu</th>
+              <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Služba</th>
+              <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Náklad</th>
+              <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Metodika výpočtu</th>
+              <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Parametry</th>
+              <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider bg-blue-50/50 dark:bg-blue-900/10">Náhled výpočtu</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {localServices.map((service) => {
+          <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
+            {localServices
+              .filter(s => showHiddenServices || s.isActive !== false)
+              .map((service, index) => {
               const totalCost = costs
                 .filter(c => c.serviceId === service.id)
                 .reduce((sum, c) => sum + c.amount, 0)
+              
+              const isHidden = service.isActive === false
 
               return (
-                <tr key={service.id} className="hover:bg-gray-50">
+                <tr 
+                  key={service.id} 
+                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${isHidden ? 'bg-gray-50 dark:bg-slate-800/50 opacity-60' : ''} cursor-move transition-colors duration-200 ${draggedItemIndex === index ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, index)}
+                  onDragEnd={handleDragEnd}
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-medium text-gray-900">{service.name}</div>
-                    <div className="text-xs text-gray-500">{service.code}</div>
+                    <div className="flex items-start gap-3">
+                      <button
+                        onClick={() => toggleServiceVisibility(service.id, !isHidden)}
+                        className={`mt-1 p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors ${isHidden ? 'text-gray-400 dark:text-slate-500' : 'text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300'}`}
+                        title={isHidden ? "Zobrazit službu" : "Skrýt službu"}
+                      >
+                        {isHidden ? (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                          </svg>
+                        )}
+                      </button>
+                      <div>
+                        <div className="font-medium text-gray-900 dark:text-white">{service.name}</div>
+                        <div className="text-xs text-gray-500 dark:text-slate-400">{service.code}</div>
+                        {isHidden && <span className="text-[10px] text-red-500 dark:text-red-400 font-medium uppercase tracking-wider">Skryto</span>}
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-medium">
                     {totalCost.toLocaleString('cs-CZ')} Kč
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -708,7 +868,7 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                           : service.methodology
                       }
                       onChange={(e) => handleMethodologyChange(service.id, e.target.value)}
-                      className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md"
+                      className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-lg shadow-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-white border"
                     >
                       <option value="OWNERSHIP_SHARE">Vlastnický podíl</option>
                       <option value="AREA">Podle výměry</option>
@@ -735,9 +895,10 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                   <td className="px-6 py-4 whitespace-nowrap">
                     {service.methodology === 'UNIT_PARAMETER' && (
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500">Vyberte parametr</label>
+                        <label className="text-xs text-gray-500 dark:text-slate-400">Vyberte parametr</label>
                         <select
-                          className="border border-gray-300 rounded px-2 py-1 text-xs w-full"
+                          aria-label="Vyberte parametr"
+                          className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
                           value={service.unitAttributeName || ''}
                           onChange={(e) => updateLocalService(service.id, 'unitAttributeName', e.target.value)}
                           onBlur={(e) => saveServiceChange(service.id, 'unitAttributeName', e.target.value)}
@@ -748,23 +909,23 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                           ))}
                         </select>
                         {availableParameters.length === 0 && (
-                          <span className="text-[10px] text-red-500">Žádné parametry nenalezeny. Importujte je v sekci Parametry.</span>
+                          <span className="text-[10px] text-red-500 dark:text-red-400">Žádné parametry nenalezeny. Importujte je v sekci Parametry.</span>
                         )}
                       </div>
                     )}
                     {service.methodology === 'METER_READING' && (
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500">Cena za jednotku (Kč)</label>
+                        <label className="text-xs text-gray-500 dark:text-slate-400">Cena za jednotku (Kč)</label>
                         <input
                           type="number"
                           step="0.01"
                           placeholder="Vypočítat z nákladu"
-                          className="border border-gray-300 rounded px-2 py-1 text-xs w-full"
+                          className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
                           value={service.unitPrice || ''}
                           onChange={(e) => updateLocalService(service.id, 'unitPrice', e.target.value)}
                           onBlur={(e) => saveServiceChange(service.id, 'unitPrice', e.target.value ? parseFloat(e.target.value) : null)}
                         />
-                        <span className="text-[10px] text-gray-400">
+                        <span className="text-[10px] text-gray-400 dark:text-slate-500">
                           {!service.unitPrice 
                             ? 'Automaticky: (Náklad / Celk. spotřeba) * Spotřeba jednotky' 
                             : 'Fixní cena: Spotřeba jednotky * Zadaná cena'}
@@ -773,12 +934,12 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                     )}
                     {service.methodology === 'EQUAL_SPLIT' && (
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500">Dělitel (počet jednotek)</label>
+                        <label className="text-xs text-gray-500 dark:text-slate-400">Dělitel (počet jednotek)</label>
                         <input
                           type="number"
                           step="0.01"
                           placeholder={`Výchozí: ${units.length}`}
-                          className="border border-gray-300 rounded px-2 py-1 text-xs w-full"
+                          className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
                           value={service.divisor || ''}
                           onChange={(e) => updateLocalService(service.id, 'divisor', e.target.value)}
                           onBlur={(e) => saveServiceChange(service.id, 'divisor', e.target.value ? parseFloat(e.target.value) : null)}
@@ -787,12 +948,12 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                     )}
                     {service.methodology === 'FIXED_PER_UNIT' && (
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500">Fixní částka (Kč)</label>
+                        <label className="text-xs text-gray-500 dark:text-slate-400">Fixní částka (Kč)</label>
                         <input
                           type="number"
                           step="0.01"
                           placeholder="Zadejte částku"
-                          className="border border-gray-300 rounded px-2 py-1 text-xs w-full"
+                          className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
                           value={service.fixedAmountPerUnit || ''}
                           onChange={(e) => updateLocalService(service.id, 'fixedAmountPerUnit', e.target.value)}
                           onBlur={(e) => saveServiceChange(service.id, 'fixedAmountPerUnit', e.target.value ? parseFloat(e.target.value) : null)}
@@ -806,18 +967,18 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                             type="text"
                             readOnly
                             placeholder="Klikněte pro úpravu vzorce"
-                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full font-mono bg-gray-50 cursor-pointer"
+                            className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full font-mono bg-gray-50 dark:bg-slate-800 cursor-pointer text-gray-900 dark:text-white"
                             value={service.customFormula || ''}
                             onClick={() => openFormulaEditor(service)}
                           />
                           <button
                             onClick={() => openFormulaEditor(service)}
-                            className="px-2 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded text-xs hover:bg-teal-100 whitespace-nowrap"
+                            className="px-2 py-1.5 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800 rounded-lg text-xs hover:bg-teal-100 dark:hover:bg-teal-900/30 whitespace-nowrap transition-colors"
                           >
                             ✏️ Upravit
                           </button>
                         </div>
-                        <div className="text-[10px] text-gray-400 leading-tight">
+                        <div className="text-[10px] text-gray-400 dark:text-slate-500 leading-tight">
                           Klikněte pro otevření editoru vzorců
                         </div>
                       </div>
@@ -826,20 +987,29 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                       <input
                         type="text"
                         placeholder="Atribut (nepovinné)"
-                        className="border border-gray-300 rounded px-2 py-1 text-xs w-full"
+                        className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
                         value={service.unitAttributeName || ''}
                         onChange={(e) => updateLocalService(service.id, 'unitAttributeName', e.target.value)}
                         onBlur={(e) => saveServiceChange(service.id, 'unitAttributeName', e.target.value)}
                       />
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap bg-blue-50">
+                  <td className="px-6 py-4 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">
                     {calculatePreview(service)}
                   </td>
                 </tr>
               )
             })}
           </tbody>
+          <tfoot className="bg-gray-50 dark:bg-slate-800/50 font-bold border-t-2 border-gray-200 dark:border-slate-700">
+            <tr>
+              <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">CELKEM</td>
+              <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-white">
+                {totalCostsSum.toLocaleString('cs-CZ')} Kč
+              </td>
+              <td colSpan={3}></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
