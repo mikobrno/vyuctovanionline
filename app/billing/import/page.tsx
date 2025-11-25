@@ -16,7 +16,7 @@ export default async function CompleteImportPage({
   }
 
   const { buildingId } = await searchParams
-  const currentYear = new Date().getFullYear()
+  const currentYear = new Date().getFullYear() - 1
 
   return (
     <div className="min-h-screen bg-gray-50">

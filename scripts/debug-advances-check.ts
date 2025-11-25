@@ -4,66 +4,62 @@ import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
 async function main() {
-  const unitNumber = '318/03' // Změňte podle potřeby
+  const buildingName = 'Neptun' // Search string
   const year = 2024
 
-  console.log(`Hledám jednotku ${unitNumber}...`)
-  const unit = await prisma.unit.findFirst({
-    where: { unitNumber: { contains: unitNumber } },
-    include: { building: true }
+  console.log(`Searching for building containing "${buildingName}"...`)
+  const building = await prisma.building.findFirst({
+    where: { name: { contains: buildingName, mode: 'insensitive' } }
   })
 
-  if (!unit) {
-    console.log('Jednotka nenalezena')
+  if (!building) {
+    console.log('Building not found.')
     return
   }
 
-  console.log(`Jednotka ID: ${unit.id}, Budova: ${unit.building.name}`)
+  console.log(`Found building: ${building.name} (${building.id})`)
 
-  // 1. Služby v budově
+  console.log('Checking services...')
   const services = await prisma.service.findMany({
-    where: { buildingId: unit.buildingId }
+    where: { buildingId: building.id }
   })
-  console.log('\n--- SLUŽBY V BUDOVĚ ---')
-  services.forEach(s => console.log(`[${s.id}] ${s.name} (Code: ${s.code})`))
 
-  // 2. Zálohy (AdvanceMonthly)
+  console.log(`Found ${services.length} services.`)
+  services.forEach(s => {
+    console.log(`- ${s.name} (Code: ${s.code}): AdvanceCol: "${s.advancePaymentColumn || 'NULL'}"`)
+  })
+
+  console.log(`Checking AdvanceMonthly records for year ${year}...`)
   const advances = await prisma.advanceMonthly.findMany({
-    where: { unitId: unit.id, year },
-    include: { service: true }
-  })
-  console.log('\n--- ZÁLOHY (AdvanceMonthly) ---')
-  advances.forEach(a => {
-    console.log(`Service: ${a.service.name} (${a.serviceId}) - Měsíc ${a.month}: ${a.amount}`)
-  })
-
-  // Agregace záloh
-  const advanceSums = new Map<string, number>()
-  advances.forEach(a => {
-    const current = advanceSums.get(a.serviceId) || 0
-    advanceSums.set(a.serviceId, current + a.amount)
-  })
-  console.log('\n--- SUMA ZÁLOH PODLE ID SLUŽBY ---')
-  for (const [id, amount] of advanceSums.entries()) {
-    const s = services.find(x => x.id === id)
-    console.log(`${s?.name} (${id}): ${amount}`)
-  }
-
-  // 3. Billing Result a Costs
-  const billingResult = await prisma.billingResult.findFirst({
-    where: { unitId: unit.id, billingPeriod: { year } },
-    include: { serviceCosts: { include: { service: true } } }
+    where: {
+      unit: { buildingId: building.id },
+      year: year
+    },
+    include: {
+      service: true,
+      unit: true
+    }
   })
 
-  if (billingResult) {
-    console.log('\n--- BILLING SERVICE COSTS ---')
-    billingResult.serviceCosts.forEach(cost => {
-      console.log(`Cost Service: ${cost.service.name} (${cost.serviceId})`)
-      console.log(`  - UnitAdvance (DB): ${cost.unitAdvance}`)
-      console.log(`  - Advance from Map: ${advanceSums.get(cost.serviceId)}`)
+  console.log(`Found ${advances.length} advance records.`)
+  
+  if (advances.length > 0) {
+    console.log('Sample records:')
+    advances.slice(0, 5).forEach(a => {
+      console.log(`- Unit: ${a.unit.unitNumber}, Service: ${a.service.name}, Month: ${a.month}, Amount: ${a.amount}`)
+    })
+    
+    // Group by service
+    const byService: Record<string, number> = {}
+    advances.forEach(a => {
+      byService[a.service.name] = (byService[a.service.name] || 0) + a.amount
+    })
+    console.log('Total advances by service:')
+    Object.entries(byService).forEach(([name, total]) => {
+      console.log(`- ${name}: ${total}`)
     })
   } else {
-    console.log('Billing result nenalezen')
+    console.log('No advances found! This confirms the import failed or data is missing.')
   }
 }
 

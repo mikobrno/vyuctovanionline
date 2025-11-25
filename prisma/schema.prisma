@@ -219,6 +219,8 @@ model Service {
   unitPrice           Float?              // cena za jednotku
   fixedAmountPerUnit  Float?              // fixní částka na jednotku (např. Kč/byt)
   divisor             Float?              // ruční dělitel (např. pro Rovným dílem - místo počtu jednotek)
+  manualCost          Float?              // ruční přepis celkového nákladu (Náklad [D])
+  manualShare         Float?              // ruční přepis podílu služby v % (Podíl [C])
   customFormula       String?             // vlastní vzorec pro výpočet
   advancePaymentColumn String?            // odkaz na sloupec v předpisu záloh
   excelColumn         String?             // EXPLICITNÍ ADRESOVÁNÍ: Sloupec v Excelu (např. "BN")

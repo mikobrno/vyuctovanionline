@@ -24,6 +24,11 @@ export async function PUT(
             methodology: service.method, // Map 'method' from frontend to 'methodology' in DB
             isActive: service.isActive,
             divisor: service.divisor ? parseFloat(service.divisor) : null, // Save manual building units override
+            manualCost: service.manualCost !== undefined && service.manualCost !== null && service.manualCost !== '' ? parseFloat(service.manualCost) : null,
+            manualShare: service.manualShare !== undefined && service.manualShare !== null && service.manualShare !== '' ? parseFloat(service.manualShare) : null,
+            dataSourceName: service.dataSourceName || null,
+            dataSourceColumn: service.dataSourceColumn || null,
+            customFormula: service.customFormula || null,
             // We can add more fields here if needed
           }
         })

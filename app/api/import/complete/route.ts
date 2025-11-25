@@ -265,6 +265,8 @@ export async function POST(req: NextRequest) {
       const buildingId = (formData.get('buildingId') as string) || ''
       const year = (formData.get('year') as string) || ''
 
+      console.log(`[Import] Start importu. BuildingId: '${buildingId}', BuildingName: '${buildingName}', Year: '${year}'`)
+
       if (!file) {
         await send({ type: 'error', message: 'Soubor s vyúčtováním nebyl přiložen.' })
         await writer.close()
@@ -394,13 +396,16 @@ export async function POST(req: NextRequest) {
       let building;
 
       if (buildingId) {
+        console.log(`[Import] Hledám budovu podle ID: ${buildingId}`)
         building = await prisma.building.findUnique({
           where: { id: buildingId }
         })
         if (!building) {
            throw new Error(`Budova s ID ${buildingId} nebyla nalezena.`)
         }
+        console.log(`[Import] Nalezena budova: ${building.name} (${building.id})`)
       } else {
+        console.log(`[Import] ID budovy nezadáno, hledám podle názvu z Excelu: ${buildingNameFromExcel}`)
         const finalBuildingName = buildingName || buildingNameFromExcel || 'Importovaná budova ' + new Date().toLocaleDateString('cs-CZ')
         
         building = await prisma.building.findFirst({
@@ -408,6 +413,7 @@ export async function POST(req: NextRequest) {
         })
 
         if (!building) {
+          console.log(`[Import] Budova nenalezena, vytvářím novou: ${finalBuildingName}`)
           building = await prisma.building.create({
             data: {
               name: finalBuildingName,
@@ -418,6 +424,8 @@ export async function POST(req: NextRequest) {
             }
           })
           summary.building.created = true
+        } else {
+          console.log(`[Import] Nalezena existující budova podle názvu: ${building.name} (${building.id})`)
         }
       }
 
@@ -812,8 +820,9 @@ export async function POST(req: NextRequest) {
         const idxMethod = 2;
         const idxShare = 3;
         const idxAmount = 4;
+        const idxAdvanceCol = 12; // Sloupec M (Předpis sloupec)
 
-        await log(`[Faktury] Používám pevnou strukturu: A=Služba, C=Metoda, D=Podíl, E=Náklad`)
+        await log(`[Faktury] Používám pevnou strukturu: A=Služba, C=Metoda, D=Podíl, E=Náklad, M=Sloupec záloh`)
         
         // Vypiš prvních 5 řádků jak vypadají
         for (let i = 0; i < Math.min(5, rawData.length); i++) {
@@ -821,7 +830,7 @@ export async function POST(req: NextRequest) {
           await log(`[RAW EXCEL ${i}] [0]="${row[0]}" [2]="${row[2]}" [3]="${row[3]}" [4]="${row[4]}"`)
         }
 
-        const looksLikeHeader = (value: string) => /služb|způsob|jednotk|popis|souhrn|celkem|záloha|jednotka č|jednotka c/.test(value.toLowerCase())
+        const looksLikeHeader = (value: string) => /služb|způsob|jednotk|popis|souhrn|celkem|záloha|jednotka č|jednotka c|náklad/.test(value.toLowerCase())
 
         let detectedStartIndex = rawData.findIndex(row => {
           const arr = row as unknown[]
@@ -831,6 +840,7 @@ export async function POST(req: NextRequest) {
           const amountVal = parseNumberCell(amountCell)
           if (!serviceCell) return false
           if (looksLikeHeader(serviceCell)) return false
+          if (looksLikeHeader(methodCell)) return false // FIX: Check if method cell looks like a header
           if (/^jednotka\s*c?\.?/.test(serviceCell.toLowerCase())) return false
           if (/prázdn/i.test(serviceCell) || /součet|sum/i.test(serviceCell)) return false
           if (/služba|název|položka/i.test(serviceCell)) return false
@@ -878,10 +888,11 @@ export async function POST(req: NextRequest) {
           const methodology = String(row[idxMethod] ?? '').trim()
           const shareStr = String(row[idxShare] ?? '').trim()
           const amountStr = String(row[idxAmount] ?? '0').trim()
+          const advanceColRaw = String(row[idxAdvanceCol] ?? '').trim()
 
           // DEBUG prvních 15 řádků
           if (i < 15) {
-            await log(`[Faktury DETAIL ${i}] Služba="${serviceName}" | Metoda RAW="${methodology}" | Metoda norm="${normalizeHeaderCell(methodology)}" | Podíl="${shareStr}" | Částka="${amountStr}"`)
+            await log(`[Faktury DETAIL ${i}] Služba="${serviceName}" | Metoda RAW="${methodology}" | Metoda norm="${normalizeHeaderCell(methodology)}" | Podíl="${shareStr}" | Částka="${amountStr}" | ZálohaSloupec="${advanceColRaw}"`)
           }
 
           if (!serviceName || /prázdn/i.test(serviceName) || /^\s*$/.test(serviceName)) {
@@ -981,7 +992,9 @@ export async function POST(req: NextRequest) {
                       dataSourceType: (src.dataSourceType as DataSourceType) ?? undefined, 
                       dataSourceName: src.dataSourceName ?? undefined,
                       unitAttributeName: src.unitAttributeName ?? undefined,
-                      measurementUnit: src.measurementUnit ?? undefined, isActive: true, order: summary.services.total
+                      measurementUnit: src.measurementUnit ?? undefined, 
+                      advancePaymentColumn: advanceColRaw || null,
+                      isActive: true, order: summary.services.total
                     }
                   })
                   service = created
@@ -1002,7 +1015,8 @@ export async function POST(req: NextRequest) {
                   dataSourceType: (src.dataSourceType as DataSourceType) ?? undefined, 
                   dataSourceName: src.dataSourceName ?? undefined,
                   unitAttributeName: src.unitAttributeName ?? undefined,
-                  measurementUnit: src.measurementUnit ?? undefined
+                  measurementUnit: src.measurementUnit ?? undefined,
+                  advancePaymentColumn: advanceColRaw || null
                 }
               })
               // Aktualizuj cache s novým názvem
@@ -1285,6 +1299,23 @@ export async function POST(req: NextRequest) {
           const dataRows = rawData.slice(headerRowIndex + 1)
           let personMonthsCreated = 0
           
+          const personCountIdx = 13 // sloupec N
+          const evidenceFromIdx = 14 // sloupec O
+          const evidenceToIdx = 15   // sloupec P
+
+          const parseEvidenceDate = (value: unknown): Date | null => {
+            if (!value && value !== 0) return null
+            if (value instanceof Date) return value
+            if (typeof value === 'number') {
+              const excelEpoch = new Date(1900, 0, 1)
+              return new Date(excelEpoch.getTime() + (value - 2) * 24 * 60 * 60 * 1000)
+            }
+            const str = String(value).trim()
+            if (!str) return null
+            const parsed = new Date(str)
+            return Number.isNaN(parsed.getTime()) ? null : parsed
+          }
+
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const personMonthsToCreate: any[] = []
 
@@ -1293,7 +1324,7 @@ export async function POST(req: NextRequest) {
             if (!row || row.length === 0 || !row[0]) continue
             const rawUnitNumber = String(row[0] || '').trim()
             const strippedUnitNumber = stripUnitPrefixes(rawUnitNumber)
-            const personCount = parseInt(String(row[13] || '0')) || 0
+            const personCount = parseInt(String(row[personCountIdx] || '0')) || 0
             if (!rawUnitNumber || personCount === 0) continue
 
             let unit = unitMap.get(rawUnitNumber) || unitMap.get(strippedUnitNumber)
@@ -1318,9 +1349,18 @@ export async function POST(req: NextRequest) {
 
             // Update unit residents (current state)
             await prisma.unit.update({ where: { id: (unit as UnitLite).id }, data: { residents: personCount } })
-            
-            const startDate = new Date(parseInt(billingPeriod), 0, 1)
-            const endDate = new Date(parseInt(billingPeriod), 11, 31)
+
+            const billingYear = parseInt(billingPeriod, 10)
+            const yearStartBoundary = new Date(billingYear, 0, 1)
+            const yearEndBoundary = new Date(billingYear, 11, 31)
+
+            let startDate = parseEvidenceDate(row[evidenceFromIdx]) || yearStartBoundary
+            let endDate = parseEvidenceDate(row[evidenceToIdx]) || yearEndBoundary
+
+            if (startDate < yearStartBoundary) startDate = new Date(yearStartBoundary)
+            if (endDate > yearEndBoundary) endDate = new Date(yearEndBoundary)
+            if (startDate > endDate) continue
+
             const currentDate = new Date(startDate)
             while (currentDate <= endDate) {
               const year = currentDate.getFullYear()
@@ -1348,16 +1388,46 @@ export async function POST(req: NextRequest) {
       // 7. IMPORT PŘEDPISŮ
       await send({ type: 'progress', percentage: 95, step: 'Importuji předpisy záloh...' })
       
-      const advancesSheetName = workbook.SheetNames.find(name => {
+      let advancesSheetName = workbook.SheetNames.find(name => {
         const n = name.toLowerCase().replace(/\s+/g, ' ').trim()
         return n === 'předpis po mesici' || n === 'predpis po mesici'
       })
+
+      if (!advancesSheetName) {
+         advancesSheetName = workbook.SheetNames.find(name => {
+            const n = name.toLowerCase().replace(/\s+/g, ' ').trim()
+            return n.includes('zálohy') || n.includes('zalohy')
+         })
+      }
 
       if (advancesSheetName) {
         await log(`[Předpis] Začínám zpracování listu "${advancesSheetName}"...`)
         try {
           const advancesSheet = workbook.Sheets[advancesSheetName]
           const rawData = utils.sheet_to_json<unknown[]>(advancesSheet, { header: 1, defval: null })
+          const monthHeaderRow = rawData[1] as unknown[] | undefined
+
+          const normalizeAdvanceColumnIndex = (colIndex: number) => {
+            if (!monthHeaderRow || colIndex < 0) return colIndex
+            const headerCell = String(monthHeaderRow[colIndex] ?? '').trim().toLowerCase()
+            if (!headerCell) return colIndex
+            const isTotalColumn = headerCell.includes('celkem') || headerCell.includes('součet')
+            if (!isTotalColumn) return colIndex
+
+            let looksLikeMonthBlock = true
+            for (let offset = 1; offset <= 12; offset++) {
+              const headerVal = String(monthHeaderRow[colIndex - offset] ?? '').trim()
+              if (headerVal !== String(13 - offset)) {
+                looksLikeMonthBlock = false
+                break
+              }
+            }
+            if (looksLikeMonthBlock) {
+              const normalized = colIndex - 12
+              return normalized >= 0 ? normalized : 0
+            }
+            return colIndex
+          }
           const periodYear = billingPeriodRecord?.year
           
           // --- NOVÁ LOGIKA: Mapování přes "Vstupní data" ---
@@ -1403,16 +1473,58 @@ export async function POST(req: NextRequest) {
                       if (service) {
                          // Extrahovat písmeno sloupce z reference (např. "JC" z "JC" nebo "JC:JN")
                          const startColLetter = colRef.split(':')[0].replace(/[^A-Z]/g, '')
-                         if (startColLetter) {
-                            try {
-                               const colIndex = utils.decode_col(startColLetter)
-                               serviceMapping.push({ serviceId: service.id, colIndex, serviceName })
-                               await log(`[Předpis] Mapování (Vstupní data): ${serviceName} -> Sloupec ${startColLetter} (index ${colIndex})`)
-                            } catch {
+                     if (startColLetter) {
+                       try {
+                         const decodedIndex = utils.decode_col(startColLetter)
+                         const colIndex = normalizeAdvanceColumnIndex(decodedIndex)
+                         serviceMapping.push({ serviceId: service.id, colIndex, serviceName })
+                         await log(`[Předpis] Mapování (Vstupní data): ${serviceName} -> Sloupec ${startColLetter} (index ${colIndex})`)
+                       } catch {
                                await log(`[Předpis] Chyba při dekódování sloupce '${startColLetter}' pro službu ${serviceName}`)
                             }
                          }
                       }
+                   }
+                }
+             }
+          }
+
+          // --- NOVÁ LOGIKA 2: Mapování z definice služeb (sloupec M ve Fakturách) ---
+          // Toto má přednost nebo doplňuje mapování z Vstupních dat
+          const servicesWithAdvanceCol = await prisma.service.findMany({
+             where: { buildingId: building.id, advancePaymentColumn: { not: null } }
+          })
+          
+          if (servicesWithAdvanceCol.length > 0) {
+             await log(`[Předpis] Nalezeno ${servicesWithAdvanceCol.length} služeb s definovaným sloupcem záloh (z Faktur).`)
+             
+             for (const s of servicesWithAdvanceCol) {
+                if (s.advancePaymentColumn) {
+                   try {
+                      // Očekáváme formát "BN" nebo "N"
+                      // utils.decode_col("A") = 0
+                      let colIndex = -1
+                      // Pokud je to číslo (např. "12"), použijeme ho přímo
+                      if (/^\d+$/.test(s.advancePaymentColumn)) {
+                        colIndex = parseInt(s.advancePaymentColumn, 10)
+                      } else {
+                        // Jinak dekódujeme písmeno (např. "M" -> 12)
+                        colIndex = utils.decode_col(s.advancePaymentColumn)
+                      }
+                      colIndex = normalizeAdvanceColumnIndex(colIndex)
+                      
+                      if (colIndex >= 0) {
+                        const existing = serviceMapping.find(m => m.serviceId === s.id)
+                        if (existing) {
+                           existing.colIndex = colIndex
+                           await log(`[Předpis] Aktualizuji mapování pro ${s.name}: ${s.advancePaymentColumn} -> index ${colIndex}`)
+                        } else {
+                           serviceMapping.push({ serviceId: s.id, colIndex, serviceName: s.name })
+                           await log(`[Předpis] Přidávám mapování pro ${s.name}: ${s.advancePaymentColumn} -> index ${colIndex}`)
+                        }
+                      }
+                   } catch {
+                      await log(`[Předpis] Chyba dekódování sloupce '${s.advancePaymentColumn}' pro službu ${s.name}`)
                    }
                 }
              }
@@ -1667,6 +1779,8 @@ export async function POST(req: NextRequest) {
       }
 
       // 7b. IMPORT PŘEDPISŮ (CELKEM - Predpisy_celkem)
+      // ZAKÁZÁNO NA ŽÁDOST UŽIVATELE - Celkové zálohy se počítají součtem jednotlivých služeb
+      /*
       const advancesTotalSheetName = workbook.SheetNames.find(name => {
         const n = name.toLowerCase().replace(/\s+/g, ' ').trim()
         return n === 'predpisy_celkem' || n === 'předpisy_celkem' || n === 'predpisy celkem' || n === 'předpisy celkem'
@@ -1811,6 +1925,7 @@ export async function POST(req: NextRequest) {
           summary.errors.push(`Předpisy (Celkem): ${e instanceof Error ? e.message : String(e)}`)
         }
       }
+      */
 
       // 8. NÁKLADY NA DŮM
       const costSheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('náklady na dům'))
@@ -1963,9 +2078,61 @@ export async function POST(req: NextRequest) {
                const service = services.find(s => normalize(s.name) === normalizedName)
                
                if (service) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const updateData: any = { order: orderCounter++ }
+
+                  // AKTUALIZACE METODIKY (pokud je ve sloupci C - index 2)
+                  if (row.length > 2) {
+                     const methodRaw = String(row[2] || '').trim()
+                     if (methodRaw) {
+                        const method = matchMethodFromValue(methodRaw)
+                        if (method) {
+                           updateData.methodology = method
+                           await log(`[Metodika] Služba '${service.name}' -> ${method} (z Excelu: '${methodRaw}')`)
+
+                           // Aktualizace DataSourceType podle metodiky
+                           let src: any = { dataSourceType: null, unitAttributeName: null, measurementUnit: null, dataSourceName: null }
+                           
+                           if (method === 'NO_BILLING') {
+                              src = { dataSourceType: 'NONE', unitAttributeName: null, measurementUnit: null, dataSourceName: null }
+                           } else if (method === 'METER_READING') {
+                              const meterHints = `${methodRaw} ${serviceName}`.toLowerCase()
+                              let dsName = 'Měřidla'
+                              let measurementUnit = 'jednotek'
+
+                              if (meterHints.includes('vodomer sv') || meterHints.includes('sv voda') || meterHints.includes('studen') || meterHints.includes('pitn') || meterHints.includes('vodne')) {
+                                 dsName = 'Vodoměry SV'; measurementUnit = 'm³'
+                              } else if (meterHints.includes('vodomer tuv') || meterHints.includes('tuv') || meterHints.includes('tepla voda') || meterHints.includes('ohrev') || meterHints.includes('bojler')) {
+                                 dsName = 'Vodoměry TUV'; measurementUnit = 'm³'
+                              } else if (meterHints.includes('teplo') || meterHints.includes('vytap') || meterHints.includes('radiator') || meterHints.includes('patni') || meterHints.includes('plyn') || meterHints.includes('externi') || meterHints.includes('kalor')) {
+                                 dsName = 'Teplo'; measurementUnit = 'kWh'
+                              } else if (meterHints.includes('elektr')) {
+                                 dsName = 'Elektroměry'; measurementUnit = 'kWh'
+                              }
+                              src = { dataSourceType: 'METER_DATA', unitAttributeName: null, measurementUnit, dataSourceName: dsName }
+                           } else if (method === 'AREA') {
+                              src = { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'CELKOVA_VYMERA', measurementUnit: 'm²', dataSourceName: null }
+                           } else if (method === 'PERSON_MONTHS') {
+                              src = { dataSourceType: 'PERSON_MONTHS', unitAttributeName: null, measurementUnit: 'osobo-měsíc', dataSourceName: null }
+                           } else if (method === 'FIXED_PER_UNIT' || method === 'EQUAL_SPLIT') {
+                              src = { dataSourceType: 'UNIT_COUNT', unitAttributeName: null, measurementUnit: 'ks', dataSourceName: null }
+                           } else if (method === 'OWNERSHIP_SHARE') {
+                              src = { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'VLASTNICKY_PODIL', measurementUnit: '%', dataSourceName: null }
+                           }
+
+                           if (src.dataSourceType) {
+                              updateData.dataSourceType = src.dataSourceType
+                              updateData.dataSourceName = src.dataSourceName
+                              updateData.unitAttributeName = src.unitAttributeName
+                              updateData.measurementUnit = src.measurementUnit
+                           }
+                        }
+                     }
+                  }
+
                   await prisma.service.update({
                      where: { id: service.id },
-                     data: { order: orderCounter++ }
+                     data: updateData
                   })
                   await log(`[Řazení] Služba '${service.name}' nastavena na pozici ${orderCounter - 1}`)
                } else {

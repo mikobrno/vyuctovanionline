@@ -17,7 +17,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   const [selectedUnitId, setSelectedUnitId] = useState<string>(units[0]?.id || '')
   const [showHiddenServices, setShowHiddenServices] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [year, setYear] = useState<number>(new Date().getFullYear())
+  const [year, setYear] = useState<number>(new Date().getFullYear() - 1)
   
   // State pro verze
   const [versions, setVersions] = useState<any[]>([])
@@ -34,12 +34,17 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   const [editingFormulaMode, setEditingFormulaMode] = useState<'COST' | 'PRICE'>('COST')
   const [tempFormula, setTempFormula] = useState('')
 
+  // State pro konfiguraci měřidel
+  const [editingMeterServiceId, setEditingMeterServiceId] = useState<string | null>(null)
+  const [tempMeterTypes, setTempMeterTypes] = useState<string[]>([])
+  const [tempMeterSourceColumn, setTempMeterSourceColumn] = useState<string>('consumption')
+
   // State pro zálohy
   const [advancesData, setAdvancesData] = useState<Record<string, Record<string, { total: number }>>>({})
   
   // State pro manuální přepisy hodnot
-  // Global overrides: [serviceId]: { buildingUnits?: string, share?: string }
-  const [globalOverrides, setGlobalOverrides] = useState<Record<string, { buildingUnits?: string, share?: string }>>({})
+  // Global overrides: [serviceId]: { buildingUnits?: string, share?: string, manualCost?: string }
+  const [globalOverrides, setGlobalOverrides] = useState<Record<string, { buildingUnits?: string, share?: string, manualCost?: string }>>({})
   // Unit overrides: [unitId]: { [serviceId]: { userUnits?: string, advance?: string } }
   const [unitOverrides, setUnitOverrides] = useState<Record<string, Record<string, { userUnits?: string, advance?: string }>>>({})
 
@@ -50,12 +55,16 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
       method: s.methodology || s.method || 'OWNERSHIP_SHARE'
     }))
     setLocalServices(transformedServices)
-    // Initialize global overrides from service configuration (divisor)
+    // Initialize global overrides from service configuration (divisor, manualCost, manualShare)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const initialOverrides: Record<string, any> = {}
     transformedServices.forEach(s => {
-      if (s.divisor) {
-        initialOverrides[s.id] = { buildingUnits: s.divisor.toString() }
+      if (s.divisor || s.manualCost !== null || s.manualShare !== null) {
+        initialOverrides[s.id] = { 
+          buildingUnits: s.divisor?.toString(),
+          manualCost: s.manualCost?.toString(),
+          share: s.manualShare?.toString()
+        }
       }
     })
     setGlobalOverrides(prev => ({ ...prev, ...initialOverrides }))
@@ -88,10 +97,23 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   // Filtrování nákladů podle roku
   const filteredCosts = useMemo(() => {
     return costs.filter(c => {
+      // Pokud existuje period (rok vyúčtování), použijeme ten
+      if (c.period !== undefined && c.period !== null) {
+        return Number(c.period) === Number(year)
+      }
+      // Fallback na datum faktury
       const costDate = new Date(c.invoiceDate || c.createdAt)
       return costDate.getFullYear() === year
     })
   }, [costs, year])
+
+  // Zjištění data posledního importu (podle data vytvoření nákladů)
+  const lastImportDate = useMemo(() => {
+    if (filteredCosts.length === 0) return null
+    const dates = filteredCosts.map(c => new Date(c.createdAt).getTime())
+    const maxDate = Math.max(...dates)
+    return new Date(maxDate)
+  }, [filteredCosts])
 
   // Pomocná funkce pro získání kontextu výpočtu (proměnných)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -231,6 +253,92 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     setEditingFormulaServiceId(null)
   }
 
+  // Otevření konfigurace měřidel
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const openMeterConfig = (service: any) => {
+    setEditingMeterServiceId(service.id)
+    // Parse existing config or default
+    let types: string[] = []
+    if (service.dataSourceName) {
+      types = service.dataSourceName.split('+')
+    } else {
+      // Default fallback based on code
+      const meterTypeMap: Record<string, string> = {
+        'TEPLO': 'HEATING',
+        'TUV': 'HOT_WATER',
+        'SV': 'COLD_WATER',
+        'ELEKTRINA': 'ELECTRICITY',
+        'VODA': 'COLD_WATER',
+        'VODNE': 'COLD_WATER',
+      }
+      let defaultType = meterTypeMap[service.code]
+      if (!defaultType) {
+         const code = service.code.toUpperCase()
+         const name = service.name.toLowerCase()
+         if (code.includes('VOD') || name.includes('vod') || name.includes('studen')) defaultType = 'COLD_WATER'
+         else if (code.includes('TUV') || name.includes('tuv') || name.includes('teplá') || name.includes('tepla')) defaultType = 'HOT_WATER'
+         else if (code.includes('TEP') || name.includes('tep') || name.includes('topen')) defaultType = 'HEATING'
+         else if (code.includes('ELE') || name.includes('ele')) defaultType = 'ELECTRICITY'
+         else defaultType = 'HEATING'
+      }
+      if (defaultType) types = [defaultType]
+    }
+    setTempMeterTypes(types)
+    setTempMeterSourceColumn(service.dataSourceColumn || 'consumption')
+  }
+
+  const toggleMeterType = (type: string) => {
+    setTempMeterTypes(prev => 
+      prev.includes(type) 
+        ? prev.filter(t => t !== type)
+        : [...prev, type]
+    )
+  }
+
+  const saveMeterConfig = async () => {
+    if (!editingMeterServiceId) return
+    const newDataSourceName = tempMeterTypes.join('+')
+    const serviceToUpdate = localServices.find(s => s.id === editingMeterServiceId)
+    setLocalServices(prev => prev.map(s => s.id === editingMeterServiceId ? { 
+      ...s, 
+      dataSourceName: newDataSourceName,
+      dataSourceColumn: tempMeterSourceColumn,
+      dataSourceType: 'METER_DATA'
+    } : s))
+
+    if (serviceToUpdate) {
+      try {
+        await fetch(`/api/buildings/${buildingId}/services/${editingMeterServiceId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: serviceToUpdate.name,
+            code: serviceToUpdate.code,
+            methodology: serviceToUpdate.methodology || serviceToUpdate.method || 'METER_READING',
+            dataSourceType: 'METER_DATA',
+            dataSourceName: newDataSourceName,
+            dataSourceColumn: tempMeterSourceColumn,
+            unitAttributeName: serviceToUpdate.unitAttributeName || null,
+            measurementUnit: serviceToUpdate.measurementUnit || null,
+            unitPrice: serviceToUpdate.unitPrice ?? null,
+            fixedAmountPerUnit: serviceToUpdate.fixedAmountPerUnit ?? null,
+            divisor: serviceToUpdate.divisor ?? null,
+            customFormula: serviceToUpdate.customFormula || null,
+            advancePaymentColumn: serviceToUpdate.advancePaymentColumn || null,
+            showOnStatement: serviceToUpdate.showOnStatement !== false,
+            isActive: serviceToUpdate.isActive !== false,
+            order: serviceToUpdate.order ?? 0,
+          })
+        })
+        router.refresh()
+      } catch (error) {
+        console.error('Failed to save meter configuration', error)
+      }
+    }
+
+    setEditingMeterServiceId(null)
+  }
+
   // Pomocné výpočty pro celý dům
   const buildingStats = useMemo(() => {
     const totalArea = units.reduce((sum, u) => sum + (u.totalArea || 0), 0)
@@ -245,19 +353,46 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     const consumptionByService: Record<string, number> = {}
     localServices.forEach(service => {
       if (service.method === 'METER_READING') {
-        const meterTypeMap: Record<string, string> = {
-          'TEPLO': 'HEATING',
-          'TUV': 'HOT_WATER',
-          'SV': 'COLD_WATER',
-          'ELEKTRINA': 'ELECTRICITY',
-        }
-        const meterType = meterTypeMap[service.code] || 'HEATING'
+        let typesToSum: string[] = []
         
+        if (service.dataSourceName) {
+          typesToSum = service.dataSourceName.split('+')
+        } else {
+          const meterTypeMap: Record<string, string> = {
+            'TEPLO': 'HEATING',
+            'TUV': 'HOT_WATER',
+            'SV': 'COLD_WATER',
+            'ELEKTRINA': 'ELECTRICITY',
+            'VODA': 'COLD_WATER',
+            'VODNE': 'COLD_WATER',
+          }
+          let t = meterTypeMap[service.code]
+          if (!t) {
+             const code = service.code.toUpperCase()
+             const name = service.name.toLowerCase()
+             if (code.includes('VOD') || name.includes('vod') || name.includes('studen')) t = 'COLD_WATER'
+             else if (code.includes('TUV') || name.includes('tuv') || name.includes('teplá') || name.includes('tepla')) t = 'HOT_WATER'
+             else if (code.includes('TEP') || name.includes('tep') || name.includes('topen')) t = 'HEATING'
+             else if (code.includes('ELE') || name.includes('ele')) t = 'ELECTRICITY'
+             else t = 'HEATING'
+          }
+          typesToSum = [t]
+        }
+        
+        const useCost = service.dataSourceColumn === 'precalculatedCost'
+
         const totalConsumption = units.reduce((sum, u) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const meter = u.meters?.find((m: any) => m.type === meterType && m.isActive)
-          const reading = meter?.readings?.[0] 
-          return sum + (reading?.consumption || 0)
+          const unitMeters = u.meters?.filter((m: any) => typesToSum.includes(m.type) && m.isActive) || []
+          const unitSum = unitMeters.reduce((s: number, m: any) => {
+             const reading = m.readings?.[0]
+             if (!reading) return s
+             if (useCost) {
+                return s + (reading.precalculatedCost || 0)
+             }
+             return s + (reading.consumption || 0)
+          }, 0)
+          return sum + unitSum
         }, 0)
         consumptionByService[service.id] = totalConsumption
       }
@@ -271,12 +406,20 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   const calculateBaseValues = (service: any, unit: any) => {
     if (!unit) return { totalCost: 0, buildingAmount: 0, unitAmount: 0 }
 
-    let totalCost = filteredCosts
-      .filter(c => c.serviceId === service.id)
-      .reduce((sum, c) => sum + c.amount, 0)
+    const gOverride = globalOverrides[service.id]
+    const isMeterCost = service.method === 'METER_READING' && service.dataSourceColumn === 'precalculatedCost'
+    let totalCost = 0
+
+    // 1. Určení základního nákladu (z DB nebo manuální přepis)
+    if (gOverride?.manualCost && !isNaN(parseFloat(gOverride.manualCost))) {
+      totalCost = parseFloat(gOverride.manualCost)
+    } else {
+      totalCost = filteredCosts
+        .filter(c => c.serviceId === service.id)
+        .reduce((sum, c) => sum + c.amount, 0)
+    }
 
     // Aplikace podílu služby (Service Share) - default 100%
-    const gOverride = globalOverrides[service.id]
     let serviceShare = 100
     if (gOverride?.share && !isNaN(parseFloat(gOverride.share))) {
       serviceShare = parseFloat(gOverride.share)
@@ -305,17 +448,46 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
         unitAmount = 1
         break
       case 'METER_READING':
-        const meterTypeMap: Record<string, string> = {
-          'TEPLO': 'HEATING',
-          'TUV': 'HOT_WATER',
-          'SV': 'COLD_WATER',
-          'ELEKTRINA': 'ELECTRICITY',
+        let typesToSum: string[] = []
+        if (service.dataSourceName) {
+          typesToSum = service.dataSourceName.split('+')
+        } else {
+          const meterTypeMap: Record<string, string> = {
+            'TEPLO': 'HEATING',
+            'TUV': 'HOT_WATER',
+            'SV': 'COLD_WATER',
+            'ELEKTRINA': 'ELECTRICITY',
+            'VODA': 'COLD_WATER',
+            'VODNE': 'COLD_WATER',
+          }
+          let t = meterTypeMap[service.code]
+          if (!t) {
+             const code = service.code.toUpperCase()
+             const name = service.name.toLowerCase()
+             if (code.includes('VOD') || name.includes('vod') || name.includes('studen')) t = 'COLD_WATER'
+             else if (code.includes('TUV') || name.includes('tuv') || name.includes('teplá') || name.includes('tepla')) t = 'HOT_WATER'
+             else if (code.includes('TEP') || name.includes('tep') || name.includes('topen')) t = 'HEATING'
+             else if (code.includes('ELE') || name.includes('ele')) t = 'ELECTRICITY'
+             else t = 'HEATING'
+          }
+          typesToSum = [t]
         }
-        const meterType = meterTypeMap[service.code] || 'HEATING'
+        
+        const useCost = service.dataSourceColumn === 'precalculatedCost'
+        
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const meter = unit.meters?.find((m: any) => m.type === meterType && m.isActive)
+        const unitMeters = unit.meters?.filter((m: any) => typesToSum.includes(m.type) && m.isActive) || []
+        const unitSum = unitMeters.reduce((s: number, m: any) => {
+           const reading = m.readings?.[0]
+           if (!reading) return s
+           if (useCost) {
+              return s + (reading.precalculatedCost || 0)
+           }
+           return s + (reading.consumption || 0)
+        }, 0)
+        
         buildingAmount = buildingStats.consumptionByService[service.id] || 0
-        unitAmount = meter?.readings?.[0]?.consumption || 0
+        unitAmount = unitSum
         break
       case 'FIXED_PER_UNIT':
         buildingAmount = 0
@@ -347,12 +519,12 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     }
 
     // Aplikace manuálních přepisů
-    if (gOverride?.buildingUnits && !isNaN(parseFloat(gOverride.buildingUnits))) {
+    if (!isMeterCost && gOverride?.buildingUnits && !isNaN(parseFloat(gOverride.buildingUnits))) {
       buildingAmount = parseFloat(gOverride.buildingUnits)
     }
     
     const uOverride = unitOverrides[unit.id]?.[service.id]
-    if (uOverride?.userUnits && !isNaN(parseFloat(uOverride.userUnits))) {
+    if (!isMeterCost && uOverride?.userUnits && !isNaN(parseFloat(uOverride.userUnits))) {
       unitAmount = parseFloat(uOverride.userUnits)
     }
 
@@ -373,6 +545,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     let unitShare = 0 
     let unitPrice = 0 
     let formula = ''
+    const isMeterCost = service.method === 'METER_READING' && service.dataSourceColumn === 'precalculatedCost'
 
     if (service.method === 'CUSTOM' && service.customFormula) {
        try {
@@ -407,7 +580,12 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
       unitCost = 0
       formula = 'Fixní částka'
     } else {
-      if (buildingAmount > 0) {
+      if (isMeterCost) {
+        unitCost = unitAmount
+        unitShare = buildingAmount > 0 ? (unitAmount / buildingAmount) * 100 : 0
+        unitPrice = 0
+        formula = 'Externí náklad z odečtů'
+      } else if (buildingAmount > 0) {
         unitPrice = totalCost / buildingAmount
         unitCost = unitAmount * unitPrice
         unitShare = (unitAmount / buildingAmount) * 100
@@ -424,8 +602,8 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   }
 
   // Handler pro změnu manuálních hodnot
-  const handleOverrideChange = (serviceId: string, field: 'buildingUnits' | 'userUnits' | 'share' | 'advance', value: string) => {
-    if (field === 'buildingUnits' || field === 'share') {
+  const handleOverrideChange = (serviceId: string, field: 'buildingUnits' | 'userUnits' | 'share' | 'advance' | 'manualCost', value: string) => {
+    if (field === 'buildingUnits' || field === 'share' || field === 'manualCost') {
       setGlobalOverrides(prev => ({
         ...prev,
         [serviceId]: {
@@ -452,6 +630,11 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    if (!buildingId) {
+      alert('Chyba: Není k dispozici ID budovy. Prosím obnovte stránku.')
+      return
+    }
 
     if (!confirm('Opravdu chcete přehrát aktuální data novým importem z Excelu? Veškeré ruční úpravy mohou být ztraceny.')) {
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -495,7 +678,12 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
       // Prepare services with overrides
       const servicesToSave = localServices.map(s => ({
         ...s,
-        divisor: globalOverrides[s.id]?.buildingUnits || null // Save building units override as divisor
+        divisor: globalOverrides[s.id]?.buildingUnits || null, // Save building units override as divisor
+        manualCost: globalOverrides[s.id]?.manualCost || null,
+        manualShare: globalOverrides[s.id]?.share || null,
+        dataSourceName: s.dataSourceName,
+        dataSourceColumn: s.dataSourceColumn,
+        customFormula: s.customFormula
       }))
 
       const res = await fetch(`/api/buildings/${buildingId}/services/reorder`, {
@@ -610,194 +798,6 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
 
   return (
     <div className="space-y-6">
-      {/* Editor vzorců Modal */}
-      {editingFormulaServiceId && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-gray-200 dark:border-slate-700 transform transition-all scale-100">
-             <div className="p-6 border-b border-gray-200 dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-800/50 rounded-t-2xl">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                  <span className="p-2 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-lg">✏️</span>
-                  {editingFormulaMode === 'PRICE' ? 'Editor ceny za jednotku' : 'Editor vzorce'}
-                  <span className="text-sm font-normal text-gray-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-3 py-1 rounded-full border border-gray-200 dark:border-slate-700">
-                    {localServices.find(s => s.id === editingFormulaServiceId)?.name}
-                  </span>
-                </h3>
-                <button onClick={() => setEditingFormulaServiceId(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg" title="Zavřít" aria-label="Zavřít">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-             </div>
-             
-             <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-slate-900">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
-                   {/* Left Column: Editor */}
-                   <div className="flex flex-col gap-6">
-                      <div>
-                        <label className="block text-sm font-bold text-gray-700 dark:text-slate-200 mb-2">Vzorec</label>
-                        <textarea
-                          className="w-full h-32 p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl font-mono text-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 shadow-sm text-gray-900 dark:text-white"
-                          value={tempFormula}
-                          onChange={(e) => setTempFormula(e.target.value)}
-                          placeholder="Např. (TOTAL_COST * UNIT_SHARE) + FIXED_FEE"
-                        />
-                      </div>
-                      
-                      {/* Operátory */}
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-3">Operátory</label>
-                        <div className="flex flex-wrap gap-2">
-                          {['+', '-', '*', '/', '(', ')'].map(op => (
-                            <button
-                              key={op}
-                              onClick={() => insertIntoFormula(` ${op} `)}
-                              className="w-12 h-12 flex items-center justify-center bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-700 rounded-xl font-mono font-bold text-lg transition-all shadow-sm hover:shadow text-gray-700 dark:text-slate-200"
-                            >
-                              {op}
-                            </button>
-                          ))}
-                          <button onClick={() => setTempFormula('')} className="px-4 h-12 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl text-sm font-medium ml-auto transition-colors">
-                            Vymazat
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Proměnné */}
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-3">Proměnné (kliknutím vložíte)</label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {[
-                            { code: 'TOTAL_COST', label: 'Náklad dům [D]', desc: 'Suma faktur pro tuto službu' },
-                            { code: 'TOTAL_CONSUMPTION', label: 'Jednotek dům [E]', desc: 'Součet náměrů/ploch/osob' },
-                            { code: 'UNIT_CONSUMPTION', label: 'Jednotek byt [G]', desc: 'Náměr/plocha/osoby bytu' },
-                            { code: 'UNIT_SHARE', label: 'Podíl [C]', desc: 'Vlastnický podíl bytu' },
-                            { code: 'UNIT_AREA', label: 'Plocha bytu (m²)', desc: 'Celková plocha bytu' },
-                            { code: 'UNIT_PEOPLE', label: 'Počet osob', desc: 'Počet osob v bytě' },
-                            { code: 'TOTAL_AREA', label: 'Celková plocha domu', desc: 'Součet ploch všech bytů' },
-                            { code: 'TOTAL_PEOPLE', label: 'Celkem osob v domě', desc: 'Součet osob ve všech bytech' },
-                            { code: 'UNIT_COUNT', label: 'Počet jednotek', desc: 'Celkový počet bytů v domě' },
-                          ].map(v => (
-                            <button
-                              key={v.code}
-                              onClick={() => insertIntoFormula(v.code)}
-                              className="flex flex-col items-start p-3 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 border border-blue-100 dark:border-blue-800 rounded-xl text-left transition-all group hover:shadow-sm"
-                            >
-                              <span className="font-mono font-bold text-blue-700 dark:text-blue-400 text-sm mb-1">{v.code}</span>
-                              <span className="text-xs text-gray-600 dark:text-slate-400">{v.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Čísla */}
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-3">Čísla</label>
-                        <div className="flex gap-2 flex-wrap">
-                          {[0.1, 0.3, 0.5, 0.7, 100, 1000].map(n => (
-                            <button
-                              key={n}
-                              onClick={() => insertIntoFormula(String(n))}
-                              className="px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 transition-colors shadow-sm"
-                            >
-                              {n}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                   </div>
-
-                   {/* Right Column: Preview */}
-                   <div className="bg-gray-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col">
-                      <div className="flex items-center justify-between mb-6">
-                        <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                          <span>👁️ Živý náhled</span>
-                        </h4>
-                        <select
-                          value={selectedUnitId}
-                          onChange={e => setSelectedUnitId(e.target.value)}
-                          className="max-w-[200px] text-xs font-normal text-gray-600 dark:text-slate-300 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 cursor-pointer hover:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"
-                          aria-label="Vybrat jednotku pro náhled"
-                        >
-                           {units.map(u => (
-                            <option key={u.id} value={u.id}>
-                              Byt {u.unitNumber} {u.owners?.[0]?.lastName ? `(${u.owners[0].lastName})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      
-                      <div className="space-y-6 flex-1">
-                        {(() => {
-                          const service = localServices.find(s => s.id === editingFormulaServiceId)
-                          const ctx = service ? getCalculationContext(service, selectedUnitId) : null
-                          
-                          if (!ctx) return <div className="text-red-500 dark:text-red-400 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 dark:border-red-800">Nelze načíst kontext pro vybraný byt.</div>
-
-                          let previewResult: number | string = '...'
-                          let error = null
-                          try {
-                            let f = tempFormula
-                            Object.entries(ctx).forEach(([k, v]) => { f = f.replace(new RegExp(k, 'g'), String(v)) })
-                            if (f.trim()) {
-                              previewResult = new Function('return ' + f)()
-                            } else {
-                              previewResult = 0
-                            }
-                          } catch {
-                            error = 'Chyba ve vzorci'
-                          }
-
-                          return (
-                            <>
-                              <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
-                                <div className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">Výsledek výpočtu</div>
-                                {error ? (
-                                  <div className="text-red-600 dark:text-red-400 font-bold flex items-center gap-2">
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                    {error}
-                                  </div>
-                                ) : (
-                                  <div className="text-3xl font-bold text-teal-600 dark:text-teal-400">
-                                    {typeof previewResult === 'number' ? previewResult.toLocaleString('cs-CZ', { maximumFractionDigits: 2 }) : previewResult} Kč
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="space-y-3">
-                                <div className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Hodnoty proměnných pro tento byt</div>
-                                <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-700 text-sm overflow-hidden">
-                                  {Object.entries(ctx).map(([key, val]) => (
-                                    <div key={key} className="flex justify-between p-3 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
-                                      <span className="font-mono text-gray-600 dark:text-slate-400">{key}</span>
-                                      <span className="font-medium text-gray-900 dark:text-slate-200">{typeof val === 'number' ? val.toLocaleString('cs-CZ', { maximumFractionDigits: 4 }) : val}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </>
-                          )
-                        })()}
-                      </div>
-                   </div>
-                </div>
-             </div>
-
-             <div className="p-6 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 rounded-b-2xl flex justify-end gap-3">
-                <button
-                  onClick={() => setEditingFormulaServiceId(null)}
-                  className="px-6 py-2.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
-                >
-                  Zrušit
-                </button>
-                <button
-                  onClick={saveFormulaFromEditor}
-                  className="px-6 py-2.5 bg-teal-600 text-white font-medium rounded-xl hover:bg-teal-700 shadow-sm hover:shadow transition-all"
-                >
-                  Uložit vzorec
-                </button>
-             </div>
-          </div>
-        </div>
-      )}
-
       {/* Horní lišta s ovládáním - Moderní styl */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {/* Karta: Výběr jednotky */}
@@ -898,7 +898,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={saving || importing}
-            className="px-6 py-2.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 font-bold shadow-sm transition-all flex items-center gap-2"
+            className="px-6 py-2.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 font-bold shadow-sm transition-all flex items-center gap-2 relative group"
           >
             {importing ? (
                <>
@@ -906,9 +906,16 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                  <span>Nahrávám...</span>
                </>
             ) : (
-               <>
-                 <span>📤 Nahrát Excel</span>
-               </>
+               <div className="flex flex-col items-start text-left">
+                 <div className="flex items-center gap-2">
+                    <span>📤 Nahrát Excel</span>
+                 </div>
+                 {lastImportDate && (
+                    <span className="text-[10px] font-normal text-gray-400 mt-0.5">
+                      Naposledy: {lastImportDate.toLocaleDateString('cs-CZ')} {lastImportDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                 )}
+               </div>
             )}
           </button>
 
@@ -949,6 +956,150 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
               <button onClick={() => setShowVersionModal(false)} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg font-medium transition-colors">Zrušit</button>
               <button onClick={saveVersion} disabled={savingVersion} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm transition-colors disabled:opacity-50">
                 {savingVersion ? 'Ukládám...' : 'Uložit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal pro editor vzorců */}
+      {editingFormulaServiceId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-2xl w-[600px] border border-gray-100 dark:border-slate-700 transform transition-all scale-100">
+            <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">
+              Editor vzorce ({editingFormulaMode === 'COST' ? 'Náklad' : 'Cena'})
+            </h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Vzorec</label>
+              <textarea
+                className="w-full h-32 bg-gray-50 dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 font-mono text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={tempFormula}
+                onChange={e => setTempFormula(e.target.value)}
+                aria-label="Editor vzorce"
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Dostupné proměnné</label>
+              <div className="flex flex-wrap gap-2">
+                {/*
+                  { label: 'Celkový náklad', value: 'TOTAL_COST' },
+                  { label: 'Podíl jednotky', value: 'UNIT_SHARE' },
+                  { label: 'Plocha jednotky', value: 'UNIT_AREA' },
+                  { label: 'Osoby v jednotce', value: 'UNIT_PEOPLE' },
+                  { label: 'Spotřeba jednotky', value: 'UNIT_CONSUMPTION' },
+                  { label: 'Celková spotřeba', value: 'TOTAL_CONSUMPTION' },
+                  { label: 'Celková plocha', value: 'TOTAL_AREA' },
+                  { label: 'Celkem osob', value: 'TOTAL_PEOPLE' },
+                  { label: 'Počet jednotek', value: 'UNIT_COUNT' },
+                */}
+                {Object.keys(getCalculationContext(localServices[0], selectedUnitId) || {}).map(key => (
+                  <button
+                    key={key}
+                    onClick={() => insertIntoFormula(key)}
+                    className="px-2 py-1 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 rounded text-xs font-mono text-gray-700 dark:text-gray-300 transition-colors"
+                    title={key}
+                  >
+                    {key}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button 
+                onClick={() => setEditingFormulaServiceId(null)} 
+                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg font-medium transition-colors"
+              >
+                Zrušit
+              </button>
+              <button 
+                onClick={saveFormulaFromEditor} 
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm transition-colors"
+              >
+                Uložit vzorec
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal pro konfiguraci měřidel */}
+      {editingMeterServiceId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-2xl w-[400px] border border-gray-100 dark:border-slate-700 transform transition-all scale-100">
+            <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">
+              Konfigurace odečtů
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Vyberte typy měřidel, které se mají sčítat pro tuto službu.
+            </p>
+            
+            <div className="space-y-3 mb-6">
+              {[
+                { id: 'COLD_WATER', label: 'Studená voda (SV)' },
+                { id: 'HOT_WATER', label: 'Teplá voda (TUV)' },
+                { id: 'HEATING', label: 'Teplo' },
+                { id: 'ELECTRICITY', label: 'Elektřina' }
+              ].map(type => (
+                <label key={type.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={tempMeterTypes.includes(type.id)}
+                    onChange={() => toggleMeterType(type.id)}
+                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300 dark:border-slate-600"
+                  />
+                  <span className="font-medium text-gray-700 dark:text-gray-200">{type.label}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                Co použít pro výpočet?
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className={`flex items-center justify-center gap-2 p-3 rounded-lg border cursor-pointer transition-all ${tempMeterSourceColumn === 'consumption' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input
+                    type="radio"
+                    name="meterSource"
+                    value="consumption"
+                    checked={tempMeterSourceColumn === 'consumption'}
+                    onChange={() => setTempMeterSourceColumn('consumption')}
+                    className="hidden"
+                  />
+                  <span className="font-medium">Spotřeba (m³/kWh)</span>
+                </label>
+                <label className={`flex items-center justify-center gap-2 p-3 rounded-lg border cursor-pointer transition-all ${tempMeterSourceColumn === 'precalculatedCost' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input
+                    type="radio"
+                    name="meterSource"
+                    value="precalculatedCost"
+                    checked={tempMeterSourceColumn === 'precalculatedCost'}
+                    onChange={() => setTempMeterSourceColumn('precalculatedCost')}
+                    className="hidden"
+                  />
+                  <span className="font-medium">Náklad (Kč)</span>
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Pokud zvolíte "Náklad", použije se předvypočítaná částka z importu odečtů (např. pro poměrové měřiče tepla).
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button 
+                onClick={() => setEditingMeterServiceId(null)} 
+                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg font-medium transition-colors"
+              >
+                Zrušit
+              </button>
+              <button 
+                onClick={saveMeterConfig} 
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm transition-colors"
+              >
+                Uložit nastavení
               </button>
             </div>
           </div>
@@ -1002,6 +1153,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                     {displayedServices.map((service, index) => {
                       const preview = calculatePreview(service)
                       const totalCost = filteredCosts.filter(c => c.serviceId === service.id).reduce((sum, c) => sum + c.amount, 0)
+                      const isMeterCost = service.method === 'METER_READING' && service.dataSourceColumn === 'precalculatedCost'
                       
                       let advance = advancesData[selectedUnitId]?.[service.id]?.total || 0
                       const overrideAdvance = unitOverrides[selectedUnitId]?.[service.id]?.advance
@@ -1050,6 +1202,16 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                                     <option value="CUSTOM">Vlastní vzorec</option>
                                     <option value="NO_BILLING">Nevyúčtovávat</option>
                                   </select>
+                                  {service.method === 'METER_READING' && (
+                                     <button
+                                       onClick={() => openMeterConfig(service)}
+                                       className="p-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
+                                       title="Konfigurace měřidel"
+                                       aria-label="Konfigurace měřidel"
+                                     >
+                                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                     </button>
+                                  )}
                                   {service.method === 'CUSTOM' && (
                                      <button
                                        onClick={() => openFormulaEditor(service)}
@@ -1075,36 +1237,60 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                                 </div>
                               </td>
                               <td className="p-4 text-right text-gray-600 dark:text-gray-300 font-medium">
-                                {totalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                                <div className="flex items-center justify-end gap-1 group">
+                                  <input 
+                                    type="text"
+                                    className="w-20 text-right border-b border-transparent group-hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent text-sm font-medium"
+                                    placeholder={totalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                    value={globalOverrides[service.id]?.manualCost || ''}
+                                    onChange={(e) => handleOverrideChange(service.id, 'manualCost', e.target.value)}
+                                    aria-label={`Náklad pro službu ${service.name}`}
+                                  />
+                                  <span>Kč</span>
+                                </div>
                               </td>
                               <td className="p-4 text-right text-gray-500 dark:text-gray-400">
-                                <input 
-                                  type="text"
-                                  className="w-20 text-right border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent text-sm"
-                                  placeholder={preview.buildingAmount.toLocaleString('cs-CZ', { maximumFractionDigits: 2 })}
-                                  value={globalOverrides[service.id]?.buildingUnits || ''}
-                                  onChange={(e) => handleOverrideChange(service.id, 'buildingUnits', e.target.value)}
-                                />
+                                {isMeterCost ? (
+                                  <span className="text-gray-400 dark:text-gray-500">–</span>
+                                ) : (
+                                  <input 
+                                    type="text"
+                                    className="w-20 text-right border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent text-sm"
+                                    placeholder={preview.buildingAmount.toLocaleString('cs-CZ', { maximumFractionDigits: 2 })}
+                                    value={globalOverrides[service.id]?.buildingUnits || ''}
+                                    onChange={(e) => handleOverrideChange(service.id, 'buildingUnits', e.target.value)}
+                                  />
+                                )}
                               </td>
                               <td className="p-4 text-right text-gray-500 dark:text-gray-400 text-xs relative group">
-                                {preview.unitPrice > 0 ? preview.unitPrice.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
-                                <button
-                                  onClick={() => openFormulaEditor(service, 'PRICE')}
-                                  className="absolute top-1/2 -translate-y-1/2 right-1 opacity-0 group-hover:opacity-100 p-1 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded transition-all"
-                                  title="Upravit vzorec ceny"
-                                  aria-label="Upravit vzorec ceny"
-                                >
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                </button>
+                                {isMeterCost ? (
+                                  <span className="text-gray-400 dark:text-gray-500">–</span>
+                                ) : (
+                                  <>
+                                    {preview.unitPrice > 0 ? preview.unitPrice.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                                    <button
+                                      onClick={() => openFormulaEditor(service, 'PRICE')}
+                                      className="absolute top-1/2 -translate-y-1/2 right-1 opacity-0 group-hover:opacity-100 p-1 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded transition-all"
+                                      title="Upravit vzorec ceny"
+                                      aria-label="Upravit vzorec ceny"
+                                    >
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                    </button>
+                                  </>
+                                )}
                               </td>
                               <td className="p-4 text-right font-medium text-gray-700 dark:text-gray-200 border-l border-gray-100 dark:border-slate-700">
-                                <input 
-                                  type="text"
-                                  className="w-20 text-right border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent text-sm font-bold"
-                                  placeholder={preview.unitAmount.toLocaleString('cs-CZ', { maximumFractionDigits: 2 })}
-                                  value={unitOverrides[selectedUnitId]?.[service.id]?.userUnits || ''}
-                                  onChange={(e) => handleOverrideChange(service.id, 'userUnits', e.target.value)}
-                                />
+                                {isMeterCost ? (
+                                  <span className="text-gray-400 dark:text-gray-500">–</span>
+                                ) : (
+                                  <input 
+                                    type="text"
+                                    className="w-20 text-right border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent text-sm font-bold"
+                                    placeholder={preview.unitAmount.toLocaleString('cs-CZ', { maximumFractionDigits: 2 })}
+                                    value={unitOverrides[selectedUnitId]?.[service.id]?.userUnits || ''}
+                                    onChange={(e) => handleOverrideChange(service.id, 'userUnits', e.target.value)}
+                                  />
+                                )}
                               </td>
                               <td className="p-4 text-right font-bold text-gray-900 dark:text-white bg-yellow-50/50 dark:bg-yellow-900/10 rounded-lg mx-2 relative group" title={preview.formula}>
                                 {preview.unitCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
@@ -1137,12 +1323,12 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                                 >
                                   {service.isActive !== false ? (
                                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                     </svg>
                                   ) : (
                                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
                                     </svg>
                                   )}
                                 </button>

@@ -49,7 +49,7 @@ interface CompleteImportProps {
   buildingId?: string
 }
 
-export default function CompleteImport({ year = new Date().getFullYear(), buildingId }: CompleteImportProps) {
+export default function CompleteImport({ year = new Date().getFullYear() - 1, buildingId }: CompleteImportProps) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [dragActive, setDragActive] = useState(false)
