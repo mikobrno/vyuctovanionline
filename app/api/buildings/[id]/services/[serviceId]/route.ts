@@ -54,6 +54,7 @@ export async function PATCH(
         showOnStatement: body.showOnStatement,
         isActive: body.isActive,
         order: body.order,
+        userMergeWithNext: body.userMergeWithNext ?? service.userMergeWithNext,
       },
     })
 

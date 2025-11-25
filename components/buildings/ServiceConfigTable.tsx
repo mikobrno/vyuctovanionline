@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 
+const normalizeServiceBaseName = (name: string) => name.replace(/\s*\([^)]*\)\s*$/u, '').trim()
+
 interface ServiceConfigTableProps {
   buildingId: string
   services: any[]
@@ -508,6 +510,32 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
     return sum + serviceCost
   }, 0)
 
+  const baseGroups = new Map<string, { ids: string[]; names: string[] }>()
+  visibleServices.forEach(service => {
+    const baseName = normalizeServiceBaseName(service.name)
+    const existing = baseGroups.get(baseName)
+    if (existing) {
+      existing.ids.push(service.id)
+      existing.names.push(service.name)
+    } else {
+      baseGroups.set(baseName, { ids: [service.id], names: [service.name] })
+    }
+  })
+
+  const visualGroupMeta = new Map<string, { size: number; position: 'first' | 'middle' | 'last'; baseName: string }>()
+  const visualGroupMembers = new Map<string, { names: string[] }>()
+
+  baseGroups.forEach((group, baseName) => {
+    if (group.ids.length <= 1) return
+    visualGroupMembers.set(baseName, { names: group.names })
+    group.ids.forEach((serviceId, index) => {
+      let position: 'first' | 'middle' | 'last' = 'middle'
+      if (index === 0) position = 'first'
+      else if (index === group.ids.length - 1) position = 'last'
+      visualGroupMeta.set(serviceId, { size: group.ids.length, position, baseName })
+    })
+  })
+
   return (
     <div className="space-y-6">
       {/* Editor vzorců Modal */}
@@ -810,19 +838,20 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
-            {localServices
-              .filter(s => showHiddenServices || s.isActive !== false)
-              .map((service, index) => {
+            {visibleServices.map((service, index) => {
               const totalCost = costs
                 .filter(c => c.serviceId === service.id)
                 .reduce((sum, c) => sum + c.amount, 0)
               
               const isHidden = service.isActive === false
+              const groupMeta = visualGroupMeta.get(service.id)
+              const groupMembers = groupMeta ? visualGroupMembers.get(groupMeta.baseName) : undefined
+              const partnerNames = groupMembers ? groupMembers.names.filter(name => name !== service.name) : []
 
               return (
                 <tr 
                   key={service.id} 
-                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${isHidden ? 'bg-gray-50 dark:bg-slate-800/50 opacity-60' : ''} cursor-move transition-colors duration-200 ${draggedItemIndex === index ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${isHidden ? 'bg-gray-50 dark:bg-slate-800/50 opacity-60' : ''} ${groupMeta ? 'bg-amber-50/30 dark:bg-amber-900/10' : ''} cursor-move transition-colors duration-200 ${draggedItemIndex === index ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
                   draggable
                   onDragStart={(e) => handleDragStart(e, index)}
                   onDragOver={handleDragOver}
@@ -830,7 +859,13 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                   onDragEnd={handleDragEnd}
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-stretch gap-3">
+                      {groupMeta && (
+                        <div
+                          className={`w-1 rounded-full bg-amber-400/60 dark:bg-amber-500/60 self-stretch ${groupMeta.position === 'first' ? 'rounded-b-none' : ''} ${groupMeta.position === 'last' ? 'rounded-t-none' : ''}`}
+                          aria-hidden="true"
+                        />
+                      )}
                       <button
                         onClick={() => toggleServiceVisibility(service.id, !isHidden)}
                         className={`mt-1 p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors ${isHidden ? 'text-gray-400 dark:text-slate-500' : 'text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300'}`}
@@ -851,6 +886,12 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                         <div className="font-medium text-gray-900 dark:text-white">{service.name}</div>
                         <div className="text-xs text-gray-500 dark:text-slate-400">{service.code}</div>
                         {isHidden && <span className="text-[10px] text-red-500 dark:text-red-400 font-medium uppercase tracking-wider">Skryto</span>}
+                        {groupMeta?.position === 'first' && partnerNames.length > 0 && (
+                          <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider">
+                            <span>Společně s:</span>
+                            <span className="normal-case text-amber-800 dark:text-amber-200">{partnerNames.join(', ')}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>

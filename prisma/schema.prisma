@@ -226,6 +226,7 @@ model Service {
   excelColumn         String?             // EXPLICITNÍ ADRESOVÁNÍ: Sloupec v Excelu (např. "BN")
   order               Int                 @default(0)
   isActive            Boolean             @default(true)
+  userMergeWithNext   Boolean             @default(false)
   showOnStatement     Boolean             @default(true) // zobrazit na výpisu
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt

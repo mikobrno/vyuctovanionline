@@ -29,6 +29,7 @@ export async function PUT(
             dataSourceName: service.dataSourceName || null,
             dataSourceColumn: service.dataSourceColumn || null,
             customFormula: service.customFormula || null,
+            userMergeWithNext: !!service.userMergeWithNext,
             // We can add more fields here if needed
           }
         })

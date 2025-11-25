@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 
@@ -52,7 +52,8 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     // Transform methodology -> method for component compatibility
     const transformedServices = services.map(s => ({
       ...s,
-      method: s.methodology || s.method || 'OWNERSHIP_SHARE'
+      method: s.methodology || s.method || 'OWNERSHIP_SHARE',
+      userMergeWithNext: Boolean(s.userMergeWithNext)
     }))
     setLocalServices(transformedServices)
     // Initialize global overrides from service configuration (divisor, manualCost, manualShare)
@@ -328,6 +329,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
             showOnStatement: serviceToUpdate.showOnStatement !== false,
             isActive: serviceToUpdate.isActive !== false,
             order: serviceToUpdate.order ?? 0,
+            userMergeWithNext: serviceToUpdate.userMergeWithNext || false,
           })
         })
         router.refresh()
@@ -683,7 +685,8 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
         manualShare: globalOverrides[s.id]?.share || null,
         dataSourceName: s.dataSourceName,
         dataSourceColumn: s.dataSourceColumn,
-        customFormula: s.customFormula
+        customFormula: s.customFormula,
+        userMergeWithNext: s.userMergeWithNext || false
       }))
 
       const res = await fetch(`/api/buildings/${buildingId}/services/reorder`, {
@@ -775,9 +778,24 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   const onDragEnd = (result: any) => {
     if (!result.destination) return
 
+    const getLocalIndexFromDisplayedIndex = (displayIndex: number) => {
+      if (displayIndex >= displayedServices.length) {
+        return localServices.length
+      }
+      const serviceId = displayedServices[displayIndex]?.id
+      if (!serviceId) return -1
+      return localServices.findIndex(s => s.id === serviceId)
+    }
+
+    const sourceIndex = getLocalIndexFromDisplayedIndex(result.source.index)
+    let destinationIndex = getLocalIndexFromDisplayedIndex(result.destination.index)
+
+    if (sourceIndex === -1) return
+    if (destinationIndex === -1) destinationIndex = localServices.length
+
     const items = Array.from(localServices)
-    const [reorderedItem] = items.splice(result.source.index, 1)
-    items.splice(result.destination.index, 0, reorderedItem)
+    const [reorderedItem] = items.splice(sourceIndex, 1)
+    items.splice(destinationIndex > sourceIndex ? destinationIndex - 1 : destinationIndex, 0, reorderedItem)
 
     const updatedItems = items.map((item, index) => ({
       ...item,
@@ -785,6 +803,16 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     }))
 
     setLocalServices(updatedItems)
+  }
+
+  const toggleUserMergeBetween = (displayIndex: number) => {
+    if (displayIndex < 0 || displayIndex >= displayedServices.length - 1) return
+    const targetService = displayedServices[displayIndex]
+    setLocalServices(prev => prev.map(s =>
+      s.id === targetService.id
+        ? { ...s, userMergeWithNext: !s.userMergeWithNext }
+        : s
+    ))
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -795,6 +823,55 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   }
 
   const displayedServices = localServices.filter(s => showHiddenServices || s.isActive !== false)
+
+  const rowMetrics = displayedServices.map(service => {
+    const preview = calculatePreview(service)
+    let advance = advancesData[selectedUnitId]?.[service.id]?.total || 0
+    const overrideAdvance = unitOverrides[selectedUnitId]?.[service.id]?.advance
+    if (overrideAdvance && !isNaN(parseFloat(overrideAdvance))) {
+      advance = parseFloat(overrideAdvance)
+    }
+    const balance = advance - preview.unitCost
+    return { preview, advance, balance }
+  })
+
+  const headIndexByRow: number[] = []
+  let activeHeadIndex = -1
+  displayedServices.forEach((service, index) => {
+    const prevMerged = index > 0 && displayedServices[index - 1].userMergeWithNext
+    if (service.userMergeWithNext) {
+      if (!prevMerged) {
+        activeHeadIndex = index
+      }
+      headIndexByRow[index] = activeHeadIndex
+    } else if (prevMerged) {
+      headIndexByRow[index] = activeHeadIndex
+      activeHeadIndex = -1
+    } else {
+      headIndexByRow[index] = -1
+      activeHeadIndex = -1
+    }
+  })
+
+  const mergedGroupTotals: Record<number, { unitCost: number; advance: number; balance: number }> = {}
+  headIndexByRow.forEach((headIndex, index) => {
+    if (headIndex === index && displayedServices[index]?.userMergeWithNext) {
+      let idx = index
+      let unitCost = 0
+      let advance = 0
+      let balance = 0
+      while (idx < displayedServices.length) {
+        unitCost += rowMetrics[idx]?.preview.unitCost || 0
+        advance += rowMetrics[idx]?.advance || 0
+        balance += rowMetrics[idx]?.balance || 0
+        if (!displayedServices[idx].userMergeWithNext) {
+          break
+        }
+        idx += 1
+      }
+      mergedGroupTotals[index] = { unitCost, advance, balance }
+    }
+  })
 
   return (
     <div className="space-y-6">
@@ -1151,21 +1228,24 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-slate-700/50">
                     {displayedServices.map((service, index) => {
-                      const preview = calculatePreview(service)
+                      const metrics = rowMetrics[index]
+                      const preview = metrics.preview
                       const totalCost = filteredCosts.filter(c => c.serviceId === service.id).reduce((sum, c) => sum + c.amount, 0)
                       const isMeterCost = service.method === 'METER_READING' && service.dataSourceColumn === 'precalculatedCost'
-                      
-                      let advance = advancesData[selectedUnitId]?.[service.id]?.total || 0
-                      const overrideAdvance = unitOverrides[selectedUnitId]?.[service.id]?.advance
-                      if (overrideAdvance && !isNaN(parseFloat(overrideAdvance))) {
-                        advance = parseFloat(overrideAdvance)
-                      }
-
-                      const balance = advance - preview.unitCost
+                      const advance = metrics.advance
+                      const balance = metrics.balance
+                      const headIndex = headIndexByRow[index]
+                      const mergedTotals = headIndex !== undefined && headIndex !== -1 ? mergedGroupTotals[headIndex] : undefined
+                      const isGroupHead = headIndex === index && service.userMergeWithNext
+                      const isPartOfGroup = headIndex !== undefined && headIndex !== -1
+                      const displayUnitCost = isPartOfGroup ? (isGroupHead ? mergedTotals?.unitCost ?? 0 : null) : preview.unitCost
+                      const displayAdvance = isPartOfGroup ? (isGroupHead ? mergedTotals?.advance ?? 0 : null) : advance
+                      const displayBalance = isPartOfGroup ? (isGroupHead ? mergedTotals?.balance ?? 0 : null) : balance
                       
                       return (
-                        <Draggable key={service.id} draggableId={service.id} index={index}>
-                          {(provided, snapshot) => (
+                        <Fragment key={service.id}>
+                          <Draggable key={service.id} draggableId={service.id} index={index}>
+                            {(provided, snapshot) => (
                             <tr 
                               ref={provided.innerRef}
                               {...provided.draggableProps}
@@ -1293,27 +1373,39 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                                 )}
                               </td>
                               <td className="p-4 text-right font-bold text-gray-900 dark:text-white bg-yellow-50/50 dark:bg-yellow-900/10 rounded-lg mx-2 relative group" title={preview.formula}>
-                                {preview.unitCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
-                                <button
-                                  onClick={() => openFormulaEditor(service, 'COST')}
-                                  className="absolute top-1/2 -translate-y-1/2 right-1 opacity-0 group-hover:opacity-100 p-1 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded transition-all"
-                                  title="Upravit vzorec výpočtu"
-                                  aria-label="Upravit vzorec výpočtu"
-                                >
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                </button>
+                                {displayUnitCost !== null && displayUnitCost !== undefined
+                                  ? `${displayUnitCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`
+                                  : <span className="text-gray-400 dark:text-gray-500">–</span>}
+                                {!isPartOfGroup && (
+                                  <button
+                                    onClick={() => openFormulaEditor(service, 'COST')}
+                                    className="absolute top-1/2 -translate-y-1/2 right-1 opacity-0 group-hover:opacity-100 p-1 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded transition-all"
+                                    title="Upravit vzorec výpočtu"
+                                    aria-label="Upravit vzorec výpočtu"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                  </button>
+                                )}
                               </td>
                               <td className="p-4 text-right text-gray-600 dark:text-gray-300">
-                                <input 
-                                  type="text"
-                                  className="w-20 text-right border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent text-sm"
-                                  placeholder={advance.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  value={unitOverrides[selectedUnitId]?.[service.id]?.advance || ''}
-                                  onChange={(e) => handleOverrideChange(service.id, 'advance', e.target.value)}
-                                />
+                                {isPartOfGroup ? (
+                                  displayAdvance !== null && displayAdvance !== undefined
+                                    ? `${displayAdvance.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`
+                                    : <span className="text-gray-400 dark:text-gray-500">–</span>
+                                ) : (
+                                  <input 
+                                    type="text"
+                                    className="w-20 text-right border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent text-sm"
+                                    placeholder={advance.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    value={unitOverrides[selectedUnitId]?.[service.id]?.advance || ''}
+                                    onChange={(e) => handleOverrideChange(service.id, 'advance', e.target.value)}
+                                  />
+                                )}
                               </td>
-                              <td className={`p-4 text-right font-bold ${balance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                {balance.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                              <td className={`p-4 text-right font-bold ${ (displayBalance ?? balance) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {displayBalance !== null && displayBalance !== undefined
+                                  ? `${displayBalance.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`
+                                  : <span className="text-gray-400 dark:text-gray-500">–</span>}
                               </td>
                               <td className="p-4 text-center">
                                 <button
@@ -1335,7 +1427,23 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                               </td>
                             </tr>
                           )}
-                        </Draggable>
+                          </Draggable>
+                          {index < displayedServices.length - 1 && (
+                            <tr>
+                              <td colSpan={13} className="py-1">
+                                <div className="flex justify-end pr-8">
+                                  <button
+                                    onClick={() => toggleUserMergeBetween(index)}
+                                    className={`text-[11px] px-2 py-1 rounded-full border transition-colors flex items-center gap-1 ${displayedServices[index].userMergeWithNext ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-500 hover:border-blue-200 hover:text-blue-600'}`}
+                                    title={displayedServices[index].userMergeWithNext ? 'Zrušit součet s řádkem níže' : 'Sečíst s řádkem níže'}
+                                  >
+                                    {displayedServices[index].userMergeWithNext ? '✕ Rozpojit' : '+ Sečíst s níže'}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       )
                     })}
                     {provided.placeholder}
@@ -1348,48 +1456,31 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                       </td>
                       <td colSpan={3}></td>
                       <td className="p-4 text-right bg-yellow-100/50 dark:bg-yellow-900/20 rounded-lg">
-                        {displayedServices
-                          .filter(s => s.isActive !== false)
-                          .reduce((sum, s) => sum + calculatePreview(s).unitCost, 0)
+                        {rowMetrics
+                          .reduce((sum, metrics, idx) => {
+                            return displayedServices[idx].isActive !== false ? sum + metrics.preview.unitCost : sum
+                          }, 0)
                           .toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                       </td>
                       <td className="p-4 text-right">
-                        {displayedServices
-                          .filter(s => s.isActive !== false)
-                          .reduce((sum, s) => {
-                            let advance = advancesData[selectedUnitId]?.[s.id]?.total || 0
-                            const overrideAdvance = unitOverrides[selectedUnitId]?.[s.id]?.advance
-                            if (overrideAdvance && !isNaN(parseFloat(overrideAdvance))) {
-                              advance = parseFloat(overrideAdvance)
-                            }
-                            return sum + advance
-                          }, 0)
+                        {rowMetrics
+                          .reduce((sum, metrics, idx) => (
+                            displayedServices[idx].isActive !== false ? sum + metrics.advance : sum
+                          ), 0)
                           .toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                       </td>
                       <td className={`p-4 text-right ${
-                        displayedServices
-                          .filter(s => s.isActive !== false)
-                          .reduce((sum, s) => {
-                            let advance = advancesData[selectedUnitId]?.[s.id]?.total || 0
-                            const overrideAdvance = unitOverrides[selectedUnitId]?.[s.id]?.advance
-                            if (overrideAdvance && !isNaN(parseFloat(overrideAdvance))) {
-                              advance = parseFloat(overrideAdvance)
-                            }
-                            return sum + advance - calculatePreview(s).unitCost
-                          }, 0) >= 0 
+                        rowMetrics
+                          .reduce((sum, metrics, idx) => (
+                            displayedServices[idx].isActive !== false ? sum + metrics.balance : sum
+                          ), 0) >= 0 
                           ? 'text-green-600 dark:text-green-400' 
                           : 'text-red-600 dark:text-red-400'
                       }`}>
-                        {displayedServices
-                          .filter(s => s.isActive !== false)
-                          .reduce((sum, s) => {
-                            let advance = advancesData[selectedUnitId]?.[s.id]?.total || 0
-                            const overrideAdvance = unitOverrides[selectedUnitId]?.[s.id]?.advance
-                            if (overrideAdvance && !isNaN(parseFloat(overrideAdvance))) {
-                              advance = parseFloat(overrideAdvance)
-                            }
-                            return sum + advance - calculatePreview(s).unitCost
-                          }, 0)
+                        {rowMetrics
+                          .reduce((sum, metrics, idx) => (
+                            displayedServices[idx].isActive !== false ? sum + metrics.balance : sum
+                          ), 0)
                           .toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                       </td>
                       <td></td>
