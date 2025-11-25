@@ -38,7 +38,13 @@ export async function GET(
                     name: true,
                     code: true,
                     isActive: true,
-                    order: true
+                    order: true,
+                    serviceGroupId: true,
+                    serviceGroup: {
+                      select: {
+                        label: true
+                      }
+                    }
                   }
                 }
               },

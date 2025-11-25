@@ -108,6 +108,7 @@ model Building {
 
   units         Unit[]
   services      Service[]
+  serviceGroups ServiceGroup[]
   costs         Cost[]
   billingPeriods BillingPeriod[]
   calculationConfigs CalculationConfig[]
@@ -205,6 +206,7 @@ model Ownership {
 model Service {
   id                  String              @id @default(cuid())
   buildingId          String
+  serviceGroupId      String?
   name                String              // např. "Teplo", "TUV", "Správa"
   code                String              // zkratka
   methodology         CalculationMethod   @default(OWNERSHIP_SHARE) // způsob rozúčtování
@@ -228,10 +230,12 @@ model Service {
   isActive            Boolean             @default(true)
   userMergeWithNext   Boolean             @default(false)
   showOnStatement     Boolean             @default(true) // zobrazit na výpisu
+  groupShareLabel     String?
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
   building            Building            @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  serviceGroup        ServiceGroup?       @relation(fields: [serviceGroupId], references: [id], onDelete: SetNull)
   costs               Cost[]
   meters              Meter[]
   advancePayments     AdvancePayment[]
@@ -240,6 +244,21 @@ model Service {
 
   @@unique([buildingId, code])
   @@map("services")
+}
+
+model ServiceGroup {
+  id         String   @id @default(cuid())
+  buildingId String
+  label      String
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  building   Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  services   Service[]
+
+  @@unique([buildingId, label])
+  @@map("service_groups")
 }
 
 // Způsoby výpočtu služeb

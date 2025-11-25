@@ -1,28 +1,51 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 
 const normalizeServiceBaseName = (name: string) => name.replace(/\s*\([^)]*\)\s*$/u, '').trim()
+const extractServiceShareLabel = (name: string) => {
+  const match = name.match(/\(([^)]+)\)\s*$/u)
+  return match ? match[1].trim() : ''
+}
 
 interface ServiceConfigTableProps {
   buildingId: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   services: any[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   units: any[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   costs: any[]
+}
+
+type ConfigVersion = {
+  id: string
+  name: string
+  createdAt: string
 }
 
 export default function ServiceConfigTable({ buildingId, services, units, costs }: ServiceConfigTableProps) {
   const router = useRouter()
   const [localServices, setLocalServices] = useState(services)
   const [selectedUnitId, setSelectedUnitId] = useState<string>(units[0]?.id || '')
-  const [versions, setVersions] = useState<any[]>([])
-  const [loadingVersions, setLoadingVersions] = useState(false)
+  const [versions, setVersions] = useState<ConfigVersion[]>([])
   const [savingVersion, setSavingVersion] = useState(false)
   const [newVersionName, setNewVersionName] = useState('')
   const [showVersionModal, setShowVersionModal] = useState(false)
   const [showHiddenServices, setShowHiddenServices] = useState(false)
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null)
+  const [draggedGroupId, setDraggedGroupId] = useState<string | null>(null)
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([])
+  const [showMergeModal, setShowMergeModal] = useState(false)
+  const [mergeLabel, setMergeLabel] = useState('')
+  const [mergeShareLabels, setMergeShareLabels] = useState<Record<string, string>>({})
+  const [mergeLoading, setMergeLoading] = useState(false)
+  const [mergeError, setMergeError] = useState<string | null>(null)
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
+  const [renameGroupLabel, setRenameGroupLabel] = useState('')
+  const [renameLoading, setRenameLoading] = useState(false)
+  const [renameError, setRenameError] = useState<string | null>(null)
   
   // State pro editor vzorců
   const [editingFormulaServiceId, setEditingFormulaServiceId] = useState<string | null>(null)
@@ -36,16 +59,23 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
     setLocalServices(services)
   }, [services])
 
+  useEffect(() => {
+    setSelectedServiceIds(prev => {
+      const existing = new Set(localServices.map(service => service.id))
+      const filtered = prev.filter(id => existing.has(id))
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [localServices])
+
   const loadVersions = useCallback(async () => {
-    setLoadingVersions(true)
     try {
       const res = await fetch(`/api/buildings/${buildingId}/config-versions`)
       if (res.ok) {
         const data = await res.json()
         setVersions(data)
       }
-    } finally {
-      setLoadingVersions(false)
+    } catch (error) {
+      console.error('Failed to load config versions', error)
     }
   }, [buildingId])
 
@@ -81,29 +111,17 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
       if (res.ok) {
         router.refresh()
       }
-    } catch (e) {
+    } catch {
       alert('Chyba při obnově verze')
     }
   }
 
-  const deleteVersion = async (versionId: string) => {
-    if (!confirm('Opravdu smazat tuto verzi?')) return
-    try {
-      const res = await fetch(`/api/buildings/${buildingId}/config-versions/${versionId}`, {
-        method: 'DELETE'
-      })
-      if (res.ok) {
-        loadVersions()
-      }
-    } catch (e) {
-      alert('Chyba při mazání')
-    }
-  }
-
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updateLocalService = (serviceId: string, field: string, value: any) => {
     setLocalServices(prev => prev.map(s => s.id === serviceId ? { ...s, [field]: value } : s))
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const saveServiceChange = async (serviceId: string, field: string, value: any) => {
     try {
       await fetch(`/api/buildings/${buildingId}/services/${serviceId}`, {
@@ -112,8 +130,8 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
         body: JSON.stringify({ [field]: value })
       })
       router.refresh()
-    } catch (e) {
-      console.error('Failed to update service', e)
+    } catch (error) {
+      console.error('Failed to update service', error)
     }
   }
 
@@ -145,8 +163,8 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
         body: JSON.stringify({ methodology, dataSourceName, dataSourceType })
       })
       router.refresh()
-    } catch (e) {
-      console.error('Failed to update service methodology', e)
+    } catch (error) {
+      console.error('Failed to update service methodology', error)
     }
   }
 
@@ -161,21 +179,27 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
         body: JSON.stringify({ isActive: !currentStatus })
       })
       router.refresh()
-    } catch (e) {
-      console.error('Failed to toggle service visibility', e)
+    } catch (error) {
+      console.error('Failed to toggle service visibility', error)
       // Revert on error
       setLocalServices(prev => prev.map(s => s.id === serviceId ? { ...s, isActive: currentStatus } : s))
     }
   }
 
-  const handleDragStart = (e: React.DragEvent, index: number) => {
+  const handleDragStart = (e: React.DragEvent, index: number, groupId?: string) => {
     const target = e.target as HTMLElement
     // Prevent dragging when interacting with form elements
     if (['SELECT', 'INPUT', 'BUTTON', 'TEXTAREA'].includes(target.tagName) || target.closest('select') || target.closest('input') || target.closest('button')) {
       e.preventDefault()
       return
     }
-    setDraggedItemIndex(index)
+    
+    if (groupId) {
+      setDraggedGroupId(groupId)
+    } else {
+      setDraggedItemIndex(index)
+    }
+
     e.dataTransfer.effectAllowed = 'move'
     // Optional: set drag image or style
     if (e.currentTarget instanceof HTMLElement) {
@@ -188,6 +212,7 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
        e.currentTarget.style.opacity = '1'
     }
     setDraggedItemIndex(null)
+    setDraggedGroupId(null)
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -197,15 +222,52 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
 
   const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault()
-    if (draggedItemIndex === null || draggedItemIndex === targetIndex) return
-
+    
     const visible = localServices.filter(s => showHiddenServices || s.isActive !== false)
     const newVisible = [...visible]
-    const [movedItem] = newVisible.splice(draggedItemIndex, 1)
-    newVisible.splice(targetIndex, 0, movedItem)
+    let updatedVisible: typeof visible = []
 
-    // Assign new orders to visible items
-    const updatedVisible = newVisible.map((s, i) => ({ ...s, order: i + 1 }))
+    if (draggedGroupId) {
+      // Moving a group
+      const groupServices = visible.filter(s => s.serviceGroupId === draggedGroupId)
+      if (groupServices.length === 0) return
+
+      // Target item to drop before
+      const targetItem = visible[targetIndex]
+      // If dropping on itself (any member of the group), do nothing
+      if (targetItem && targetItem.serviceGroupId === draggedGroupId) {
+        setDraggedGroupId(null)
+        if (e.currentTarget instanceof HTMLElement) e.currentTarget.style.opacity = '1'
+        return
+      }
+
+      // Remove group services from list
+      const withoutGroup = visible.filter(s => s.serviceGroupId !== draggedGroupId)
+      
+      // Find new index for insertion
+      // If targetItem is defined, find its index in the filtered list
+      let newTargetIndex = withoutGroup.length // Default to end
+      if (targetItem) {
+        newTargetIndex = withoutGroup.findIndex(s => s.id === targetItem.id)
+        if (newTargetIndex === -1) newTargetIndex = withoutGroup.length
+      }
+
+      // Insert group services
+      withoutGroup.splice(newTargetIndex, 0, ...groupServices)
+      updatedVisible = withoutGroup.map((s, i) => ({ ...s, order: i + 1 }))
+      
+      setDraggedGroupId(null)
+    } else if (draggedItemIndex !== null) {
+      if (draggedItemIndex === targetIndex) return
+      
+      const [movedItem] = newVisible.splice(draggedItemIndex, 1)
+      newVisible.splice(targetIndex, 0, movedItem)
+      updatedVisible = newVisible.map((s, i) => ({ ...s, order: i + 1 }))
+      
+      setDraggedItemIndex(null)
+    } else {
+      return
+    }
 
     // Merge back into localServices
     const newLocalServices = localServices.map(s => {
@@ -214,7 +276,6 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
     }).sort((a, b) => (a.order || 0) - (b.order || 0))
 
     setLocalServices(newLocalServices)
-    setDraggedItemIndex(null)
     
     if (e.currentTarget instanceof HTMLElement) {
        e.currentTarget.style.opacity = '1'
@@ -223,7 +284,7 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
     // Save changes
     const promises = updatedVisible.map(s => {
         const original = visible.find(v => v.id === s.id)
-        // Save if order changed or if it's the moved item (to be safe)
+        // Save if order changed
         if (original && original.order !== s.order) {
              return fetch(`/api/buildings/${buildingId}/services/${s.id}`, {
                 method: 'PATCH',
@@ -243,6 +304,7 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
   }
 
   // Pomocná funkce pro získání kontextu výpočtu (proměnných)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getCalculationContext = (service: any, unitId: string) => {
     const unit = units.find(u => u.id === unitId)
     if (!unit) return null
@@ -308,6 +370,7 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
   }
 
   // Výpočet náhledu pro vybranou jednotku
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const calculatePreview = (service: any) => {
     if (!selectedUnitId) return '-'
     const unit = units.find(u => u.id === selectedUnitId)
@@ -473,6 +536,7 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
   }
 
   // Otevření editoru vzorců
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const openFormulaEditor = (service: any) => {
     setEditingFormulaServiceId(service.id)
     setTempFormula(service.customFormula || '')
@@ -497,44 +561,521 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
       })
       setEditingFormulaServiceId(null)
       router.refresh()
-    } catch (e) {
-      console.error('Failed to save formula', e)
+    } catch (error) {
+      console.error('Failed to save formula', error)
     }
   }
 
+  const selectedServices = useMemo(
+    () => localServices.filter(service => selectedServiceIds.includes(service.id)),
+    [localServices, selectedServiceIds]
+  )
+
   const visibleServices = localServices.filter(s => showHiddenServices || s.isActive !== false)
-  const totalCostsSum = visibleServices.reduce((sum, service) => {
+
+  const toggleServiceSelection = (serviceId: string) => {
+    setSelectedServiceIds(prev => prev.includes(serviceId) ? prev.filter(id => id !== serviceId) : [...prev, serviceId])
+  }
+
+  const clearSelection = () => setSelectedServiceIds([])
+
+  const openMergeDialog = () => {
+    if (selectedServices.length < 2) return
+    const first = selectedServices[0]
+    const defaultLabel = first.serviceGroup?.label || normalizeServiceBaseName(first.name) || first.name
+    const defaults: Record<string, string> = {}
+    selectedServices.forEach(service => {
+      defaults[service.id] = service.groupShareLabel || extractServiceShareLabel(service.name) || ''
+    })
+    setMergeLabel(defaultLabel)
+    setMergeShareLabels(defaults)
+    setMergeError(null)
+    setShowMergeModal(true)
+  }
+
+  const closeMergeModal = () => {
+    setShowMergeModal(false)
+    setMergeError(null)
+  }
+
+  const handleMergeConfirm = async () => {
+    if (selectedServices.length < 2) {
+      setMergeError('Vyberte alespoň dvě služby pro sloučení.')
+      return
+    }
+
+    if (!mergeLabel.trim()) {
+      setMergeError('Zadejte název společné služby.')
+      return
+    }
+
+    setMergeLoading(true)
+    setMergeError(null)
+
+    const payloadShareLabels: Record<string, string> = {}
+    Object.entries(mergeShareLabels).forEach(([serviceId, value]) => {
+      payloadShareLabels[serviceId] = (value || '').trim()
+    })
+
+    try {
+      const res = await fetch(`/api/buildings/${buildingId}/service-groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: mergeLabel.trim(),
+          serviceIds: selectedServices.map(service => service.id),
+          shareLabels: payloadShareLabels,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setMergeError(data.message || 'Nepodařilo se sloučit služby.')
+        return
+      }
+
+      if (Array.isArray(data.services)) {
+        setLocalServices(prev => prev.map(service => {
+          const updated = data.services.find((s: { id: string }) => s.id === service.id)
+          return updated ? updated : service
+        }))
+        setSelectedServiceIds(prev => prev.filter(id => !data.services.some((s: { id: string }) => s.id === id)))
+      }
+
+      closeMergeModal()
+      setMergeShareLabels({})
+      setMergeLabel('')
+      router.refresh()
+    } catch (error) {
+      console.error('Failed to merge services', error)
+      setMergeError('Nepodařilo se sloučit služby.')
+    } finally {
+      setMergeLoading(false)
+    }
+  }
+
+  const handleDissolveGroup = async (groupId?: string) => {
+    if (!groupId) return
+    if (!confirm('Opravdu chcete zrušit toto sloučení? Označení částí a společný název budou odstraněny.')) return
+    try {
+      const res = await fetch(`/api/buildings/${buildingId}/service-groups/${groupId}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.message || 'Nepodařilo se zrušit skupinu')
+        return
+      }
+
+      if (Array.isArray(data.services)) {
+        setLocalServices(prev => prev.map(service => {
+          const updated = data.services.find((s: { id: string }) => s.id === service.id)
+          return updated ? updated : service
+        }))
+        setSelectedServiceIds(prev => prev.filter(id => !data.services.some((s: { id: string }) => s.id === id)))
+      }
+
+      router.refresh()
+    } catch (error) {
+      console.error('Failed to dissolve group', error)
+      alert('Nepodařilo se zrušit skupinu')
+    }
+  }
+
+  const openRenameGroupModal = (groupId?: string, currentLabel?: string) => {
+    if (!groupId) return
+    setRenamingGroupId(groupId)
+    setRenameGroupLabel(currentLabel || '')
+    setRenameError(null)
+  }
+
+  const closeRenameModal = () => {
+    setRenamingGroupId(null)
+    setRenameGroupLabel('')
+    setRenameError(null)
+  }
+
+  const handleRenameGroup = async () => {
+    if (!renamingGroupId) return
+    if (!renameGroupLabel.trim()) {
+      setRenameError('Zadejte název skupiny.')
+      return
+    }
+
+    setRenameLoading(true)
+    setRenameError(null)
+
+    try {
+      const res = await fetch(`/api/buildings/${buildingId}/service-groups/${renamingGroupId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: renameGroupLabel.trim() }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setRenameError(data.message || 'Nepodařilo se upravit skupinu.')
+        return
+      }
+
+      setLocalServices(prev => prev.map(service => {
+        if (service.serviceGroupId !== renamingGroupId) return service
+        const updatedGroup = {
+          ...(service.serviceGroup || { id: renamingGroupId, label: renameGroupLabel.trim() }),
+          label: data.group?.label || renameGroupLabel.trim(),
+        }
+        return { ...service, serviceGroup: updatedGroup }
+      }))
+
+      closeRenameModal()
+      router.refresh()
+    } catch (error) {
+      console.error('Failed to rename group', error)
+      setRenameError('Nepodařilo se upravit skupinu.')
+    } finally {
+      setRenameLoading(false)
+    }
+  }
+
+  const serviceIndexMap = new Map<string, number>()
+  visibleServices.forEach((service, index) => {
+    serviceIndexMap.set(service.id, index)
+  })
+
+  const serviceCostMap = new Map<string, number>()
+  visibleServices.forEach(service => {
     const serviceCost = costs
       .filter(c => c.serviceId === service.id)
-      .reduce((cSum, c) => cSum + c.amount, 0)
-    return sum + serviceCost
-  }, 0)
+      .reduce((sum, c) => sum + c.amount, 0)
+    serviceCostMap.set(service.id, serviceCost)
+  })
 
-  const baseGroups = new Map<string, { ids: string[]; names: string[] }>()
-  visibleServices.forEach(service => {
-    const baseName = normalizeServiceBaseName(service.name)
-    const existing = baseGroups.get(baseName)
-    if (existing) {
-      existing.ids.push(service.id)
-      existing.names.push(service.name)
-    } else {
-      baseGroups.set(baseName, { ids: [service.id], names: [service.name] })
+  const totalCostsSum = Array.from(serviceCostMap.values()).reduce((sum, cost) => sum + cost, 0)
+
+  interface ServiceGroupBlock {
+    label: string
+    services: typeof visibleServices
+    type: 'persisted' | 'auto' | 'single'
+    groupId?: string
+  }
+
+  const groupedServiceBlocks = useMemo(() => {
+    const blocks: ServiceGroupBlock[] = []
+    const processed = new Set<string>()
+    let pointer = 0
+
+    while (pointer < visibleServices.length) {
+      const current = visibleServices[pointer]
+
+      if (processed.has(current.id)) {
+        pointer += 1
+        continue
+      }
+
+      if (current.serviceGroupId && current.serviceGroup) {
+        const groupMembers = visibleServices.filter(service => service.serviceGroupId === current.serviceGroupId)
+        groupMembers.forEach(member => processed.add(member.id))
+        blocks.push({
+          label: current.serviceGroup.label,
+          services: groupMembers,
+          type: 'persisted',
+          groupId: current.serviceGroupId,
+        })
+        pointer += 1
+        continue
+      }
+
+      const baseName = normalizeServiceBaseName(current.name)
+      const groupMembers = [current]
+      let nextPointer = pointer + 1
+
+      while (nextPointer < visibleServices.length) {
+        const candidate = visibleServices[nextPointer]
+        if (candidate.serviceGroupId && candidate.serviceGroup) break
+        if (normalizeServiceBaseName(candidate.name) !== baseName) break
+        groupMembers.push(candidate)
+        nextPointer += 1
+      }
+
+      groupMembers.forEach(member => processed.add(member.id))
+      blocks.push({
+        label: baseName || current.name,
+        services: groupMembers,
+        type: groupMembers.length > 1 ? 'auto' : 'single',
+      })
+      pointer = nextPointer
     }
-  })
 
-  const visualGroupMeta = new Map<string, { size: number; position: 'first' | 'middle' | 'last'; baseName: string }>()
-  const visualGroupMembers = new Map<string, { names: string[] }>()
+    return blocks
+  }, [visibleServices])
 
-  baseGroups.forEach((group, baseName) => {
-    if (group.ids.length <= 1) return
-    visualGroupMembers.set(baseName, { names: group.names })
-    group.ids.forEach((serviceId, index) => {
-      let position: 'first' | 'middle' | 'last' = 'middle'
-      if (index === 0) position = 'first'
-      else if (index === group.ids.length - 1) position = 'last'
-      visualGroupMeta.set(serviceId, { size: group.ids.length, position, baseName })
-    })
-  })
+  const methodologyLabelMap: Record<string, string> = {
+    OWNERSHIP_SHARE: 'Vlastnický podíl',
+    AREA: 'Podle výměry',
+    PERSON_MONTHS: 'Osobo-měsíce',
+    FIXED_PER_UNIT: 'Fixní částka/byt',
+    EQUAL_SPLIT: 'Rovným dílem',
+    UNIT_PARAMETER: 'Parametr z importu',
+    CUSTOM: 'Vlastní vzorec'
+  }
+
+  const meterSourceLabels: Record<string, string> = {
+    HOT_WATER: 'Vodoměry TUV',
+    COLD_WATER: 'Vodoměry SV',
+    HEATING: 'Měřiče tepla',
+    ELECTRICITY: 'Elektroměry',
+    AUTO: 'automaticky'
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const describeMethodology = (service: any) => {
+    if (service.methodology === 'METER_READING') {
+      const sourceLabel = meterSourceLabels[service.dataSourceName] || service.dataSourceName || 'měřidla'
+      return service.dataSourceType === 'FIXED_AMOUNT'
+        ? `Měřidla – náklad (${sourceLabel})`
+        : `Měřidla – náměr (${sourceLabel})`
+    }
+
+    if (service.methodology === 'UNIT_PARAMETER') {
+      return service.unitAttributeName
+        ? `Parametr: ${service.unitAttributeName}`
+        : 'Parametr nezvolen'
+    }
+
+    return methodologyLabelMap[service.methodology] || service.methodology
+  }
+
+  interface RenderServiceRowOptions {
+    isChild?: boolean
+    key?: string
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderServiceRow = (service: any, options: RenderServiceRowOptions = {}) => {
+    const serviceIndex = serviceIndexMap.get(service.id) ?? 0
+    const totalCost = serviceCostMap.get(service.id) ?? 0
+    const isHidden = service.isActive === false
+    const isSelected = selectedServiceIds.includes(service.id)
+    const shareLabelPlaceholder = extractServiceShareLabel(service.name) || 'např. základ'
+
+    const rowClasses = [
+      'hover:bg-gray-50 dark:hover:bg-slate-700/50 cursor-move transition-colors duration-200',
+      isHidden ? 'bg-gray-50 dark:bg-slate-800/50 opacity-60' : '',
+      draggedItemIndex === serviceIndex ? 'bg-blue-50 dark:bg-blue-900/20' : '',
+      options.isChild ? 'child-row' : ''
+    ].filter(Boolean).join(' ')
+
+    const nameCellClasses = ['px-6 py-4 whitespace-nowrap', options.isChild ? 'pl-10' : ''].filter(Boolean).join(' ')
+
+    return (
+      <tr
+        key={options.key ?? service.id}
+        className={rowClasses}
+        draggable
+        onDragStart={(e) => handleDragStart(e, serviceIndex)}
+        onDragOver={handleDragOver}
+        onDrop={(e) => handleDrop(e, serviceIndex)}
+        onDragEnd={handleDragEnd}
+      >
+        <td className={nameCellClasses}>
+          <div className={`flex items-start gap-3 ${options.isChild ? 'border-l border-dashed border-amber-200 dark:border-amber-700 pl-4' : ''}`}>
+            <input
+              type="checkbox"
+              className="mt-1 rounded border-gray-300 dark:border-slate-600 text-teal-600 focus:ring-teal-500"
+              checked={isSelected}
+              onChange={() => toggleServiceSelection(service.id)}
+              aria-label={`Vybrat službu ${service.name}`}
+            />
+            <button
+              onClick={() => toggleServiceVisibility(service.id, !isHidden)}
+              className={`mt-1 p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors ${isHidden ? 'text-gray-400 dark:text-slate-500' : 'text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300'}`}
+              title={isHidden ? 'Zobrazit službu' : 'Skrýt službu'}
+            >
+              {isHidden ? (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                </svg>
+              )}
+            </button>
+            <div>
+              <div className="font-medium text-gray-900 dark:text-white">{service.name}</div>
+              <div className="text-xs text-gray-500 dark:text-slate-400">{service.code}</div>
+              {isHidden && <span className="text-[10px] text-red-500 dark:text-red-400 font-medium uppercase tracking-wider">Skryto</span>}
+              {options.isChild && (
+                <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-amber-800 dark:text-amber-200 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">
+                  {describeMethodology(service)}
+                </span>
+              )}
+              {service.serviceGroupId && (
+                <div className="mt-2 space-y-1">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-900 dark:text-amber-100 bg-amber-100/60 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">
+                    🧩 Skupina: {service.serviceGroup?.label || 'Sloučená služba'}
+                  </span>
+                  <div className="flex flex-col gap-1 text-[11px] text-amber-900 dark:text-amber-100">
+                    <span>Označení části</span>
+                    <input
+                      type="text"
+                      value={service.groupShareLabel || ''}
+                      placeholder={shareLabelPlaceholder}
+                      className="w-full max-w-[220px] border border-amber-200 dark:border-amber-700 bg-white dark:bg-slate-900 rounded-lg px-2 py-1 text-xs text-gray-900 dark:text-white focus:ring-amber-500 focus:border-amber-500"
+                      onChange={(e) => updateLocalService(service.id, 'groupShareLabel', e.target.value)}
+                      onBlur={(e) => saveServiceChange(service.id, 'groupShareLabel', e.target.value.trim() || null)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-medium">
+          {totalCost.toLocaleString('cs-CZ')} Kč
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap">
+          <select
+            aria-label="Způsob rozúčtování"
+            value={
+              service.methodology === 'METER_READING' 
+                ? (service.dataSourceType === 'FIXED_AMOUNT' 
+                    ? `METER_COST_${service.dataSourceName}` 
+                    : `METER_READING_${service.dataSourceName || 'AUTO'}`)
+                : service.methodology
+            }
+            onChange={(e) => handleMethodologyChange(service.id, e.target.value)}
+            className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-lg shadow-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-white border"
+          >
+            <option value="OWNERSHIP_SHARE">Vlastnický podíl</option>
+            <option value="AREA">Podle výměry</option>
+            <option value="PERSON_MONTHS">Osobo-měsíce</option>
+            <optgroup label="Podle měřidel (Náměr)">
+              <option value="METER_READING_AUTO">Automaticky (podle názvu)</option>
+              <option value="METER_READING_HOT_WATER">Vodoměry TUV | náměr</option>
+              <option value="METER_READING_COLD_WATER">Vodoměry SV | náměr</option>
+              <option value="METER_READING_HEATING">Teplo | náměr</option>
+              <option value="METER_READING_ELECTRICITY">Elektroměry | náměr</option>
+            </optgroup>
+            <optgroup label="Podle měřidel (Náklad)">
+              <option value="METER_COST_HOT_WATER">Vodoměry TUV | náklad</option>
+              <option value="METER_COST_COLD_WATER">Vodoměry SV | náklad</option>
+              <option value="METER_COST_HEATING">Teplo | náklad</option>
+              <option value="METER_COST_ELECTRICITY">Elektroměry | náklad</option>
+            </optgroup>
+            <option value="FIXED_PER_UNIT">Fixní částka/byt</option>
+            <option value="EQUAL_SPLIT">Rovným dílem</option>
+            <option value="UNIT_PARAMETER">Podle parametru (Excel)</option>
+            <option value="CUSTOM">Vlastní vzorec</option>
+          </select>
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap">
+          {service.methodology === 'UNIT_PARAMETER' && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 dark:text-slate-400">Vyberte parametr</label>
+              <select
+                aria-label="Vyberte parametr"
+                className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+                value={service.unitAttributeName || ''}
+                onChange={(e) => updateLocalService(service.id, 'unitAttributeName', e.target.value)}
+                onBlur={(e) => saveServiceChange(service.id, 'unitAttributeName', e.target.value)}
+              >
+                <option value="">-- Vyberte --</option>
+                {availableParameters.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+              {availableParameters.length === 0 && (
+                <span className="text-[10px] text-red-500 dark:text-red-400">Žádné parametry nenalezeny. Importujte je v sekci Parametry.</span>
+              )}
+            </div>
+          )}
+          {service.methodology === 'METER_READING' && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 dark:text-slate-400">Cena za jednotku (Kč)</label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Vypočítat z nákladu"
+                className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+                value={service.unitPrice || ''}
+                onChange={(e) => updateLocalService(service.id, 'unitPrice', e.target.value)}
+                onBlur={(e) => saveServiceChange(service.id, 'unitPrice', e.target.value ? parseFloat(e.target.value) : null)}
+              />
+              <span className="text-[10px] text-gray-400 dark:text-slate-500">
+                {!service.unitPrice 
+                  ? 'Automaticky: (Náklad / Celk. spotřeba) * Spotřeba jednotky' 
+                  : 'Fixní cena: Spotřeba jednotky * Zadaná cena'}
+              </span>
+            </div>
+          )}
+          {service.methodology === 'EQUAL_SPLIT' && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 dark:text-slate-400">Dělitel (počet jednotek)</label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder={`Výchozí: ${units.length}`}
+                className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+                value={service.divisor || ''}
+                onChange={(e) => updateLocalService(service.id, 'divisor', e.target.value)}
+                onBlur={(e) => saveServiceChange(service.id, 'divisor', e.target.value ? parseFloat(e.target.value) : null)}
+              />
+            </div>
+          )}
+          {service.methodology === 'FIXED_PER_UNIT' && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 dark:text-slate-400">Fixní částka (Kč)</label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Zadejte částku"
+                className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+                value={service.fixedAmountPerUnit || ''}
+                onChange={(e) => updateLocalService(service.id, 'fixedAmountPerUnit', e.target.value)}
+                onBlur={(e) => saveServiceChange(service.id, 'fixedAmountPerUnit', e.target.value ? parseFloat(e.target.value) : null)}
+              />
+            </div>
+          )}
+          {service.methodology === 'CUSTOM' && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  placeholder="Klikněte pro úpravu vzorce"
+                  className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full font-mono bg-gray-50 dark:bg-slate-800 cursor-pointer text-gray-900 dark:text-white"
+                  value={service.customFormula || ''}
+                  onClick={() => openFormulaEditor(service)}
+                />
+                <button
+                  onClick={() => openFormulaEditor(service)}
+                  className="px-2 py-1.5 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800 rounded-lg text-xs hover:bg-teal-100 dark:hover:bg-teal-900/30 whitespace-nowrap transition-colors"
+                >
+                  ✏️ Upravit
+                </button>
+              </div>
+              <div className="text-[10px] text-gray-400 dark:text-slate-500 leading-tight">
+                Klikněte pro otevření editoru vzorců
+              </div>
+            </div>
+          )}
+          {service.methodology === 'OWNERSHIP_SHARE' && (
+            <input
+              type="text"
+              placeholder="Atribut (nepovinné)"
+              className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+              value={service.unitAttributeName || ''}
+              onChange={(e) => updateLocalService(service.id, 'unitAttributeName', e.target.value)}
+              onBlur={(e) => saveServiceChange(service.id, 'unitAttributeName', e.target.value)}
+            />
+          )}
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">
+          {calculatePreview(service)}
+        </td>
+      </tr>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -550,7 +1091,11 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                     {localServices.find(s => s.id === editingFormulaServiceId)?.name}
                   </span>
                 </h3>
-                <button onClick={() => setEditingFormulaServiceId(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg">
+                <button
+                  onClick={() => setEditingFormulaServiceId(null)}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg"
+                  aria-label="Zavřít editor vzorců"
+                >
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
              </div>
@@ -655,7 +1200,7 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
                             } else {
                               previewResult = 0
                             }
-                          } catch (e) {
+                          } catch {
                             error = 'Chyba ve vzorci'
                           }
 
@@ -771,6 +1316,117 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
         </div>
       )}
 
+      {showMergeModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Sloučit vybrané služby</h3>
+                <p className="text-sm text-gray-500 dark:text-slate-400">Spojte části jedné služby do společného názvu.</p>
+              </div>
+              <button
+                onClick={closeMergeModal}
+                className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800"
+                aria-label="Zavřít sloučení"
+              >
+                ✖
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-6 max-h-[70vh] overflow-y-auto">
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-slate-200">Název sloučené služby</label>
+                <input
+                  type="text"
+                  value={mergeLabel}
+                  onChange={(e) => setMergeLabel(e.target.value)}
+                  placeholder="Např. Teplo"
+                  className="mt-2 w-full border border-gray-300 dark:border-slate-600 rounded-xl px-4 py-2 bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <span className="text-sm font-medium text-gray-700 dark:text-slate-200">Označení jednotlivých částí</span>
+                <div className="space-y-3">
+                  {selectedServices.map(service => (
+                    <div key={service.id} className="p-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40">
+                      <div className="text-sm font-semibold text-gray-900 dark:text-white">{service.name}</div>
+                      <div className="text-xs text-gray-500 dark:text-slate-400 mb-2">{service.code}</div>
+                      <input
+                        type="text"
+                        value={mergeShareLabels[service.id] ?? ''}
+                        placeholder={extractServiceShareLabel(service.name) || 'např. základ'}
+                        className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+                        onChange={(e) => setMergeShareLabels(prev => ({ ...prev, [service.id]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {mergeError && (
+                <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl px-4 py-2">
+                  {mergeError}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-3 bg-gray-50 dark:bg-slate-900/40 rounded-b-2xl">
+              <button
+                onClick={closeMergeModal}
+                className="px-5 py-2 rounded-lg border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-200 bg-white dark:bg-slate-900"
+              >
+                Zrušit
+              </button>
+              <button
+                onClick={handleMergeConfirm}
+                disabled={mergeLoading}
+                className="px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50"
+              >
+                {mergeLoading ? 'Sloučím…' : 'Sloučit' }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renamingGroupId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Přejmenovat skupinu</h3>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <input
+                type="text"
+                value={renameGroupLabel}
+                onChange={(e) => setRenameGroupLabel(e.target.value)}
+                placeholder="Nový název skupiny"
+                className="w-full border border-gray-300 dark:border-slate-600 rounded-xl px-4 py-2 bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+              />
+              {renameError && (
+                <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl px-4 py-2">
+                  {renameError}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-3 bg-gray-50 dark:bg-slate-900/40 rounded-b-2xl">
+              <button
+                onClick={closeRenameModal}
+                className="px-5 py-2 rounded-lg border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-200 bg-white dark:bg-slate-900"
+              >
+                Zrušit
+              </button>
+              <button
+                onClick={handleRenameGroup}
+                disabled={renameLoading}
+                className="px-5 py-2 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700 disabled:opacity-50"
+              >
+                {renameLoading ? 'Ukládám…' : 'Uložit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tabulka služeb */}
       <div className="bg-white dark:bg-slate-800 shadow-sm rounded-2xl overflow-hidden border border-gray-200 dark:border-slate-700">
         <div className="p-6 border-b border-gray-200 dark:border-slate-700">
@@ -825,6 +1481,29 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
               </p>
             </div>
           </details>
+
+          {selectedServiceIds.length > 0 && (
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl px-4 py-3">
+              <div className="text-sm text-blue-900 dark:text-blue-100 font-medium">
+                Vybráno {selectedServiceIds.length} služeb
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={openMergeDialog}
+                  disabled={selectedServiceIds.length < 2}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 disabled:bg-blue-300 dark:disabled:bg-blue-800 hover:bg-blue-700 dark:bg-blue-500"
+                >
+                  🔗 Sloučit vybrané
+                </button>
+                <button
+                  onClick={clearSelection}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-blue-700 dark:text-blue-200 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                >
+                  Zrušit výběr
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         
         <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
@@ -838,207 +1517,71 @@ export default function ServiceConfigTable({ buildingId, services, units, costs 
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
-            {visibleServices.map((service, index) => {
-              const totalCost = costs
-                .filter(c => c.serviceId === service.id)
-                .reduce((sum, c) => sum + c.amount, 0)
-              
-              const isHidden = service.isActive === false
-              const groupMeta = visualGroupMeta.get(service.id)
-              const groupMembers = groupMeta ? visualGroupMembers.get(groupMeta.baseName) : undefined
-              const partnerNames = groupMembers ? groupMembers.names.filter(name => name !== service.name) : []
+            {groupedServiceBlocks.map(group => {
+              if (group.services.length === 1) {
+                return renderServiceRow(group.services[0])
+              }
+
+              const groupKey = `${group.label}-${group.services.map(s => s.id).join('-')}`
+              const groupTotalCost = group.services.reduce((sum, srv) => sum + (serviceCostMap.get(srv.id) || 0), 0)
+              const combinationLabel = group.services
+                .map(srv => `${srv.name}: ${describeMethodology(srv)}`)
+                .join(' • ')
+              const isPersisted = group.type === 'persisted'
+              const firstServiceIndex = serviceIndexMap.get(group.services[0].id) ?? 0
 
               return (
-                <tr 
-                  key={service.id} 
-                  className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${isHidden ? 'bg-gray-50 dark:bg-slate-800/50 opacity-60' : ''} ${groupMeta ? 'bg-amber-50/30 dark:bg-amber-900/10' : ''} cursor-move transition-colors duration-200 ${draggedItemIndex === index ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, index)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, index)}
-                  onDragEnd={handleDragEnd}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-stretch gap-3">
-                      {groupMeta && (
-                        <div
-                          className={`w-1 rounded-full bg-amber-400/60 dark:bg-amber-500/60 self-stretch ${groupMeta.position === 'first' ? 'rounded-b-none' : ''} ${groupMeta.position === 'last' ? 'rounded-t-none' : ''}`}
-                          aria-hidden="true"
-                        />
-                      )}
-                      <button
-                        onClick={() => toggleServiceVisibility(service.id, !isHidden)}
-                        className={`mt-1 p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors ${isHidden ? 'text-gray-400 dark:text-slate-500' : 'text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300'}`}
-                        title={isHidden ? "Zobrazit službu" : "Skrýt službu"}
-                      >
-                        {isHidden ? (
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                          </svg>
-                        )}
-                      </button>
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">{service.name}</div>
-                        <div className="text-xs text-gray-500 dark:text-slate-400">{service.code}</div>
-                        {isHidden && <span className="text-[10px] text-red-500 dark:text-red-400 font-medium uppercase tracking-wider">Skryto</span>}
-                        {groupMeta?.position === 'first' && partnerNames.length > 0 && (
-                          <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider">
-                            <span>Společně s:</span>
-                            <span className="normal-case text-amber-800 dark:text-amber-200">{partnerNames.join(', ')}</span>
+                <Fragment key={groupKey}>
+                  <tr 
+                    className={`bg-amber-50/70 dark:bg-amber-900/20 ${isPersisted ? 'cursor-move hover:bg-amber-100 dark:hover:bg-amber-900/30' : ''} ${draggedGroupId === group.groupId ? 'opacity-50' : ''}`} 
+                    key={`${groupKey}-summary`}
+                    draggable={isPersisted}
+                    onDragStart={(e) => isPersisted ? handleDragStart(e, firstServiceIndex, group.groupId) : e.preventDefault()}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, firstServiceIndex)}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <td className="px-6 py-3 whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                            {group.label}
+                          </span>
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${isPersisted ? 'bg-amber-200/70 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200'}`}>
+                            {isPersisted ? 'Ruční sloučení' : 'Automaticky podle názvu'}
+                          </span>
+                        </div>
+                        <span className="text-xs text-amber-800 dark:text-amber-200">
+                          Sdíleno mezi {group.services.length} částmi
+                        </span>
+                        {isPersisted && (
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            <button
+                              onClick={() => openRenameGroupModal(group.groupId, group.label)}
+                              className="px-3 py-1 border border-amber-300 dark:border-amber-700 rounded-lg text-amber-900 dark:text-amber-100 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                            >
+                              Přejmenovat
+                            </button>
+                            <button
+                              onClick={() => handleDissolveGroup(group.groupId)}
+                              className="px-3 py-1 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                            >
+                              Zrušit skupinu
+                            </button>
                           </div>
                         )}
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-medium">
-                    {totalCost.toLocaleString('cs-CZ')} Kč
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <select
-                      aria-label="Způsob rozúčtování"
-                      value={
-                        service.methodology === 'METER_READING' 
-                          ? (service.dataSourceType === 'FIXED_AMOUNT' 
-                              ? `METER_COST_${service.dataSourceName}` 
-                              : `METER_READING_${service.dataSourceName || 'AUTO'}`)
-                          : service.methodology
-                      }
-                      onChange={(e) => handleMethodologyChange(service.id, e.target.value)}
-                      className="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-lg shadow-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-white border"
-                    >
-                      <option value="OWNERSHIP_SHARE">Vlastnický podíl</option>
-                      <option value="AREA">Podle výměry</option>
-                      <option value="PERSON_MONTHS">Osobo-měsíce</option>
-                      <optgroup label="Podle měřidel (Náměr)">
-                        <option value="METER_READING_AUTO">Automaticky (podle názvu)</option>
-                        <option value="METER_READING_HOT_WATER">Vodoměry TUV | náměr</option>
-                        <option value="METER_READING_COLD_WATER">Vodoměry SV | náměr</option>
-                        <option value="METER_READING_HEATING">Teplo | náměr</option>
-                        <option value="METER_READING_ELECTRICITY">Elektroměry | náměr</option>
-                      </optgroup>
-                      <optgroup label="Podle měřidel (Náklad)">
-                        <option value="METER_COST_HOT_WATER">Vodoměry TUV | náklad</option>
-                        <option value="METER_COST_COLD_WATER">Vodoměry SV | náklad</option>
-                        <option value="METER_COST_HEATING">Teplo | náklad</option>
-                        <option value="METER_COST_ELECTRICITY">Elektroměry | náklad</option>
-                      </optgroup>
-                      <option value="FIXED_PER_UNIT">Fixní částka/byt</option>
-                      <option value="EQUAL_SPLIT">Rovným dílem</option>
-                      <option value="UNIT_PARAMETER">Podle parametru (Excel)</option>
-                      <option value="CUSTOM">Vlastní vzorec</option>
-                    </select>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {service.methodology === 'UNIT_PARAMETER' && (
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500 dark:text-slate-400">Vyberte parametr</label>
-                        <select
-                          aria-label="Vyberte parametr"
-                          className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
-                          value={service.unitAttributeName || ''}
-                          onChange={(e) => updateLocalService(service.id, 'unitAttributeName', e.target.value)}
-                          onBlur={(e) => saveServiceChange(service.id, 'unitAttributeName', e.target.value)}
-                        >
-                          <option value="">-- Vyberte --</option>
-                          {availableParameters.map(p => (
-                            <option key={p} value={p}>{p}</option>
-                          ))}
-                        </select>
-                        {availableParameters.length === 0 && (
-                          <span className="text-[10px] text-red-500 dark:text-red-400">Žádné parametry nenalezeny. Importujte je v sekci Parametry.</span>
-                        )}
-                      </div>
-                    )}
-                    {service.methodology === 'METER_READING' && (
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500 dark:text-slate-400">Cena za jednotku (Kč)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="Vypočítat z nákladu"
-                          className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
-                          value={service.unitPrice || ''}
-                          onChange={(e) => updateLocalService(service.id, 'unitPrice', e.target.value)}
-                          onBlur={(e) => saveServiceChange(service.id, 'unitPrice', e.target.value ? parseFloat(e.target.value) : null)}
-                        />
-                        <span className="text-[10px] text-gray-400 dark:text-slate-500">
-                          {!service.unitPrice 
-                            ? 'Automaticky: (Náklad / Celk. spotřeba) * Spotřeba jednotky' 
-                            : 'Fixní cena: Spotřeba jednotky * Zadaná cena'}
-                        </span>
-                      </div>
-                    )}
-                    {service.methodology === 'EQUAL_SPLIT' && (
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500 dark:text-slate-400">Dělitel (počet jednotek)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder={`Výchozí: ${units.length}`}
-                          className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
-                          value={service.divisor || ''}
-                          onChange={(e) => updateLocalService(service.id, 'divisor', e.target.value)}
-                          onBlur={(e) => saveServiceChange(service.id, 'divisor', e.target.value ? parseFloat(e.target.value) : null)}
-                        />
-                      </div>
-                    )}
-                    {service.methodology === 'FIXED_PER_UNIT' && (
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500 dark:text-slate-400">Fixní částka (Kč)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="Zadejte částku"
-                          className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
-                          value={service.fixedAmountPerUnit || ''}
-                          onChange={(e) => updateLocalService(service.id, 'fixedAmountPerUnit', e.target.value)}
-                          onBlur={(e) => saveServiceChange(service.id, 'fixedAmountPerUnit', e.target.value ? parseFloat(e.target.value) : null)}
-                        />
-                      </div>
-                    )}
-                    {service.methodology === 'CUSTOM' && (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            readOnly
-                            placeholder="Klikněte pro úpravu vzorce"
-                            className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full font-mono bg-gray-50 dark:bg-slate-800 cursor-pointer text-gray-900 dark:text-white"
-                            value={service.customFormula || ''}
-                            onClick={() => openFormulaEditor(service)}
-                          />
-                          <button
-                            onClick={() => openFormulaEditor(service)}
-                            className="px-2 py-1.5 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800 rounded-lg text-xs hover:bg-teal-100 dark:hover:bg-teal-900/30 whitespace-nowrap transition-colors"
-                          >
-                            ✏️ Upravit
-                          </button>
-                        </div>
-                        <div className="text-[10px] text-gray-400 dark:text-slate-500 leading-tight">
-                          Klikněte pro otevření editoru vzorců
-                        </div>
-                      </div>
-                    )}
-                    {service.methodology === 'OWNERSHIP_SHARE' && (
-                      <input
-                        type="text"
-                        placeholder="Atribut (nepovinné)"
-                        className="border border-gray-300 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
-                        value={service.unitAttributeName || ''}
-                        onChange={(e) => updateLocalService(service.id, 'unitAttributeName', e.target.value)}
-                        onBlur={(e) => saveServiceChange(service.id, 'unitAttributeName', e.target.value)}
-                      />
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">
-                    {calculatePreview(service)}
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-6 py-3 font-semibold text-amber-900 dark:text-amber-100">
+                      {groupTotalCost.toLocaleString('cs-CZ')} Kč
+                    </td>
+                    <td className="px-6 py-3 text-sm text-amber-900 dark:text-amber-100" colSpan={2}>
+                      {combinationLabel}
+                    </td>
+                    <td className="px-6 py-3 text-right text-xs text-amber-700 dark:text-amber-200">—</td>
+                  </tr>
+                  {group.services.map(service => renderServiceRow(service, { isChild: true, key: `${groupKey}-${service.id}` }))}
+                </Fragment>
               )
             })}
           </tbody>

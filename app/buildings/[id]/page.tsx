@@ -71,6 +71,8 @@ export default async function BuildingDetailPage({
             },
             orderBy: { year: 'desc' }
           }
+          ,
+          serviceGroup: true
         }
       },
       costs: {

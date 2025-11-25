@@ -42,6 +42,10 @@ interface BillingResultsViewerProps {
           code: string
           isActive: boolean
           order?: number
+          serviceGroupId?: string | null
+          serviceGroup?: {
+            label: string
+          } | null
         }
       }>
     }>
@@ -69,20 +73,48 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
     return a.unit.unitNumber.localeCompare(b.unit.unitNumber, undefined, { numeric: true })
   }) : []
 
-  // Získat všechny unikátní služby pro hlavičku tabulky
-  const allServicesMap = new Map<string, { name: string, isActive: boolean, order: number }>()
+  // Získat všechny unikátní služby (nebo skupiny) pro hlavičku tabulky
+  const allServicesMap = new Map<string, { name: string, isActive: boolean, order: number, isGroup: boolean, serviceIds: string[] }>()
+  
   if (currentPeriod) {
     currentPeriod.results.forEach(r => {
       r.serviceCosts.forEach(sc => {
-        // Fallback pro isActive (pokud by API nevrátilo, default true)
         const isActive = sc.service.isActive ?? true
         const order = sc.service.order ?? 0
-        allServicesMap.set(sc.serviceId, { name: sc.service.name, isActive, order })
+        
+        if (sc.service.serviceGroupId && sc.service.serviceGroup) {
+           const groupId = sc.service.serviceGroupId
+           if (!allServicesMap.has(groupId)) {
+             allServicesMap.set(groupId, {
+               name: sc.service.serviceGroup.label,
+               isActive: true, 
+               order: order, 
+               isGroup: true,
+               serviceIds: [sc.serviceId]
+             })
+           } else {
+             const group = allServicesMap.get(groupId)!
+             if (!group.serviceIds.includes(sc.serviceId)) {
+               group.serviceIds.push(sc.serviceId)
+             }
+           }
+        } else {
+           if (!allServicesMap.has(sc.serviceId)) {
+             allServicesMap.set(sc.serviceId, {
+               name: sc.service.name,
+               isActive,
+               order,
+               isGroup: false,
+               serviceIds: [sc.serviceId]
+             })
+           }
+        }
       })
     })
   }
+
   const services = Array.from(allServicesMap.entries())
-    .map(([id, data]) => ({ id, name: data.name, isActive: data.isActive, order: data.order }))
+    .map(([id, data]) => ({ id, ...data }))
     .filter(s => showHiddenServices || s.isActive)
     .sort((a, b) => a.order - b.order)
 
@@ -379,13 +411,13 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                     <td className="px-4 py-3 sticky left-0 bg-gray-50 dark:bg-slate-800 z-10 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.05)]">
                       CELKEM (Rozúčtováno)
                     </td>
-                    {services.map(service => {
+                    {services.map(column => {
                       const serviceTotal = currentPeriod.results.reduce((sum, r) => {
-                        const sc = r.serviceCosts.find(c => c.serviceId === service.id)
-                        return sum + (sc?.unitCost || 0)
+                        const costs = r.serviceCosts.filter(c => column.serviceIds.includes(c.serviceId))
+                        return sum + costs.reduce((s, c) => s + (c.unitCost || 0), 0)
                       }, 0)
                       return (
-                        <td key={service.id} className="px-4 py-3 text-right font-mono">
+                        <td key={column.id} className="px-4 py-3 text-right font-mono">
                           {serviceTotal.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
                       )
@@ -410,27 +442,34 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                     <td className="px-4 py-3 sticky left-0 bg-blue-50 dark:bg-blue-900/20 z-10 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.05)]">
                       SKUTEČNÁ SUMA (Faktury)
                     </td>
-                    {services.map(service => {
-                      const serviceCost = currentPeriod.results
-                        .flatMap(r => r.serviceCosts)
-                        .find(sc => sc.serviceId === service.id)
-                      
-                      const buildingTotal = serviceCost?.buildingTotalCost || 0
+                    {services.map(column => {
+                      const firstResult = currentPeriod.results[0]
+                      const buildingTotal = firstResult ? column.serviceIds.reduce((sum, sId) => {
+                         const sc = firstResult.serviceCosts.find(c => c.serviceId === sId)
+                         return sum + (sc?.buildingTotalCost || 0)
+                      }, 0) : 0
 
                       return (
-                        <td key={service.id} className="px-4 py-3 text-right font-mono">
+                        <td key={column.id} className="px-4 py-3 text-right font-mono">
                           {buildingTotal.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
                       )
                     })}
                     <td className="px-4 py-3 text-right border-l border-blue-100 dark:border-blue-800 font-mono">
                       {(() => {
-                         const totalRealCost = services.reduce((sum, service) => {
-                            const sc = currentPeriod.results
-                              .flatMap(r => r.serviceCosts)
-                              .find(c => c.serviceId === service.id)
-                            return sum + (sc?.buildingTotalCost || 0)
+                         const firstResult = currentPeriod.results[0]
+                         if (!firstResult) return '0'
+                         
+                         // Sum all unique services building costs
+                         // We can iterate over all columns and sum their building totals
+                         const totalRealCost = services.reduce((sum, column) => {
+                            const colTotal = column.serviceIds.reduce((s, sId) => {
+                               const sc = firstResult.serviceCosts.find(c => c.serviceId === sId)
+                               return s + (sc?.buildingTotalCost || 0)
+                            }, 0)
+                            return sum + colTotal
                          }, 0)
+                         
                          return totalRealCost.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
                       })()}
                     </td>
@@ -442,21 +481,22 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                     <td className="px-4 py-3 text-gray-900 dark:text-white sticky left-0 bg-orange-50 dark:bg-orange-900/20 z-10 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.05)]">
                       ROZDÍL (Kontrola)
                     </td>
-                    {services.map(service => {
+                    {services.map(column => {
                       const serviceTotal = currentPeriod.results.reduce((sum, r) => {
-                        const sc = r.serviceCosts.find(c => c.serviceId === service.id)
-                        return sum + (sc?.unitCost || 0)
+                        const costs = r.serviceCosts.filter(c => column.serviceIds.includes(c.serviceId))
+                        return sum + costs.reduce((s, c) => s + (c.unitCost || 0), 0)
                       }, 0)
                       
-                      const serviceCost = currentPeriod.results
-                        .flatMap(r => r.serviceCosts)
-                        .find(sc => sc.serviceId === service.id)
-                      const buildingTotal = serviceCost?.buildingTotalCost || 0
+                      const firstResult = currentPeriod.results[0]
+                      const buildingTotal = firstResult ? column.serviceIds.reduce((sum, sId) => {
+                         const sc = firstResult.serviceCosts.find(c => c.serviceId === sId)
+                         return sum + (sc?.buildingTotalCost || 0)
+                      }, 0) : 0
                       
                       const diff = serviceTotal - buildingTotal
 
                       return (
-                        <td key={service.id} className={`px-4 py-3 text-right font-mono ${Math.abs(diff) > 1 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        <td key={column.id} className={`px-4 py-3 text-right font-mono ${Math.abs(diff) > 1 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                           {diff.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
                       )
@@ -464,12 +504,16 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                     <td className="px-4 py-3 text-right border-l border-orange-100 dark:border-orange-800 font-mono">
                        {(() => {
                          const totalCalculated = currentPeriod.results.reduce((sum, r) => sum + r.totalCost, 0)
-                         const totalReal = services.reduce((sum, service) => {
-                            const sc = currentPeriod.results
-                              .flatMap(r => r.serviceCosts)
-                              .find(c => c.serviceId === service.id)
-                            return sum + (sc?.buildingTotalCost || 0)
-                         }, 0)
+                         
+                         const firstResult = currentPeriod.results[0]
+                         const totalReal = firstResult ? services.reduce((sum, column) => {
+                            const colTotal = column.serviceIds.reduce((s, sId) => {
+                               const sc = firstResult.serviceCosts.find(c => c.serviceId === sId)
+                               return s + (sc?.buildingTotalCost || 0)
+                            }, 0)
+                            return sum + colTotal
+                         }, 0) : 0
+
                          const diff = totalCalculated - totalReal
                          return (
                            <span className={Math.abs(diff) > 1 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}>
@@ -496,11 +540,12 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                             {result.unit.unitNumber}
                           </Link>
                         </td>
-                        {services.map(service => {
-                          const sc = result.serviceCosts.find(c => c.serviceId === service.id)
+                        {services.map(column => {
+                          const costs = result.serviceCosts.filter(c => column.serviceIds.includes(c.serviceId))
+                          const columnCost = costs.reduce((s, c) => s + (c.unitCost || 0), 0)
                           return (
-                            <td key={service.id} className="px-4 py-3 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap font-mono text-xs">
-                              {sc ? sc.unitCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00'}
+                            <td key={column.id} className="px-4 py-3 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap font-mono text-xs">
+                              {columnCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                           )
                         })}
