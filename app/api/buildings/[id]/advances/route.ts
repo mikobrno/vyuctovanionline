@@ -19,7 +19,7 @@ export async function GET(
     const year = Number(searchParams.get('year') || new Date().getFullYear())
 
     // Načíst jednotky a služby
-    const [units, services] = await Promise.all([
+    const [units, services, personMonths] = await Promise.all([
       prisma.unit.findMany({
         where: { buildingId },
         select: { id: true, unitNumber: true, variableSymbol: true }
@@ -27,6 +27,10 @@ export async function GET(
       prisma.service.findMany({
         where: { buildingId, isActive: true },
         select: { id: true, name: true, code: true }
+      }),
+      prisma.personMonth.findMany({
+        where: { unit: { buildingId }, year },
+        select: { unitId: true, month: true, personCount: true }
       })
     ])
 
@@ -38,8 +42,14 @@ export async function GET(
 
     // Základní matice
     const data: Record<string, Record<string, { months: number[]; total: number }>> = {}
+    const monthlyBreakdown: Record<string, { prescribed: number[]; payments: number[]; persons: number[] }> = {}
     for (const u of units) {
       data[u.id] = {}
+      monthlyBreakdown[u.id] = {
+        prescribed: Array(12).fill(0),
+        payments: Array(12).fill(0),
+        persons: Array(12).fill(0)
+      }
       for (const s of services) {
         data[u.id][s.id] = { months: Array(12).fill(0), total: 0 }
       }
@@ -50,6 +60,7 @@ export async function GET(
       if (cell) {
         const idx = Math.max(0, Math.min(11, r.month - 1))
         cell.months[idx] = r.amount
+        monthlyBreakdown[r.unitId].prescribed[idx] += r.amount
       }
     }
 
@@ -61,18 +72,32 @@ export async function GET(
       }
     }
 
-    // Platby za rok (součet) a rozpad na služby podle poměru předpisu
-    const payments = await prisma.payment.groupBy({
-      by: ['unitId'],
+    // Platby za rok + rozpad po měsících a následný rozpad na služby podle poměru předpisu
+    const paymentRecords = await prisma.payment.findMany({
       where: { unit: { buildingId }, period: year },
-      _sum: { amount: true }
+      select: { unitId: true, amount: true, paymentDate: true }
     })
 
+    const totalPaidByUnit: Record<string, number> = {}
+    for (const payment of paymentRecords) {
+      const unitId = payment.unitId
+      const paymentDate = payment.paymentDate instanceof Date
+        ? payment.paymentDate
+        : new Date(payment.paymentDate)
+      const idx = Math.max(0, Math.min(11, paymentDate.getMonth()))
+      monthlyBreakdown[unitId] ??= {
+        prescribed: Array(12).fill(0),
+        payments: Array(12).fill(0),
+        persons: Array(12).fill(0)
+      }
+      monthlyBreakdown[unitId].payments[idx] += payment.amount
+      totalPaidByUnit[unitId] = (totalPaidByUnit[unitId] || 0) + payment.amount
+    }
+
     const paidByUnitService: Record<string, Record<string, number>> = {}
-    for (const p of payments) {
-      const totalPaid = p._sum.amount || 0
-      const unitId = p.unitId
-      const serviceTotals = Object.entries(data[unitId] || {}).map(([sid, v]) => ({ sid, total: v.total }))
+    for (const [unitId, servicesData] of Object.entries(data)) {
+      const totalPaid = totalPaidByUnit[unitId] || 0
+      const serviceTotals = Object.entries(servicesData).map(([sid, v]) => ({ sid, total: v.total }))
       const unitTotalPrescribed = serviceTotals.reduce((a, b) => a + b.total, 0)
       paidByUnitService[unitId] = {}
       for (const { sid, total } of serviceTotals) {
@@ -80,7 +105,20 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({ year, units, services, data, paidByUnitService })
+    // Počet osob po měsících
+    for (const pm of personMonths) {
+      const idx = Math.max(0, Math.min(11, pm.month - 1))
+      if (!monthlyBreakdown[pm.unitId]) {
+        monthlyBreakdown[pm.unitId] = {
+          prescribed: Array(12).fill(0),
+          payments: Array(12).fill(0),
+          persons: Array(12).fill(0)
+        }
+      }
+      monthlyBreakdown[pm.unitId].persons[idx] = pm.personCount
+    }
+
+    return NextResponse.json({ year, units, services, data, paidByUnitService, monthlyBreakdown })
   } catch (error) {
     console.error('[Advances GET]', error)
     return NextResponse.json({ message: 'Chyba při načítání předpisů' }, { status: 500 })

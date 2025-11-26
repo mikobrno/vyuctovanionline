@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import CalculationEngineTest from './CalculationEngineTest'
 import BillingGenerator from './BillingGenerator'
@@ -289,7 +289,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                       <tr key={unit.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            <div className="h-10 w-10 flex-shrink-0 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm">
+                            <div className="h-10 w-10 shrink-0 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm">
                               {unit.unitNumber}
                             </div>
                           </div>
@@ -629,7 +629,7 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
           
           <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-2xl p-6">
             <div className="flex gap-4">
-              <div className="flex-shrink-0">
+              <div className="shrink-0">
                 <svg className="h-6 w-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -1038,8 +1038,10 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
   const [services, setServices] = useState<any[]>([])
   const [data, setData] = useState<Record<string, Record<string, { months: number[]; total: number }>>>({})
   const [paid, setPaid] = useState<Record<string, Record<string, number>>>({})
+  const [monthlyBreakdown, setMonthlyBreakdown] = useState<Record<string, { prescribed: number[]; payments: number[]; persons: number[] }>>({})
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null)
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -1050,14 +1052,25 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
       setServices(json.services)
       setData(json.data)
       setPaid(json.paidByUnitService || {})
+      setMonthlyBreakdown(json.monthlyBreakdown || {})
+      setSelectedUnitId((current) => {
+        if (
+          current &&
+          Array.isArray(json.units) &&
+          json.units.some((unit: { id: string }) => unit.id === current)
+        ) {
+          return current
+        }
+        return json.units[0]?.id ?? null
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Chyba při načítání')
     } finally {
       setLoading(false)
     }
-  }
+  }, [buildingId, year])
 
-  useEffect(() => { load() }, [buildingId, year])
+  useEffect(() => { load() }, [load])
 
   const updateAllMonths = async (unitId: string, serviceId: string, amount: number) => {
     const res = await fetch(`/api/buildings/${buildingId}/advances`, {
@@ -1085,15 +1098,29 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
     )
   }
 
+  const monthLabels = Array.from({ length: 12 }, (_, index) =>
+    new Date(2000, index, 1).toLocaleString('cs-CZ', { month: 'short' })
+  )
+
+  const selectedStats = selectedUnitId && monthlyBreakdown[selectedUnitId]
+    ? monthlyBreakdown[selectedUnitId]
+    : {
+        prescribed: Array(12).fill(0),
+        payments: Array(12).fill(0),
+        persons: Array(12).fill(0)
+      }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Rok:</label>
+        <label htmlFor="advances-year" className="text-sm font-medium text-gray-700 dark:text-gray-300">Rok:</label>
         <input 
+          id="advances-year"
           type="number" 
           value={year} 
           onChange={(e) => setYear(parseInt(e.target.value || String(new Date().getFullYear()), 10))} 
           className="w-24 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white bg-white dark:bg-slate-700 focus:ring-blue-500 focus:border-blue-500" 
+          aria-label="Rok předpisu"
         />
       </div>
 
@@ -1145,6 +1172,7 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
                                 if (isNaN(val)) return
                                 try { await updateAllMonths(u.id, s.id, val) } catch (err) { alert(err instanceof Error ? err.message : 'Uložení selhalo') }
                               }}
+                              aria-label={`Měsíční předpis ${u.unitNumber} – ${s.name}`}
                             />
                             <div className="flex flex-col items-center">
                               <span className="text-xs text-gray-400 dark:text-gray-500">
@@ -1172,10 +1200,85 @@ function AdvancesMatrix({ buildingId }: { buildingId: string }) {
       </div>
 
       <div className="text-sm text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800 flex items-center gap-3">
-        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <span>Změna částky v poli automaticky přepočítá předpis pro všech 12 měsíců.</span>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Kontrola úhrad, předpisů a osob po měsících</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Součet všech služeb za vybranou jednotku pro snadné porovnání.</p>
+          </div>
+          <select
+            value={selectedUnitId ?? ''}
+            onChange={(e) => setSelectedUnitId(e.target.value || null)}
+            className="min-w-[180px] px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+            aria-label="Vyberte jednotku pro kontrolu předpisu"
+          >
+            {units.map((unit) => (
+              <option key={unit.id} value={unit.id}>
+                {unit.unitNumber}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedUnitId ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
+              <thead className="bg-gray-50 dark:bg-slate-800">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Měsíc</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Předpis</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Úhrady</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Rozdíl</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Počet osob</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
+                {monthLabels.map((label, index) => {
+                  const prescribed = selectedStats.prescribed[index] || 0
+                  const paidValue = selectedStats.payments[index] || 0
+                  const persons = selectedStats.persons[index] || 0
+                  const diff = paidValue - prescribed
+                  const diffColor = diff >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+
+                  return (
+                    <tr key={label}>
+                      <td className="px-4 py-2 font-medium text-gray-900 dark:text-gray-100">{label}</td>
+                      <td className="px-4 py-2 text-right text-gray-700 dark:text-gray-200">{prescribed.toLocaleString('cs-CZ')} Kč</td>
+                      <td className="px-4 py-2 text-right text-gray-700 dark:text-gray-200">{paidValue.toLocaleString('cs-CZ')} Kč</td>
+                      <td className={`px-4 py-2 text-right font-semibold ${diffColor}`}>{diff.toLocaleString('cs-CZ')} Kč</td>
+                      <td className="px-4 py-2 text-right text-gray-700 dark:text-gray-200">{persons}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot className="bg-gray-50 dark:bg-slate-800 font-semibold">
+                <tr>
+                  <td className="px-4 py-3 text-gray-900 dark:text-white">Celkem</td>
+                  <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
+                    {selectedStats.prescribed.reduce((sum, value) => sum + value, 0).toLocaleString('cs-CZ')} Kč
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
+                    {selectedStats.payments.reduce((sum, value) => sum + value, 0).toLocaleString('cs-CZ')} Kč
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {(selectedStats.payments.reduce((a, b) => a + b, 0) - selectedStats.prescribed.reduce((a, b) => a + b, 0)).toLocaleString('cs-CZ')} Kč
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
+                    {selectedStats.persons.reduce((sum, value) => sum + value, 0)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">Vyberte jednotku pro zobrazení detailu.</p>
+        )}
       </div>
     </div>
   )

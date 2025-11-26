@@ -38,6 +38,18 @@ export async function getBillingPdfData(billingResultId: string) {
 
   const year = result.billingPeriod.year;
   const unitId = result.unitId;
+  const buildingId = result.billingPeriod.buildingId;
+
+  // Předchozí období pro informace o přeplatku/nedoplatku
+  const previousResult = await prisma.billingResult.findFirst({
+    where: {
+      unitId,
+      billingPeriod: {
+        buildingId,
+        year: year - 1,
+      },
+    },
+  });
 
   // 2. Načtení historie záloh (pro tabulku měsíců)
   // Použijeme AdvanceMonthly pokud existuje, jinak bychom museli dopočítat z AdvancePaymentRecord
@@ -123,7 +135,8 @@ export async function getBillingPdfData(billingResultId: string) {
       userId: null,
       createdAt: new Date(),
       updatedAt: new Date()
-    }
+    },
+    previousResult,
   };
 }
 
