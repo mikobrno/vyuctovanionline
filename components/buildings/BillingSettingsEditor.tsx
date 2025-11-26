@@ -1,14 +1,121 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { useState, useEffect, useMemo, useRef, Fragment, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
+import type { Service as PrismaService, Unit as PrismaUnit, Cost as PrismaCost } from '@prisma/client'
+
+type BillingService = PrismaService & {
+  method?: PrismaService['methodology']
+  userMergeWithNext?: boolean
+}
+
+type BillingUnit = PrismaUnit & {
+  owners?: { lastName?: string }[]
+  meters?: Array<{ type?: string | null; isActive?: boolean; readings?: Array<{ consumption?: number | null; value?: number | null; precalculatedCost?: number | null }> }>
+  personMonths?: Array<{ personCount: number }>
+  parameters?: Array<{ name: string; value: number }>
+}
+
+type BillingCost = PrismaCost
+
+type GlobalOverrideState = Record<string, { buildingUnits?: string; share?: string; manualCost?: string }>
+type UnitOverrideState = Record<string, Record<string, { userUnits?: string; advance?: string }>>
+
+type ManualOverridesSnapshot = {
+  global?: GlobalOverrideState
+  unit?: UnitOverrideState
+} | null
+
+type ServiceSnapshot = {
+  serviceId?: string
+  code: string
+  name?: string
+  methodology?: string
+  method?: string
+  order?: number
+  dataSourceType?: string | null
+  dataSourceName?: string | null
+  dataSourceColumn?: string | null
+  unitAttributeName?: string | null
+  measurementUnit?: string | null
+  unitPrice?: number | string | null
+  fixedAmountPerUnit?: number | string | null
+  divisor?: number | string | null
+  manualCost?: number | string | null
+  manualShare?: number | string | null
+  customFormula?: string | null
+  userMergeWithNext?: boolean
+  showOnStatement?: boolean
+  isActive?: boolean
+  advancePaymentColumn?: string | null
+  excelColumn?: string | null
+  groupShareLabel?: string | null
+}
+
+type ConfigVersionSummary = {
+  id: string
+  name: string
+  description?: string | null
+  createdAt: string
+  isDefault?: boolean
+}
+
+const parseVersionConfigPayload = (raw: unknown): { services: ServiceSnapshot[]; manualOverrides: ManualOverridesSnapshot } => {
+  if (Array.isArray(raw)) {
+    return { services: raw as ServiceSnapshot[], manualOverrides: null }
+  }
+
+  if (raw && typeof raw === 'object') {
+    const candidate = raw as { services?: ServiceSnapshot[]; manualOverrides?: ManualOverridesSnapshot }
+    if (Array.isArray(candidate.services)) {
+      return { services: candidate.services, manualOverrides: candidate.manualOverrides ?? null }
+    }
+  }
+
+  return { services: [], manualOverrides: null }
+}
+
+const toNullableNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value === 'number' && !Number.isNaN(value)) return value
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const mergeServiceSnapshot = (service: BillingService, snapshot: ServiceSnapshot): BillingService => {
+  const resolvedMethod = (snapshot.methodology ?? snapshot.method ?? service.method ?? service.methodology) as BillingService['method']
+  const nextMethod = resolvedMethod ?? service.methodology
+  return {
+    ...service,
+    method: nextMethod,
+    methodology: nextMethod ?? service.methodology,
+    order: snapshot.order ?? service.order,
+    dataSourceType: (snapshot.dataSourceType as BillingService['dataSourceType']) ?? service.dataSourceType,
+    dataSourceName: snapshot.dataSourceName ?? service.dataSourceName,
+    dataSourceColumn: snapshot.dataSourceColumn ?? service.dataSourceColumn,
+    unitAttributeName: snapshot.unitAttributeName ?? service.unitAttributeName,
+    measurementUnit: snapshot.measurementUnit ?? service.measurementUnit,
+    unitPrice: toNullableNumber(snapshot.unitPrice) ?? service.unitPrice,
+    fixedAmountPerUnit: toNullableNumber(snapshot.fixedAmountPerUnit) ?? service.fixedAmountPerUnit,
+    divisor: toNullableNumber(snapshot.divisor) ?? service.divisor,
+    manualCost: toNullableNumber(snapshot.manualCost) ?? service.manualCost,
+    manualShare: toNullableNumber(snapshot.manualShare) ?? service.manualShare,
+    customFormula: snapshot.customFormula ?? service.customFormula,
+    userMergeWithNext: snapshot.userMergeWithNext ?? service.userMergeWithNext,
+    showOnStatement: snapshot.showOnStatement ?? service.showOnStatement,
+    isActive: snapshot.isActive ?? service.isActive,
+    advancePaymentColumn: snapshot.advancePaymentColumn ?? service.advancePaymentColumn,
+    excelColumn: snapshot.excelColumn ?? service.excelColumn,
+    groupShareLabel: snapshot.groupShareLabel ?? service.groupShareLabel,
+  }
+}
 
 interface BillingSettingsEditorProps {
   buildingId: string
-  services: any[]
-  units: any[]
-  costs: any[]
+  services: BillingService[]
+  units: BillingUnit[]
+  costs: BillingCost[]
 }
 
 type BillingResultSummary = {
@@ -22,17 +129,20 @@ type BillingResultSummary = {
 
 export default function BillingSettingsEditor({ buildingId, services, units, costs }: BillingSettingsEditorProps) {
   const router = useRouter()
-  const [localServices, setLocalServices] = useState(services)
+  const [localServices, setLocalServices] = useState<BillingService[]>(services)
   const [selectedUnitId, setSelectedUnitId] = useState<string>(units[0]?.id || '')
   const [showHiddenServices, setShowHiddenServices] = useState(false)
   const [saving, setSaving] = useState(false)
   const [year, setYear] = useState<number>(new Date().getFullYear() - 1)
   
   // State pro verze
-  const [versions, setVersions] = useState<any[]>([])
+  const [versions, setVersions] = useState<ConfigVersionSummary[]>([])
+  const [selectedVersionId, setSelectedVersionId] = useState('')
+  const [appliedDefaultVersionId, setAppliedDefaultVersionId] = useState<string | null>(null)
   const [showVersionModal, setShowVersionModal] = useState(false)
   const [newVersionName, setNewVersionName] = useState('')
   const [savingVersion, setSavingVersion] = useState(false)
+  const [newVersionAsDefault, setNewVersionAsDefault] = useState(false)
 
   // State pro import
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -56,9 +166,80 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   
   // State pro manuální přepisy hodnot
   // Global overrides: [serviceId]: { buildingUnits?: string, share?: string, manualCost?: string }
-  const [globalOverrides, setGlobalOverrides] = useState<Record<string, { buildingUnits?: string, share?: string, manualCost?: string }>>({})
+  const [globalOverrides, setGlobalOverrides] = useState<GlobalOverrideState>({})
   // Unit overrides: [unitId]: { [serviceId]: { userUnits?: string, advance?: string } }
-  const [unitOverrides, setUnitOverrides] = useState<Record<string, Record<string, { userUnits?: string, advance?: string }>>>({})
+  const [unitOverrides, setUnitOverrides] = useState<UnitOverrideState>({})
+
+  const fetchConfigVersions = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/buildings/${buildingId}/config-versions`)
+      if (!res.ok) throw new Error('Failed to load versions')
+      const data: ConfigVersionSummary[] = await res.json()
+      setVersions(data)
+      setSelectedVersionId(prev => (prev && data.some(v => v.id === prev) ? prev : ''))
+    } catch (error) {
+      console.error('Failed to load versions', error)
+    }
+  }, [buildingId])
+
+  const loadVersion = useCallback(async (versionId: string, options?: { skipConfirm?: boolean }) => {
+    if (!versionId) return
+    if (!options?.skipConfirm && !confirm('Opravdu chcete načíst tuto verzi? Neuložené změny budou ztraceny.')) return
+
+    try {
+      const res = await fetch(`/api/buildings/${buildingId}/config-versions/${versionId}`)
+      if (!res.ok) throw new Error('Nepodařilo se načíst verzi')
+      const data = await res.json()
+      const parsed = parseVersionConfigPayload(data?.config)
+
+      const overrides = parsed.manualOverrides
+      if (overrides) {
+        if (overrides.global) {
+          setGlobalOverrides(overrides.global)
+        } else {
+          setGlobalOverrides(overrides as GlobalOverrideState)
+        }
+        setUnitOverrides(overrides.unit ?? {})
+      } else {
+        setGlobalOverrides({})
+        setUnitOverrides({})
+      }
+
+      setLocalServices(prev => {
+        if (!parsed.services.length) return prev
+        const snapshotMap = new Map<string, ServiceSnapshot>()
+        parsed.services.forEach(snapshot => {
+          const key = snapshot.serviceId ?? snapshot.code
+          snapshotMap.set(key, snapshot)
+        })
+        const updated = prev.map(service => {
+          const snapshot = snapshotMap.get(service.id) ?? snapshotMap.get(service.code)
+          if (!snapshot) return service
+          return mergeServiceSnapshot(service, snapshot)
+        })
+        return updated.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      })
+    } catch (error) {
+      console.error('Failed to load version', error)
+      alert('Chyba při načítání verze')
+    }
+  }, [buildingId])
+
+  useEffect(() => {
+    fetchConfigVersions()
+  }, [fetchConfigVersions])
+
+  useEffect(() => {
+    if (!versions.length || !localServices.length) return
+    const defaultVersion = versions.find(v => v.isDefault)
+    if (!defaultVersion) return
+    if (appliedDefaultVersionId === defaultVersion.id) return
+    setSelectedVersionId(defaultVersion.id)
+    loadVersion(defaultVersion.id, { skipConfirm: true })
+    setAppliedDefaultVersionId(defaultVersion.id)
+  }, [versions, localServices.length, appliedDefaultVersionId, loadVersion])
+
+  const selectedVersion = useMemo(() => versions.find(v => v.id === selectedVersionId) ?? null, [versions, selectedVersionId])
 
   const formatCurrencyValue = (value: number | null | undefined, fractionDigits = 2) => {
     if (value === null || value === undefined || Number.isNaN(value)) return '—'
@@ -830,73 +1011,79 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     }
   }
 
-  // Uložení verze
+  // Obsluha verzí
   const saveVersion = async () => {
     if (!newVersionName) return
     setSavingVersion(true)
     try {
-      await fetch(`/api/buildings/${buildingId}/config-versions`, {
+      const res = await fetch(`/api/buildings/${buildingId}/config-versions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: newVersionName, 
+        body: JSON.stringify({
+          name: newVersionName,
           services: localServices,
-          manualOverrides: { global: globalOverrides, unit: unitOverrides } // Save overrides with version
+          manualOverrides: { global: globalOverrides, unit: unitOverrides },
+          setAsDefault: newVersionAsDefault,
         })
       })
+      if (!res.ok) throw new Error('Uložení verze selhalo')
+      const saved = await res.json()
       setNewVersionName('')
+      setNewVersionAsDefault(false)
       setShowVersionModal(false)
-      const res = await fetch(`/api/buildings/${buildingId}/config-versions`)
-      const data = await res.json()
-      setVersions(data)
-    } catch (e) {
-      console.error(e)
+      await fetchConfigVersions()
+      if (newVersionAsDefault && saved?.id) {
+        setAppliedDefaultVersionId(null)
+        setSelectedVersionId(saved.id)
+      }
+    } catch (error) {
+      console.error('Failed to save config version', error)
       alert('Chyba při ukládání verze')
     } finally {
       setSavingVersion(false)
     }
   }
 
-  // Načtení verze
-  const loadVersion = async (versionId: string) => {
-    if (!versionId) return
-    if (!confirm('Opravdu chcete načíst tuto verzi? Neuložené změny budou ztraceny.')) return
-    try {
-      const res = await fetch(`/api/buildings/${buildingId}/config-versions/${versionId}`)
-      const data = await res.json()
-      
-      // Restore overrides if they exist in the version
-      if (data.config?.manualOverrides) {
-        if (data.config.manualOverrides.global) {
-           setGlobalOverrides(data.config.manualOverrides.global)
-        } else {
-           // Backwards compatibility
-           setGlobalOverrides(data.config.manualOverrides)
-        }
-        
-        if (data.config.manualOverrides.unit) {
-           setUnitOverrides(data.config.manualOverrides.unit)
-        }
-      }
+  const handleVersionSelect = (value: string) => {
+    setSelectedVersionId(value)
+    if (value) {
+      void loadVersion(value)
+    }
+  }
 
-      const updatedServices = localServices.map(s => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const config = data.configs.find((c: any) => c.serviceId === s.id)
-        if (config) {
-          return {
-            ...s,
-            method: config.method,
-            isActive: config.isActive,
-            order: config.order,
-            divisor: config.divisor // Restore divisor
-          }
-        }
-        return s
-      }).sort((a, b) => (a.order || 0) - (b.order || 0))
-      
-      setLocalServices(updatedServices)
-    } catch {
-      alert('Chyba při načítání verze')
+  const handleDeleteVersion = async () => {
+    if (!selectedVersionId) return
+    if (!confirm('Opravdu chcete tuto verzi smazat?')) return
+    try {
+      const res = await fetch(`/api/buildings/${buildingId}/config-versions/${selectedVersionId}`, {
+        method: 'DELETE'
+      })
+      if (!res.ok) throw new Error('Mazání verze selhalo')
+      if (appliedDefaultVersionId === selectedVersionId) {
+        setAppliedDefaultVersionId(null)
+      }
+      setSelectedVersionId('')
+      await fetchConfigVersions()
+    } catch (error) {
+      console.error('Failed to delete version', error)
+      alert('Chyba při mazání verze')
+    }
+  }
+
+  const handleSetVersionAsDefault = async () => {
+    if (!selectedVersionId) return
+    try {
+      const res = await fetch(`/api/buildings/${buildingId}/config-versions/${selectedVersionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isDefault: true })
+      })
+      if (!res.ok) throw new Error('Aktualizace výchozí verze selhala')
+      setAppliedDefaultVersionId(null)
+      await fetchConfigVersions()
+    } catch (error) {
+      console.error('Failed to set default version', error)
+      alert('Chyba při nastavení výchozí verze')
     }
   }
 
@@ -1046,35 +1233,71 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
           <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 block">
             Verze nastavení
           </label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <select
-                onChange={(e) => loadVersion(e.target.value)}
-                className="w-full appearance-none bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                defaultValue=""
-                aria-label="Načíst verzi"
-              >
-                <option value="" disabled>-- Načíst uloženou verzi --</option>
-                {versions.map(v => (
-                  <option key={v.id} value={v.id}>{v.name} ({new Date(v.createdAt).toLocaleDateString()})</option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+          <div className="flex flex-col gap-2 w-full">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <select
+                  value={selectedVersionId}
+                  onChange={(e) => handleVersionSelect(e.target.value)}
+                  className="w-full appearance-none bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  aria-label="Načíst verzi"
+                >
+                  <option value="">-- Vybrat uloženou verzi --</option>
+                  {versions.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.isDefault ? '⭐ ' : ''}{v.name} ({new Date(v.createdAt).toLocaleDateString('cs-CZ')})
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSetVersionAsDefault}
+                  disabled={!selectedVersionId}
+                  className="px-3 py-2 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30 disabled:opacity-40 text-sm font-semibold"
+                  title="Nastavit jako výchozí"
+                >
+                  ⭐
+                </button>
+                <button
+                  onClick={handleDeleteVersion}
+                  disabled={!selectedVersionId}
+                  className="px-3 py-2 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-lg text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 disabled:opacity-40 text-sm font-semibold"
+                  title="Smazat verzi"
+                >
+                  🗑️
+                </button>
+                <button
+                  onClick={() => setShowVersionModal(true)}
+                  className="px-3 py-2 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 font-medium shadow-sm transition-colors"
+                  title="Uložit novou verzi"
+                >
+                  💾
+                </button>
               </div>
             </div>
-            <button
-              onClick={() => setShowVersionModal(true)}
-              className="px-4 py-2 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 font-medium shadow-sm transition-colors"
-              title="Uložit novou verzi"
-            >
-              💾
-            </button>
+            {selectedVersion && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {selectedVersion.isDefault ? '⭐ Tato verze je výchozí pro dům.' : 'Načtená verze není výchozí.'} Uložena {new Date(selectedVersion.createdAt).toLocaleString('cs-CZ')}.
+              </p>
+            )}
           </div>
         </div>
       </div>
 
       {/* Akční lišta */}
+              <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-slate-300 mb-6">
+                <input
+                  type="checkbox"
+                  checked={newVersionAsDefault}
+                  onChange={(e) => setNewVersionAsDefault(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                />
+                <span>Nastavit jako výchozí pro tento dům</span>
+              </label>
       <div className="flex justify-between items-center">
         <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:text-gray-900 dark:hover:text-white transition-colors">
           <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${showHiddenServices ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}>
@@ -1376,7 +1599,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                       <th className="px-4 py-3 text-left min-w-[150px]" rowSpan={2}>📋 Služba</th>
                       <th className="px-3 py-3 text-left min-w-[140px]" rowSpan={2}>⚙️ Způsob</th>
                       <th className="px-2 py-3 text-center border-l-2 border-gray-300 dark:border-slate-700 bg-blue-50/50 dark:bg-blue-900/10" colSpan={4}>🏢 Dům</th>
-                      <th className="px-2 py-3 text-center border-l-2 border-gray-300 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10" colSpan={3}>👤 Jednotka</th>
+                      <th className="px-2 py-3 text-center border-l-2 border-gray-300 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10" colSpan={4}>👤 Jednotka</th>
                     </tr>
                     <tr className="bg-gray-50 dark:bg-slate-900/50 text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-slate-700">
                       <th className="px-2 py-2 text-right border-l-2 border-gray-300 dark:border-slate-700 bg-blue-50/50 dark:bg-blue-900/10">Podíl %</th>
@@ -1385,6 +1608,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                       <th className="px-2 py-2 text-right bg-blue-50/50 dark:bg-blue-900/10">Cena/j.</th>
                       <th className="px-2 py-2 text-right border-l-2 border-gray-300 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10">Jedn.</th>
                       <th className="px-2 py-2 text-right bg-amber-50/50 dark:bg-amber-900/10">Náklad</th>
+                      <th className="px-2 py-2 text-right bg-amber-50/50 dark:bg-amber-900/10">Záloha</th>
                       <th className="px-2 py-2 text-right bg-amber-50/50 dark:bg-amber-900/10">Výsledek</th>
                     </tr>
                   </thead>
@@ -1549,6 +1773,11 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                                   </button>
                                 )}
                               </td>
+                              <td className="px-2 py-2.5 text-right font-semibold text-gray-900 dark:text-white bg-amber-100/30 dark:bg-amber-900/10 rounded mx-1 text-xs border-l border-amber-200 dark:border-amber-800">
+                                {displayAdvance !== null && displayAdvance !== undefined
+                                  ? `${displayAdvance.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč`
+                                  : <span className="text-gray-400 dark:text-gray-500">–</span>}
+                              </td>
                               <td
                                 className={`px-2 py-2.5 text-right font-semibold text-xs border-l border-amber-200 dark:border-amber-800 bg-amber-100/60 dark:bg-amber-900/30 rounded ${
                                   displayBalance !== null && displayBalance !== undefined
@@ -1557,17 +1786,10 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                                       : 'text-rose-600 dark:text-rose-400'
                                     : 'text-gray-400 dark:text-gray-500'
                                 }`}
-                                title={displayAdvance !== null && displayAdvance !== undefined ? `Záloha: ${displayAdvance.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč` : undefined}
+                                title="Výsledek = Záloha - Náklad"
                               >
                                 {displayBalance !== null && displayBalance !== undefined ? (
-                                  <>
-                                    {displayBalance.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
-                                    {displayAdvance !== null && displayAdvance !== undefined && (
-                                      <span className="block text-[10px] text-gray-500 dark:text-gray-400 font-normal">
-                                        Záloha {displayAdvance.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
-                                      </span>
-                                    )}
-                                  </>
+                                  `${displayBalance.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč`
                                 ) : (
                                   <span>–</span>
                                 )}
@@ -1577,7 +1799,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                           </Draggable>
                           {index < displayedServices.length - 1 && (
                             <tr>
-                              <td colSpan={11}>
+                              <td colSpan={12}>
                                 <div className="flex justify-end pr-8">
                                   <button
                                     onClick={() => toggleUserMergeBetween(index)}
@@ -1610,6 +1832,13 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                         {rowMetrics
                           .reduce((sum, metrics, idx) => (
                             displayedServices[idx].isActive !== false ? sum + metrics.preview.unitCost : sum
+                          ), 0)
+                          .toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                      </td>
+                      <td className="p-4 text-right bg-amber-100/30 dark:bg-amber-900/10">
+                        {rowMetrics
+                          .reduce((sum, metrics, idx) => (
+                            displayedServices[idx].isActive !== false ? sum + metrics.advance : sum
                           ), 0)
                           .toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                       </td>

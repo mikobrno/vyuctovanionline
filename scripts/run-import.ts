@@ -151,6 +151,7 @@ async function runImport() {
     )
     
     let managerName: string | null = null
+    let bankAccount: string | null = null
     
     if (inputDataSheetName) {
       const inputSheet = workbook.Sheets[inputDataSheetName]
@@ -183,6 +184,15 @@ async function runImport() {
         managerName = String(rawData[33][1]).trim() || null
         if (managerName) {
           log(`[Import] Načten správce z B34: ${managerName}`)
+        }
+      }
+
+      // B35 = row index 34, column index 1 (bankovní účet)
+      if (rawData.length > 34 && rawData[34] && rawData[34][1]) {
+        const bankAccountValue = String(rawData[34][1]).trim()
+        if (bankAccountValue) {
+          bankAccount = bankAccountValue
+          log(`[Import] Načten bankovní účet z B35: ${bankAccount}`)
         }
       }
     }
@@ -225,9 +235,19 @@ async function runImport() {
           city: 'Nezadáno',
           zip: '00000',
           managerName: managerName,
+          bankAccount: bankAccount,
         }
       })
       summary.building.created = true
+    } else {
+      // Update existing building with bank account if found
+      if (bankAccount && building.bankAccount !== bankAccount) {
+        await prisma.building.update({
+          where: { id: building.id },
+          data: { bankAccount }
+        })
+        log(`[Import] Aktualizován bankovní účet budovy: ${bankAccount}`)
+      }
     }
 
     summary.building.id = building.id

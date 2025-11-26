@@ -1,12 +1,12 @@
 import { getServerSession } from 'next-auth'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import QRCode from 'qrcode'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import DashboardNav from '@/components/dashboard/DashboardNav'
 import { BillingStatement } from '@/components/buildings/BillingStatement'
 import { BillingDetailActions } from '@/components/billing/BillingDetailActions'
 import { prisma } from '@/lib/prisma'
+import { generateBillingQRCode } from '@/lib/qrGenerator'
 
 export default async function BillingResultDetailPage({ 
   params 
@@ -190,22 +190,13 @@ export default async function BillingResultDetailPage({
   }));
 
   // Generování QR kódu pro nedoplatek
-  let qrCodeUrl = undefined;
-  if (billingResult.result < 0) {
-    const amount = Math.abs(billingResult.result);
-    const account = building.bankAccount;
-    const vs = billingResult.unit.variableSymbol;
-    
-    if (account && vs) {
-       const msg = `Vyuctovani ${year} - ${billingResult.unit.unitNumber}`;
-       const spayString = `SPD*1.0*ACC:${account}*AM:${amount.toFixed(2)}*CC:CZK*X-VS:${vs}*MSG:${msg.substring(0, 60)}`;
-       try {
-         qrCodeUrl = await QRCode.toDataURL(spayString);
-       } catch (e) {
-         console.error('Failed to generate QR code', e);
-       }
-    }
-  }
+  const qrCodeUrl = await generateBillingQRCode({
+    balance: billingResult.result,
+    year: year,
+    unitNumber: billingResult.unit.unitNumber,
+    variableSymbol: billingResult.unit.variableSymbol,
+    bankAccount: building.bankAccount || null
+  });
 
   // Transformace dat pro komponentu BillingStatement
   const statementData = {

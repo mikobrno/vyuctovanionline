@@ -67,12 +67,19 @@ export async function POST(
     }
 
     // Odeslat SMS
+    const building = billingResult.billingPeriod.building;
+
     const smsResult = await sendBillingSms({
       to: phoneNumber,
       ownerName: `${owner.firstName} ${owner.lastName}`,
+      salutation: owner.salutation,
       unitName: billingResult.unit.unitNumber,
       year: billingResult.billingPeriod.year,
       balance: billingResult.result,
+      buildingName: building.name || building.address,
+      email: owner.email,
+      template: building.smsTemplateBody,
+      managerName: building.managerName,
     });
 
     if (!smsResult.success) {

@@ -334,6 +334,7 @@ export async function POST(req: NextRequest) {
       let chargeableArea: number | null = null
       let chimneysCount: number | null = null
       let totalPeople: number | null = null
+      let bankAccount: string | null = null
       
       let buildingNameFromExcel: string | null = null
       
@@ -391,6 +392,15 @@ export async function POST(req: NextRequest) {
               if (managerName) await log(`[Import] Načten správce z řádku ${managerRowIndex + 1}: ${managerName}`)
            }
         }
+
+        // B35 (row index 34, col index 1) -> Bank Account
+        if (rawData.length > 34 && rawData[34] && rawData[34][1]) {
+           const bankAccountValue = String(rawData[34][1]).trim()
+           if (bankAccountValue) {
+              bankAccount = bankAccountValue
+              await log(`[Import] Načten bankovní účet z B35: ${bankAccount}`)
+           }
+        }
       }
       
       let building;
@@ -440,6 +450,7 @@ export async function POST(req: NextRequest) {
       if (chimneysCount !== null) buildingUpdates.chimneysCount = chimneysCount
       if (totalPeople !== null) buildingUpdates.totalPeople = totalPeople
       if (managerName !== null && managerName !== building.managerName) buildingUpdates.managerName = managerName
+      if (bankAccount !== null && bankAccount !== building.bankAccount) buildingUpdates.bankAccount = bankAccount
 
       if (Object.keys(buildingUpdates).length > 0) {
          building = await prisma.building.update({

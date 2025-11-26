@@ -19,84 +19,159 @@ Font.register({
 
 const styles = StyleSheet.create({
   page: {
-    padding: 24,
+    padding: 12,
     fontFamily: 'Roboto',
     fontSize: 9,
     color: '#1f2937',
     backgroundColor: '#ffffff',
   },
+  headerCard: {
+    borderWidth: 1.5,
+    borderColor: '#f97316',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    backgroundColor: '#ffffff',
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+    paddingBottom: 6,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#e5e7eb',
+  },
+  ownerName: {
+    fontSize: 22,
+    fontFamily: 'Roboto-Bold',
+    color: '#111827',
+  },
+  headerLogo: {
+    height: 75,
+    width: 218,
+    objectFit: 'contain',
+  },
+  brandFallback: {
+    fontFamily: 'Roboto-Bold',
+    fontSize: 18,
+    color: '#f97316',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    gap: 40,
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    flex: 1.5,
+  },
+  headerRight: {
+    flex: 1,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+    alignItems: 'center',
+  },
+  infoLabel: {
+    width: 75,
+    fontSize: 8,
+    color: '#6b7280',
+    fontFamily: 'Roboto-Bold',
+  },
+  infoValue: {
+    fontSize: 11,
+    color: '#111827',
+    fontFamily: 'Roboto-Bold',
+  },
+  infoValueBold: {
+    fontSize: 11,
+    fontFamily: 'Roboto-Bold',
+    color: '#111827',
+  },
+  periodBadge: {
+    marginTop: 1,
+  },
+  periodText: {
+    fontSize: 8,
+    color: '#6b7280',
+  },
+  periodValue: {
+    fontSize: 10,
+    color: '#111827',
+  },
   identityRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
     marginBottom: 18,
   },
   infoCard: {
     flex: 1,
   },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontFamily: 'Roboto-Bold',
-    marginBottom: 6,
+    marginBottom: 8,
     color: '#111827',
   },
   detailsGrid: {
     flexDirection: 'column',
-    gap: 2,
+    gap: 3,
   },
   detailRow: {
     flexDirection: 'row',
     gap: 6,
   },
   detailLabel: {
-    width: 110,
+    width: 70,
     color: '#6b7280',
-    fontSize: 9,
+    fontSize: 8,
   },
   detailValue: {
+    color: '#111827',
+    fontSize: 9,
+  },
+  twoColumnRow: {
+    flexDirection: 'row',
+    gap: 20,
+    marginTop: 6,
+  },
+  twoColumnItem: {
+    flex: 1,
+  },
+  highlightLabel: {
+    fontSize: 8,
+    color: '#6b7280',
+    width: 80,
+  },
+  highlightValue: {
     fontFamily: 'Roboto-Bold',
-    color: '#0f172a',
-    fontSize: 10,
-  },
-  headerRight: {
-    alignItems: 'flex-end',
-    gap: 6,
-  },
-  brandFallback: {
-    fontFamily: 'Roboto-Bold',
-    fontSize: 20,
-    color: '#dc2626',
-  },
-  headerLogo: {
-    height: 40,
-    width: 160,
-    objectFit: 'contain',
+    fontSize: 9,
+    color: '#111827',
   },
   metaText: {
     fontSize: 9,
-    color: '#6b7280',
+    color: '#374151',
     textAlign: 'right',
   },
   mainHeadline: {
     textAlign: 'center',
     fontFamily: 'Roboto-Bold',
-    fontSize: 13,
+    fontSize: 12,
     color: '#0f172a',
-    paddingVertical: 6,
+    paddingVertical: 3,
     backgroundColor: '#f3f4f6',
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    marginBottom: 12,
+    marginBottom: 6,
   },
   tableShell: {
     borderWidth: 1,
     borderColor: '#d1d5db',
     borderRadius: 4,
     overflow: 'hidden',
-    marginBottom: 16,
+    marginBottom: 6,
   },
   tableSectionRow: {
     flexDirection: 'row',
@@ -226,16 +301,17 @@ const styles = StyleSheet.create({
   },
   dualTables: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
+    marginBottom: 8,
   },
   notesCard: {
-    marginTop: 10,
-    padding: 10,
+    marginTop: 6,
+    padding: 8,
     borderWidth: 1,
     borderColor: '#e5e7eb',
     borderRadius: 4,
     backgroundColor: '#ffffff',
-    gap: 4,
+    gap: 3,
   },
 });
 
@@ -280,6 +356,14 @@ const formatNumber = (amount: number | null | undefined, decimals = 2) => {
     })
     .replace(/\s/g, ' ');
 };
+
+const formatUnitsValue = (amount: number | null | undefined, decimals = 2) =>
+  amount && amount > 0 ? formatNumber(amount, decimals) : '-';
+
+const unitCellStyle = (amount: number | null | undefined) => [
+  amount && amount > 0 ? styles.tableCellRight : styles.tableCellCenter,
+  !(amount && amount > 0) ? { color: '#9ca3af' } : {},
+];
 
 const getMonthLabel = (month: number, year: number) => `${month}/${year}`;
 
@@ -348,11 +432,24 @@ export const BillingDocument: React.FC<Props> = ({ data, qrCodeUrl, logoPath }) 
 
   const displayedServices = mergeServices(result.serviceCosts);
 
+  const monthlyPrescriptions = Array.isArray(result.monthlyPrescriptions)
+    ? (result.monthlyPrescriptions as Array<number | string | null>)
+    : [];
+
   const monthlyData = Array.from({ length: 12 }, (_, idx) => {
     const month = idx + 1;
-    const prescribed = advances
+    const rawPrescription = monthlyPrescriptions[idx];
+    const prescribedFromResult =
+      typeof rawPrescription === 'number'
+        ? rawPrescription
+        : typeof rawPrescription === 'string'
+          ? parseFloat(rawPrescription)
+          : undefined;
+    const prescribedFromAdvances = advances
       .filter((advance) => advance.month === month)
       .reduce((sum, advance) => sum + advance.amount, 0);
+    const prescribed =
+      typeof prescribedFromResult === 'number' ? prescribedFromResult : prescribedFromAdvances;
 
     const paid = payments
       .filter((payment) => {
@@ -373,47 +470,50 @@ export const BillingDocument: React.FC<Props> = ({ data, qrCodeUrl, logoPath }) 
   return (
     <Document>
       <Page size="A4" orientation="landscape" style={styles.page}>
-        <View style={styles.identityRow}>
-          <View style={styles.infoCard}>
-            <Text style={styles.title}>
-              {owner.firstName} {owner.lastName}
-            </Text>
-            <View style={styles.detailsGrid}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Adresa:</Text>
-                <Text style={styles.detailValue}>{owner.address || building?.address}</Text>
-              </View>
-              {owner.email && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Email:</Text>
-                  <Text style={styles.detailValue}>{owner.email}</Text>
-                </View>
-              )}
-              {owner.phone && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Telefon:</Text>
-                  <Text style={styles.detailValue}>{owner.phone}</Text>
-                </View>
-              )}
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Bankovní spojení:</Text>
-                <Text style={styles.detailValue}>{building?.bankAccount || '-'}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Variabilní symbol:</Text>
-                <Text style={styles.detailValue}>{unit.variableSymbol || '-'}</Text>
+        <View style={styles.headerCard}>
+          <View style={styles.headerTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.ownerName}>{owner.firstName} {owner.lastName}</Text>
+              <View style={styles.periodBadge}>
+                <Text style={styles.periodText}>Zúčtovací období:</Text>
+                <Text style={styles.periodValue}>{periodRangeLabel}</Text>
               </View>
             </View>
-          </View>
-
-          <View style={styles.headerRight}>
             {logoSource ? (
               <Image src={logoSource} style={styles.headerLogo} />
             ) : (
               <Text style={styles.brandFallback}>adminreal</Text>
             )}
-            <Text style={styles.metaText}>č. prostoru: {unit.unitNumber}</Text>
-            <Text style={styles.metaText}>zúčtovací období: {periodRangeLabel}</Text>
+          </View>
+          <View style={styles.headerContent}>
+            <View style={styles.headerLeft}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Adresa:</Text>
+                <Text style={styles.infoValue}>{owner.address || building?.address}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Email:</Text>
+                <Text style={styles.infoValue}>{owner.email || '-'}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Telefon:</Text>
+                <Text style={styles.infoValue}>{owner.phone || '-'}</Text>
+              </View>
+            </View>
+            <View style={styles.headerRight}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Jednotka:</Text>
+                <Text style={styles.infoValueBold}>{unit.unitNumber}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Bankovní:</Text>
+                <Text style={styles.infoValueBold}>{owner.bankAccount || building?.bankAccount || '-'}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Var. symb.:</Text>
+                <Text style={styles.infoValueBold}>{unit.variableSymbol || '-'}</Text>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -504,9 +604,13 @@ export const BillingDocument: React.FC<Props> = ({ data, qrCodeUrl, logoPath }) 
                 </Text>
                 <Text style={[styles.tableCell, styles.tableCellCenter, { width: '6%' }]}>100%</Text>
                 <Text style={[styles.tableCell, styles.tableCellRight, { width: '12%' }]}>{formatCurrency(service.buildingTotalCost)}</Text>
-                <Text style={[styles.tableCell, styles.tableCellRight, { width: '8%' }]}>{formatNumber(service.buildingConsumption)}</Text>
+                <Text style={[styles.tableCell, { width: '8%' }, ...unitCellStyle(service.buildingConsumption)]}>
+                  {formatUnitsValue(service.buildingConsumption)}
+                </Text>
                 <Text style={[styles.tableCell, styles.tableCellRight, { width: '9%' }]}>{formatNumber(service.unitPricePerUnit)}</Text>
-                <Text style={[styles.tableCell, styles.tableCellRight, { width: '8%' }]}>{formatNumber(service.unitAssignedUnits)}</Text>
+                <Text style={[styles.tableCell, { width: '8%' }, ...unitCellStyle(service.unitAssignedUnits)]}>
+                  {formatUnitsValue(service.unitAssignedUnits)}
+                </Text>
                 <Text style={[styles.tableCell, styles.tableCellRight, { width: '13%', fontFamily: 'Roboto-Bold' }]}>{formatCurrency(service.unitCost)}</Text>
                 <Text style={[styles.tableCell, styles.tableCellRight, { width: '10%' }]}>{formatCurrency(service.unitAdvance)}</Text>
                 <Text
@@ -560,14 +664,14 @@ export const BillingDocument: React.FC<Props> = ({ data, qrCodeUrl, logoPath }) 
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 16, marginTop: 28 }}>
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
           <View style={{ flex: 1 }}>
             <View style={styles.resultWrapper}>
               <Text style={styles.resultLabel}>Výsledek vyúčtování</Text>
               <Text style={{ fontSize: 11, color: '#6b7280' }}>{isUnderpayment ? 'NEDOPLATEK' : 'PŘEPLATEK'}</Text>
               <Text style={[styles.resultValue, { color: isUnderpayment ? '#dc2626' : '#16a34a' }]}>{formatCurrency(balance)}</Text>
             </View>
-            <View style={[styles.simpleTable, { marginTop: 10 }]}>
+            <View style={[styles.simpleTable, { marginTop: 8 }]}>
               <View style={[styles.simpleRow, styles.simpleHeader]}>
                 <Text style={{ flex: 1 }}>Období</Text>
                 <Text style={{ width: '40%', textAlign: 'right' }}>Částka</Text>
@@ -584,7 +688,7 @@ export const BillingDocument: React.FC<Props> = ({ data, qrCodeUrl, logoPath }) 
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 16, marginTop: 18 }}>
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
           <View style={{ flex: 1 }}>
             <View style={styles.notesCard}>
               {isUnderpayment ? (
@@ -599,9 +703,9 @@ export const BillingDocument: React.FC<Props> = ({ data, qrCodeUrl, logoPath }) 
           </View>
 
           {isUnderpayment && qrCodeUrl && (
-            <View style={{ width: 150 }}>
+            <View style={{ width: 120 }}>
               <View style={styles.qrWrapper}>
-                <Image src={qrCodeUrl} style={{ width: 96, height: 96 }} />
+                <Image src={qrCodeUrl} style={{ width: 80, height: 80 }} />
                 <Text style={styles.qrLabel}>QR platba</Text>
               </View>
             </View>

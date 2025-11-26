@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
 import { generateBillingPDFBase64 } from '@/lib/pdfGenerator'
+import { generateBillingQRCode } from '@/lib/qrGenerator'
 import { sendBillingEmail } from '@/lib/microsoftGraph'
 import { getBillingPdfData } from '@/lib/billing-pdf-data'
 import { sendBillingSms, isValidPhoneNumber, normalizePhoneNumber } from '@/lib/smsManager'
@@ -19,6 +20,16 @@ export async function POST(
     }
 
     const { periodId } = params
+
+    let selectedResultIds: string[] | null = null
+    try {
+      const body = await request.json()
+      if (body && Array.isArray(body.resultIds) && body.resultIds.length > 0) {
+        selectedResultIds = body.resultIds
+      }
+    } catch {
+      // request without JSON body -> ignore
+    }
 
     // Načíst období s výsledky
     const billingPeriod = await prisma.billingPeriod.findUnique({
@@ -66,8 +77,19 @@ export async function POST(
       errors: [] as string[]
     }
 
+    const periodResults = selectedResultIds
+      ? billingPeriod.results.filter(result => selectedResultIds?.includes(result.id))
+      : billingPeriod.results
+
+    if (periodResults.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'Nebyla vybrána žádná jednotka k odeslání'
+      }, { status: 400 })
+    }
+
     // Procházet všechny výsledky a odesílat
-    for (const billingResult of billingPeriod.results) {
+    for (const billingResult of periodResults) {
       const activeOwner = billingResult.unit.ownerships.find(o => {
         const start = o.validFrom;
         const end = o.validTo || new Date(9999, 11, 31);
@@ -93,7 +115,15 @@ export async function POST(
         // 1. Odeslání Emailu
         if (owner.email && !billingResult.emailSent) {
             try {
-                const pdfBase64 = await generateBillingPDFBase64(pdfData)
+                const qrCodeUrl = await generateBillingQRCode({
+                  balance: pdfData.result.result,
+                  year: pdfData.result.billingPeriod.year,
+                  unitNumber: pdfData.unit.unitNumber,
+                  variableSymbol: pdfData.unit.variableSymbol,
+                  bankAccount: pdfData.building?.bankAccount || null
+                });
+
+                const pdfBase64 = await generateBillingPDFBase64(pdfData, { qrCodeUrl })
                 
                 await sendBillingEmail({
                   to: owner.email,
@@ -133,7 +163,8 @@ export async function POST(
                     balance: billingResult.result,
                     buildingName: billingPeriod.building.name || billingPeriod.building.address,
                     email: owner.email,
-                    template: billingPeriod.building.smsTemplateBody
+                  template: billingPeriod.building.smsTemplateBody,
+                  managerName: billingPeriod.building.managerName,
                 })
 
                 if (smsResult.success) {

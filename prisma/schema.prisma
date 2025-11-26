@@ -536,6 +536,7 @@ model CalculationConfig {
   name        String   // Název verze (např. "Nastavení 2024 - verze 1")
   description String?
   createdAt   DateTime @default(now())
+  isDefault   Boolean  @default(false)
   
   // Uložená konfigurace jako JSON
   // Obsahuje pole objektů: { serviceCode: string, methodology: string, unitPrice: number, ... }

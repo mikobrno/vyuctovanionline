@@ -5,7 +5,10 @@
 
 import { Client } from '@microsoft/microsoft-graph-client'
 import { ClientSecretCredential } from '@azure/identity'
+import { promises as fs } from 'fs'
+import path from 'path'
 import 'isomorphic-fetch'
+import { resolveBrandProfile } from './branding'
 
 const credential = new ClientSecretCredential(
   process.env.GRAPH_TENANT_ID || process.env.AZURE_TENANT_ID!,
@@ -22,6 +25,27 @@ const getGraphClient = () => {
       }
     }
   })
+}
+
+const emailLogoCache = new Map<string, string>()
+
+async function getEmailLogoDataUri(logoFilename: string): Promise<string | null> {
+  if (emailLogoCache.has(logoFilename)) {
+    const cached = emailLogoCache.get(logoFilename)
+    return cached ? cached : null
+  }
+
+  try {
+    const logoPath = path.join(process.cwd(), 'public', logoFilename)
+    const buffer = await fs.readFile(logoPath)
+    const dataUri = `data:image/png;base64,${buffer.toString('base64')}`
+    emailLogoCache.set(logoFilename, dataUri)
+    return dataUri
+  } catch (error) {
+    console.warn('Email logo not found:', { logoFilename, error })
+    emailLogoCache.set(logoFilename, '')
+    return null
+  }
 }
 
 interface EmailAttachment {
@@ -115,18 +139,21 @@ export async function sendBillingEmail({
   subjectTemplate?: string | null
   bodyTemplate?: string | null
 }): Promise<void> {
+  const brand = resolveBrandProfile(managerName)
   // Použít oslovení z Excelu nebo výchozí
   const greeting = salutation || 'Vážený/á vlastníku/vlastnice'
   
   // Použít správce z Excelu nebo výchozí
-  const manager = managerName || 'AdminReal s.r.o.'
+  const manager = managerName?.trim() || brand.companyName
   
   // Název domu (nebo adresa, pokud není název)
   const buildingLabel = buildingName || buildingAddress
 
+  const logoDataUri = await getEmailLogoDataUri(brand.logoFilename)
+
   // 1. PŘEDMĚT
-  let subject = `Vyúčtování služeb ${year} - ${unitName}`
-  if (subjectTemplate) {
+  let subject = `vyúčtování ${year} | jednotka ${unitName} | ${buildingLabel}`
+  if (subjectTemplate && subjectTemplate.trim().length > 0) {
     subject = subjectTemplate
       .replace(/#rok#/g, year.toString())
       .replace(/#jednotka_cislo#/g, unitName)
@@ -136,7 +163,7 @@ export async function sendBillingEmail({
   // 2. TĚLO
   let contentHtml = ''
   
-  if (bodyTemplate) {
+  if (bodyTemplate && bodyTemplate.trim().length > 0) {
     // Nahrazení proměnných v šabloně
     const body = bodyTemplate
       .replace(/#osloveni#/g, greeting)
@@ -155,10 +182,15 @@ export async function sendBillingEmail({
       ? `přeplatek <strong>${Math.abs(balance).toLocaleString('cs-CZ')} Kč</strong>`
       : 'vyrovnáno'
 
+    const signatureHtml = brand.emailSignatureLines
+      .map(line => (line ? line : '&nbsp;'))
+      .map(line => `<div>${line}</div>`)
+      .join('')
+
     contentHtml = `
           <p>${greeting},</p>
           
-          <p>dnes Vám bylo na email <strong>${to}</strong> zasláno vyúčtování za rok <strong>${year}</strong> k Vaší bytové jednotce <strong>${unitName}</strong> v bytovém domě na adrese <strong>${buildingAddress}</strong>.</p>
+          <p>dnes Vám bylo na email <strong>${to}</strong> zasláno vyúčtování za rok <strong>${year}</strong> k Vaší bytové jednotce <strong>${unitName}</strong> v bytovém domě <strong>${buildingLabel}</strong>.</p>
           
           <div class="balance">
             Výsledek vyúčtování: ${balanceText}
@@ -172,7 +204,10 @@ export async function sendBillingEmail({
           
           <p>V případě dotazů nebo připomínek nás prosím kontaktujte.</p>
           
-          <p>S pozdravem,<br><strong>${manager}</strong></p>
+          <p>S pozdravem,</p>
+          <div class="signature">
+            ${signatureHtml}
+          </div>
     `
   }
 
@@ -182,14 +217,19 @@ export async function sendBillingEmail({
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
           .header { background-color: #0078d4; color: white; padding: 20px; text-align: center; }
+          .logo { max-height: 48px; margin-bottom: 12px; }
           .content { padding: 20px; }
           .footer { background-color: #f4f4f4; padding: 15px; text-align: center; font-size: 12px; color: #666; }
           .balance { font-size: 18px; margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #0078d4; }
+          .signature { margin-top: 20px; font-size: 13px; color: #444; }
+          .signature div { line-height: 1.4; }
         </style>
       </head>
       <body>
         <div class="header">
+          ${logoDataUri ? `<img src="${logoDataUri}" alt="Logo správce" class="logo" />` : ''}
           <h1>Vyúčtování služeb ${year}</h1>
+          <p style="margin: 0; font-size: 14px;">Jednotka ${unitName} &middot; ${buildingLabel}</p>
         </div>
         <div class="content">
           ${contentHtml}

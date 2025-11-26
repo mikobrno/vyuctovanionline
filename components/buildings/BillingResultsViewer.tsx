@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 
 interface BillingResultsViewerProps {
@@ -65,8 +65,66 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
     skipped: number
     errors: string[]
   } | null>(null)
+  const [selectedResultIds, setSelectedResultIds] = useState<string[]>([])
+  const [deletingResultId, setDeletingResultId] = useState<string | null>(null)
+  const selectAllRef = useRef<HTMLInputElement>(null)
 
   const currentPeriod = billingPeriods.find(p => p.id === selectedPeriod)
+
+  useEffect(() => {
+    if (currentPeriod) {
+      setSelectedResultIds(currentPeriod.results.map((result) => result.id))
+    } else {
+      setSelectedResultIds([])
+    }
+  }, [currentPeriod, selectedPeriod])
+
+  const totalResults = currentPeriod?.results.length ?? 0
+  const selectedCount = selectedResultIds.length
+  const allSelected = totalResults > 0 && selectedCount === totalResults
+  const hasSelection = selectedCount > 0
+
+  useEffect(() => {
+    if (!selectAllRef.current) return
+    selectAllRef.current.indeterminate = hasSelection && !allSelected
+  }, [hasSelection, allSelected])
+
+  const handleSelectAllChange = (checked: boolean) => {
+    if (!currentPeriod) return
+    setSelectedResultIds(checked ? currentPeriod.results.map((result) => result.id) : [])
+  }
+
+  const toggleResultSelection = (resultId: string) => {
+    setSelectedResultIds((prev) =>
+      prev.includes(resultId) ? prev.filter((id) => id !== resultId) : [...prev, resultId]
+    )
+  }
+
+  const handleDeleteResult = async (resultId: string, unitLabel: string) => {
+    if (!confirm(`Opravdu chcete smazat jednotku ${unitLabel} z tohoto vyúčtování? Tuto akci nelze vrátit.`)) {
+      return
+    }
+
+    try {
+      setDeletingResultId(resultId)
+      setSelectedResultIds((prev) => prev.filter((id) => id !== resultId))
+
+      const response = await fetch(`/api/buildings/${buildingId}/billing/${resultId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Smazání se nezdařilo')
+      }
+
+      // Po úspěšném smazání obnovíme stránku, aby se načetla aktuální data
+      window.location.reload()
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Nepodařilo se odstranit vybranou jednotku')
+      setDeletingResultId(null)
+    }
+  }
 
   // Seřadit výsledky podle čísla jednotky
   const sortedResults = currentPeriod ? [...currentPeriod.results].sort((a, b) => {
@@ -120,8 +178,13 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
 
   const handleSendAllNotifications = async () => {
     if (!currentPeriod) return
+
+    if (!hasSelection) {
+      alert('Vyberte prosím alespoň jednu jednotku, které chcete odeslat vyúčtování.')
+      return
+    }
     
-    if (!confirm(`Opravdu chcete odeslat notifikace (Email + SMS) všem vlastníkům v období ${currentPeriod.year}?`)) {
+    if (!confirm(`Opravdu chcete odeslat notifikace (Email + SMS) ${selectedCount} jednotkám v období ${currentPeriod.year}?`)) {
       return
     }
 
@@ -130,7 +193,11 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
       setSendResult(null)
 
       const response = await fetch(`/api/buildings/${buildingId}/billing-periods/${currentPeriod.id}/send-all-notifications`, {
-        method: 'POST'
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ resultIds: selectedResultIds })
       })
 
       const data = await response.json()
@@ -242,7 +309,7 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
               </div>
               <button
                 onClick={handleSendAllNotifications}
-                disabled={sendingAll}
+                disabled={sendingAll || !hasSelection}
                 className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg shadow-teal-600/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center gap-2"
               >
                 {sendingAll ? (
@@ -260,6 +327,37 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                   </>
                 )}
               </button>
+            </div>
+
+            <div className="mt-2 flex flex-col gap-2 text-sm text-gray-600 dark:text-gray-300">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-gray-900 dark:text-white">
+                  {selectedCount} / {totalResults} jednotek vybráno
+                </span>
+                {!hasSelection && (
+                  <span className="text-red-600 dark:text-red-400 text-xs font-semibold uppercase tracking-wide">
+                    vyberte jednotky pro odeslání
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleSelectAllChange(true)}
+                  disabled={totalResults === 0 || allSelected}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Vybrat vše
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectAllChange(false)}
+                  disabled={!hasSelection}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Vymazat výběr
+                </button>
+              </div>
             </div>
             
             {sendResult && (
@@ -371,8 +469,18 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
               <table className="w-full text-sm text-left">
                 <thead className="text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-50/50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-700">
                   <tr>
-                    <th className="px-4 py-4 font-semibold sticky left-0 bg-gray-50/50 dark:bg-slate-800/50 backdrop-blur-sm z-10 min-w-[100px]">
-                      Jednotka
+                    <th className="px-4 py-4 font-semibold sticky left-0 bg-gray-50/50 dark:bg-slate-800/50 backdrop-blur-sm z-10 min-w-[140px]">
+                      <div className="flex items-center gap-3">
+                        <input
+                          ref={selectAllRef}
+                          type="checkbox"
+                          checked={allSelected && totalResults > 0}
+                          onChange={(e) => handleSelectAllChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          aria-label="Vybrat všechny jednotky"
+                        />
+                        <span>Jednotka</span>
+                      </div>
                     </th>
                     {services.map(service => (
                       <th key={service.id} className="px-4 py-4 font-semibold text-right min-w-[120px] group">
@@ -533,12 +641,21 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                     return (
                       <tr key={result.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50 transition-colors group">
                         <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-slate-800 group-hover:bg-gray-50/50 dark:group-hover:bg-slate-700/50 z-10 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.05)]">
-                          <Link 
-                            href={`/buildings/${buildingId}/billing/${result.id}`}
-                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
-                          >
-                            {result.unit.unitNumber}
-                          </Link>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedResultIds.includes(result.id)}
+                              onChange={() => toggleResultSelection(result.id)}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              aria-label={`Vybrat jednotku ${result.unit.unitNumber}`}
+                            />
+                            <Link 
+                              href={`/buildings/${buildingId}/billing/${result.id}`}
+                              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                            >
+                              {result.unit.unitNumber}
+                            </Link>
+                          </div>
                         </td>
                         {services.map(column => {
                           const costs = result.serviceCosts.filter(c => column.serviceIds.includes(c.serviceId))
@@ -578,6 +695,23 @@ export default function BillingResultsViewer({ buildingId, billingPeriods }: Bil
                               title="Odeslat testovací SMS na 777338203"
                             >
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteResult(result.id, result.unit.unitNumber)}
+                              disabled={deletingResultId === result.id}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
+                              title="Smazat tuto jednotku z vyúčtování"
+                            >
+                              {deletingResultId === result.id ? (
+                                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" strokeWidth="4"></circle>
+                                  <path className="opacity-75" strokeWidth="4" d="M4 12a8 8 0 018-8" />
+                                </svg>
+                              ) : (
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              )}
                             </button>
                           </div>
                         </td>

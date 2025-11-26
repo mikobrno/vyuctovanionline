@@ -56,6 +56,7 @@ export async function POST(
     }
 
     const results = billingPeriod.results;
+    const building = billingPeriod.building;
     let sent = 0;
     let failed = 0;
     let skipped = 0;
@@ -87,9 +88,14 @@ export async function POST(
         const smsResult = await sendBillingSms({
           to: phoneNumber,
           ownerName: `${owner.firstName} ${owner.lastName}`,
+          salutation: owner.salutation,
           unitName: result.unit.unitNumber,
           year: billingPeriod.year,
           balance: result.result,
+          buildingName: building.name || building.address,
+          email: owner.email,
+          template: building.smsTemplateBody,
+          managerName: building.managerName,
         });
 
         if (smsResult.success) {

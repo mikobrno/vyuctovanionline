@@ -1,3 +1,5 @@
+import { resolveBrandProfile } from './branding';
+
 /**
  * SMS Manager API Client
  * Dokumentace: https://smsmanager.cz/docs/api/json/
@@ -173,8 +175,23 @@ export async function sendBillingSms(params: {
   buildingName?: string;
   email?: string | null;
   template?: string | null;
+  managerName?: string | null;
 }): Promise<SmsResponse> {
-  const { to, ownerName, salutation, unitName, year, balance, buildingName, email, template } = params;
+  const {
+    to,
+    ownerName,
+    salutation,
+    unitName,
+    year,
+    balance,
+    buildingName,
+    email,
+    template,
+    managerName,
+  } = params;
+
+  const brand = resolveBrandProfile(managerName);
+  const greeting = salutation || ownerName || 'Vlastníku';
 
   // Formátování bilance
   const balanceText = balance > 0
@@ -185,7 +202,7 @@ export async function sendBillingSms(params: {
 
   let text = '';
 
-  if (template) {
+  if (template && template.trim().length > 0) {
     // Použití šablony
     // Mapování proměnných:
     // #osloveni# -> salutation (pokud existuje) jinak ownerName
@@ -194,8 +211,7 @@ export async function sendBillingSms(params: {
     // #bytovy_dum# -> buildingName
     // #rok# -> year
     // #vysledek# -> balanceText (přidáno navíc pro flexibilitu)
-    
-    const greeting = salutation || ownerName || 'Vlastníku';
+    // #spravce# -> název správce / firmy
 
     text = template
       .replace(/#osloveni#/g, greeting)
@@ -203,21 +219,20 @@ export async function sendBillingSms(params: {
       .replace(/#jednotka_cislo#/g, unitName)
       .replace(/#bytovy_dum#/g, buildingName || 'domě')
       .replace(/#rok#/g, year.toString())
-      .replace(/#vysledek#/g, balanceText);
+      .replace(/#vysledek#/g, balanceText)
+      .replace(/#spravce#/g, brand.companyName);
       
   } else {
     // Výchozí text
-    text = `Vyúčtování ${year} - ${unitName}
+    const houseLabel = buildingName ? ` v domě ${buildingName}` : '';
+    const emailTarget = email || 'váš email';
 
-Vážený/á ${ownerName},
-bylo vyhotoveno vyúčtování nákladů.
+    text = `${greeting},
+vyúčtování ${year} pro jednotku ${unitName}${houseLabel} je připraveno.
+Výsledek: ${balanceText}.
+Detail jsme zaslali na ${emailTarget}.
 
-Výsledek: ${balanceText}
-
-Detail obdržíte emailem.
-
-S pozdravem,
-Správa`;
+${brand.smsSignature}`;
   }
 
   return sendSms({

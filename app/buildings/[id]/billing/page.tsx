@@ -1,8 +1,6 @@
 import React from 'react';
 import { PrismaClient } from '@prisma/client';
-import { BillingSummaryCards } from '@/components/billing/BillingSummaryCards';
-import { BillingUnitTable } from '@/components/billing/BillingUnitTable';
-import { BillingControls } from '@/components/billing/BillingControls';
+import { BillingDashboardView, type BillingResultItem } from '@/components/billing/BillingDashboardView';
 import { notFound, redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
@@ -85,7 +83,7 @@ export default async function BillingDashboardPage({ params, searchParams }: Pag
   );
 
   // 4. Příprava dat pro tabulku (Flat structure)
-  const tableData = billingResults.map(r => {
+  const tableData: BillingResultItem[] = billingResults.map(r => {
     const owner = r.unit.ownerships[0]?.owner;
     const ownerName = owner ? `${owner.lastName} ${owner.firstName}` : "Neznámý";
 
@@ -125,26 +123,14 @@ export default async function BillingDashboardPage({ params, searchParams }: Pag
           </div>
         </div>
 
-        {/* Ovládací prvky */}
-        <BillingControls 
-          buildingId={id} 
-          year={currentYear} 
-          status={billingPeriod?.status || 'DRAFT'} 
+        <BillingDashboardView
+          buildingId={id}
+          year={currentYear}
+          status={billingPeriod?.status || 'DRAFT'}
           billingPeriodId={billingPeriod?.id}
+          summary={summary}
+          results={tableData}
         />
-
-        {/* Karty s přehledem */}
-        <BillingSummaryCards 
-          totalCost={summary.totalCost}
-          totalAdvance={summary.totalAdvance}
-          balance={summary.balance}
-        />
-
-        {/* Tabulka jednotek */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold tracking-tight dark:text-white">Detailní přehled jednotek</h2>
-          <BillingUnitTable buildingId={id} results={tableData} />
-        </div>
       </div>
     </AppLayout>
   );

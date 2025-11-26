@@ -6,6 +6,8 @@ import { generateBillingPDFBase64 } from '@/lib/pdfGenerator'
 import { sendBillingEmail } from '@/lib/microsoftGraph'
 import { getBillingPdfData } from '@/lib/billing-pdf-data'
 
+import { generateBillingQRCode } from '@/lib/qrGenerator'
+
 export async function POST(
   request: NextRequest,
   props: { params: Promise<{ id: string; resultId: string }> }
@@ -35,8 +37,17 @@ export async function POST(
       )
     }
 
+    // Vygenerovat QR kód
+    const qrCodeUrl = await generateBillingQRCode({
+      balance: pdfData.result.result,
+      year: pdfData.result.billingPeriod.year,
+      unitNumber: pdfData.unit.unitNumber,
+      variableSymbol: pdfData.unit.variableSymbol,
+      bankAccount: pdfData.building?.bankAccount || null
+    });
+
     // Vygenerovat PDF
-    const pdfBase64 = await generateBillingPDFBase64(pdfData)
+    const pdfBase64 = await generateBillingPDFBase64(pdfData, { qrCodeUrl })
 
     // Odeslat email
     await sendBillingEmail({

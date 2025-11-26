@@ -33,7 +33,8 @@ export async function POST(
       balance: pdfData.result.result,
       buildingName: pdfData.building.name || pdfData.building.address,
       email: pdfData.owner?.email,
-      template: pdfData.building.smsTemplateBody
+      template: pdfData.building.smsTemplateBody,
+      managerName: pdfData.building.managerName,
     })
 
     if (!result.success) {

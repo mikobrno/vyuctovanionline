@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { renderToStream } from '@react-pdf/renderer';
-import QRCode from 'qrcode';
-import path from 'path';
 import { getBillingPdfData } from '@/lib/billing-pdf-data';
-import { BillingDocument } from '@/components/pdf/BillingDocument';
-import React from 'react';
+import { generateBillingPDF } from '@/lib/pdfGenerator';
+import { generateBillingQRCode } from '@/lib/qrGenerator';
 
 export async function GET(
   req: NextRequest,
@@ -17,42 +14,27 @@ export async function GET(
     const data = await getBillingPdfData(resultId);
     
     // 2. Příprava QR kódu (pokud je nedoplatek)
-    let qrCodeUrl: string | undefined = undefined;
-    const balance = Math.round(data.result.result);
-    
-    if (balance < 0) {
-      const amount = Math.abs(balance);
-      const account = data.building?.bankAccount || ''; // Formát IBAN by byl ideální
-      const vs = data.unit.variableSymbol || '';
-      const msg = `Vyuctovani ${data.result.billingPeriod.year} - ${data.unit.unitNumber}`;
-      
-      // SPAY formát (Short Payment Descriptor)
-      // Poznámka: Pro reálné použití by měl být účet ve formátu IBAN.
-      // Pokud máte jen české číslo účtu, je třeba ho převést na IBAN nebo použít jiný formát, 
-      // ale SPAY vyžaduje IBAN pro klíč ACC.
-      // Zde pro demo předpokládáme, že accountNumber je IBAN nebo to knihovna zvládne.
-      if (account) {
-        const spayString = `SPD*1.0*ACC:${account}*AM:${amount}.00*CC:CZK*X-VS:${vs}*MSG:${msg.substring(0, 60)}`;
-        qrCodeUrl = await QRCode.toDataURL(spayString);
-      }
-    }
+    const qrCodeUrl = await generateBillingQRCode({
+      balance: data.result.result,
+      year: data.result.billingPeriod.year,
+      unitNumber: data.unit.unitNumber,
+      variableSymbol: data.unit.variableSymbol,
+      bankAccount: data.building?.bankAccount || null
+    });
 
-    // 2.5 Logo path
-    const isBrnoReal = data.building?.managerName?.toLowerCase().includes('brnoreal');
-    const logoFilename = isBrnoReal ? 'brnoreal.png' : 'adminreal.png';
-    const logoPath = path.join(process.cwd(), 'public', logoFilename);
+    // 3. Renderování PDF do bufferu
+    const pdfBuffer = await generateBillingPDF(data, { qrCodeUrl });
 
-    // 3. Renderování PDF do streamu
-    const stream = await renderToStream(
-      // @ts-expect-error - ReactPDF types mismatch
-      React.createElement(BillingDocument, { data, qrCodeUrl, logoPath })
-    );
+    const safeUnitNumber = data.unit.unitNumber.replace(/[^a-zA-Z0-9]/g, '_');
+    const fallbackFilename = `Vyuctovani_${data.result.billingPeriod.year}_${safeUnitNumber}.pdf`;
+    const filename = `Vyuctovani_${data.result.billingPeriod.year}_${data.unit.unitNumber}.pdf`;
+    const encodedFilename = encodeURIComponent(filename);
 
     // 4. Odeslání odpovědi
-    return new NextResponse(stream as unknown as BodyInit, {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="Vyuctovani_${data.result.billingPeriod.year}_${data.unit.unitNumber}.pdf"`,
+        'Content-Disposition': `attachment; filename="${fallbackFilename}"; filename*=UTF-8''${encodedFilename}`,
       },
     });
 

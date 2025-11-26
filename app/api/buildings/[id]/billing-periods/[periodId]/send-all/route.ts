@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { prisma } from '@/lib/prisma'
 import { generateBillingPDFBase64 } from '@/lib/pdfGenerator'
+import { generateBillingQRCode } from '@/lib/qrGenerator'
 import { sendBillingEmail } from '@/lib/microsoftGraph'
 import { getBillingPdfData } from '@/lib/billing-pdf-data'
 
@@ -85,8 +86,16 @@ export async function POST(
            throw new Error('Failed to load PDF data')
         }
 
+        const qrCodeUrl = await generateBillingQRCode({
+          balance: pdfData.result.result,
+          year: pdfData.result.billingPeriod.year,
+          unitNumber: pdfData.unit.unitNumber,
+          variableSymbol: pdfData.unit.variableSymbol,
+          bankAccount: pdfData.building?.bankAccount || null
+        });
+
         // Vygenerovat PDF
-        const pdfBase64 = await generateBillingPDFBase64(pdfData)
+        const pdfBase64 = await generateBillingPDFBase64(pdfData, { qrCodeUrl })
 
         // Odeslat email
         await sendBillingEmail({

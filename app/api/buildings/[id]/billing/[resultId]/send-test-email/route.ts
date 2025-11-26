@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { generateBillingPDFBase64 } from '@/lib/pdfGenerator'
+import { generateBillingQRCode } from '@/lib/qrGenerator'
 import { sendBillingEmail } from '@/lib/microsoftGraph'
 import { getBillingPdfData } from '@/lib/billing-pdf-data'
 
@@ -25,7 +26,15 @@ export async function POST(
       return NextResponse.json({ error: 'Billing data not found' }, { status: 404 })
     }
 
-    const pdfBase64 = await generateBillingPDFBase64(pdfData)
+    const qrCodeUrl = await generateBillingQRCode({
+      balance: pdfData.result.result,
+      year: pdfData.result.billingPeriod.year,
+      unitNumber: pdfData.unit.unitNumber,
+      variableSymbol: pdfData.unit.variableSymbol,
+      bankAccount: pdfData.building?.bankAccount || null
+    });
+
+    const pdfBase64 = await generateBillingPDFBase64(pdfData, { qrCodeUrl })
 
     await sendBillingEmail({
       to: email,

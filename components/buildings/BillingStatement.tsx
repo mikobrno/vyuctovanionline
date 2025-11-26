@@ -148,10 +148,18 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
                 <td className="p-2 text-center text-gray-600 border-r border-gray-200">{service.share}%</td>
                 
                 <td className="p-2 text-right text-gray-600">{formatCurrency(service.buildingCost)}</td>
-                <td className="p-2 text-right text-gray-600">{service.buildingUnits > 0 ? formatNumber(service.buildingUnits) : ''}</td>
+                <td
+                  className={`p-2 text-gray-600 ${service.buildingUnits > 0 ? 'text-right' : 'text-center text-gray-400'}`}
+                >
+                  {service.buildingUnits > 0 ? formatNumber(service.buildingUnits) : '-'}
+                </td>
                 <td className="p-2 text-right text-gray-600 border-r border-gray-200">{service.pricePerUnit > 0 ? formatNumber(service.pricePerUnit) : ''}</td>
                 
-                <td className="p-2 text-right font-medium">{service.userUnits > 0 ? formatNumber(service.userUnits) : ''}</td>
+                <td
+                  className={`p-2 font-medium ${service.userUnits > 0 ? 'text-right text-gray-800' : 'text-center text-gray-400'}`}
+                >
+                  {service.userUnits > 0 ? formatNumber(service.userUnits) : '-'}
+                </td>
                 <td className="p-2 text-right font-bold text-gray-800 bg-yellow-50 border-r border-gray-200">{formatCurrency(service.userCost)}</td>
                 
                 <td className="p-2 text-right text-gray-600">{formatCurrency(service.advance)}</td>
@@ -295,13 +303,19 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
             </div>
           </div>
           
-          {data.qrCodeUrl && data.totals.result < 0 && (
+          {data.qrCodeUrl && data.totals.result < 0 ? (
             <div className="flex flex-col items-center justify-center border p-4 rounded bg-gray-50">
               <div className="font-bold mb-2 text-center">QR Platba</div>
               <img src={data.qrCodeUrl} alt="QR Platba" className="w-32 h-32" />
               <div className="text-xs text-center mt-1 text-gray-500">Naskenujte pro platbu</div>
             </div>
-          )}
+          ) : data.totals.result < 0 ? (
+            <div className="flex flex-col items-center justify-center border p-4 rounded bg-gray-50 text-gray-400 text-xs text-center">
+              <div className="font-bold mb-1">QR Platba nedostupná</div>
+              {!data.building.accountNumber && <div>Chybí číslo účtu domu</div>}
+              {!data.building.variableSymbol && <div>Chybí variabilní symbol</div>}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-8 pt-4 border-t border-gray-200 flex justify-between text-xs text-gray-500">

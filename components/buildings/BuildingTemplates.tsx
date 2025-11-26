@@ -10,7 +10,7 @@ interface Props {
   initialSmsBody: string | null;
 }
 
-const DEFAULT_SUBJECT = "vyúčtování #rok# | #jednotka_cislo# | #bytovy_dum#";
+const DEFAULT_SUBJECT = "vyúčtování #rok# | jednotka #jednotka_cislo# | #bytovy_dum#";
 const DEFAULT_BODY = `#osloveni#,
 zasíláme Vám v příloze vyúčtování k Vaší jednotce - #jednotka_cislo# v bytovém domě #bytovy_dum# za rok #rok#.
 

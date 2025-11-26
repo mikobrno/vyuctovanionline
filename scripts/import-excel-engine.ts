@@ -253,9 +253,10 @@ async function main() {
   }
   console.log(`✅ Vybrána budova: ${building.name}`);
 
-  const svjBankAccount = hf.getCellValue({ sheet: inputSheetId, col: 1, row: 21 })?.toString();
+  const svjBankAccount = hf.getCellValue({ sheet: inputSheetId, col: 1, row: 34 })?.toString();
   if (svjBankAccount) {
     await prisma.building.update({ where: { id: building.id }, data: { bankAccount: svjBankAccount } });
+    console.log(`✅ Aktualizován bankovní účet budovy: ${svjBankAccount}`);
   }
 
   const period = await prisma.billingPeriod.upsert({

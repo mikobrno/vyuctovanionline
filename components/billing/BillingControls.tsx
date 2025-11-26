@@ -8,14 +8,17 @@ interface Props {
   year: number;
   status?: 'DRAFT' | 'CALCULATED' | 'APPROVED' | 'SENT';
   billingPeriodId?: string;
+  selectedResultIds?: string[];
 }
 
-export function BillingControls({ buildingId, year, status = 'DRAFT', billingPeriodId }: Props) {
+export function BillingControls({ buildingId, year, status = 'DRAFT', billingPeriodId, selectedResultIds }: Props) {
   const router = useRouter();
   const [isCalculating, setIsCalculating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const selectedCount = selectedResultIds?.length ?? 0;
+  const hasSelection = selectedResultIds ? selectedCount > 0 : true;
 
   const handleCalculate = async () => {
     if (!confirm(`Opravdu chcete spustit nový výpočet pro rok ${year}? Stávající výsledky budou přepsány.`)) return;
@@ -83,12 +86,21 @@ export function BillingControls({ buildingId, year, status = 'DRAFT', billingPer
 
   const handleSendAll = async () => {
     if (!billingPeriodId) return;
-    if (!confirm(`Opravdu chcete odeslat notifikace (Email + SMS) všem vlastníkům v období ${year}?`)) return;
+    if (!hasSelection) {
+      alert('Vyberte prosím alespoň jednu jednotku pro odeslání.');
+      return;
+    }
+
+    const targetText = selectedResultIds ? `${selectedCount} jednotkám` : 'všem vlastníkům';
+
+    if (!confirm(`Opravdu chcete odeslat notifikace (Email + SMS) ${targetText} v období ${year}?`)) return;
 
     setIsSending(true);
     try {
       const response = await fetch(`/api/buildings/${buildingId}/billing-periods/${billingPeriodId}/send-all-notifications`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(selectedResultIds && selectedResultIds.length > 0 ? { resultIds: selectedResultIds } : {})
       });
 
       const data = await response.json();
@@ -169,7 +181,7 @@ export function BillingControls({ buildingId, year, status = 'DRAFT', billingPer
       {billingPeriodId && (
         <button 
           onClick={handleSendAll} 
-          disabled={isSending} 
+          disabled={isSending || !hasSelection} 
           className="inline-flex items-center justify-center rounded-xl text-sm font-medium transition-colors h-11 px-4 bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 disabled:bg-blue-400 dark:disabled:bg-blue-800 shadow-sm"
         >
           {isSending ? 'Odesílám...' : '🚀 Odeslat vše (Email + SMS)'}
