@@ -63,7 +63,12 @@ export async function GET(
 
         case 'AREA':
           // Součet všech ploch
-          buildingUnits = units.reduce((sum, unit) => sum + unit.totalArea, 0)
+          buildingUnits = units.reduce((sum, unit) => {
+            const areaValue = service.areaSource === 'CHARGEABLE_AREA'
+              ? (unit.floorArea ?? unit.totalArea ?? 0)
+              : (unit.totalArea || 0)
+            return sum + areaValue
+          }, 0)
           break
 
         case 'PERSON_MONTHS':

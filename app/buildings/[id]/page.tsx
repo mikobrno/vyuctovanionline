@@ -20,7 +20,7 @@ export default async function BuildingDetailPage({
   }
 
   const { id } = await params
-  const { tab = 'units' } = await searchParams
+  const { tab = 'settings' } = await searchParams
 
   const building = await prisma.building.findUnique({
     where: { id },

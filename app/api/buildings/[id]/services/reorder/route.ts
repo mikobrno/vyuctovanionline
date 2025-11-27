@@ -30,6 +30,7 @@ export async function PUT(
             dataSourceColumn: service.dataSourceColumn || null,
             customFormula: service.customFormula || null,
             userMergeWithNext: !!service.userMergeWithNext,
+            areaSource: service.areaSource || 'TOTAL_AREA',
             // We can add more fields here if needed
           }
         })

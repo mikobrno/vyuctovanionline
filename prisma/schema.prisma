@@ -26,6 +26,12 @@ model User {
   accounts      Account[]
   sessions      Session[]
   owners        Owner[]
+  startedCommunicationBatches CommunicationBatch[] @relation("CommunicationBatchStartedBy")
+  initiatedCommunications     Communication[]     @relation("CommunicationInitiatedBy")
+  communicationEvents         CommunicationEvent[] @relation("CommunicationEventActor")
+  communicationAuditNotes     CommunicationAuditNote[] @relation("CommunicationAuditAuthor")
+  createdDeliveryRecords      UnitDeliveryRecord[] @relation("UnitDeliveryRecordCreatedBy")
+  communicationExports        CommunicationExport[] @relation("CommunicationExportAuthor")
 
   @@map("users")
 }
@@ -112,6 +118,9 @@ model Building {
   costs         Cost[]
   billingPeriods BillingPeriod[]
   calculationConfigs CalculationConfig[]
+  communicationBatches CommunicationBatch[]
+  communications Communication[]
+  communicationExports CommunicationExport[]
 
   @@map("buildings")
 }
@@ -140,6 +149,9 @@ model Unit {
   billingResults        BillingResult[]
   personMonths          PersonMonth[]
   parameters            UnitParameter[]
+  communications        Communication[]
+  auditNotes            CommunicationAuditNote[]
+  deliveryRecords       UnitDeliveryRecord[]
 
   @@unique([buildingId, unitNumber])
   @@map("units")
@@ -210,6 +222,7 @@ model Service {
   name                String              // např. "Teplo", "TUV", "Správa"
   code                String              // zkratka
   methodology         CalculationMethod   @default(OWNERSHIP_SHARE) // způsob rozúčtování
+  areaSource          AreaSource          @default(TOTAL_AREA)
   
   // NOVÁ POLE PRO DYNAMICKÝ ENGINE
   dataSourceType      DataSourceType?     // typ datového zdroje (METER_DATA, UNIT_ATTRIBUTE, UNIT_COUNT, NONE)
@@ -282,6 +295,11 @@ enum DataSourceType {
   UNIT_COUNT        // Počet jednotek (rovným dílem)
   FIXED_AMOUNT      // Fixní částka
   NONE              // Nevyúčtovávat
+}
+
+enum AreaSource {
+  TOTAL_AREA       // Celková plocha (např. "Celková výměra")
+  CHARGEABLE_AREA  // Započitatelná plocha (např. "Započitatelná výměra")
 }
 
 enum MeterDataSource {
@@ -545,4 +563,201 @@ model CalculationConfig {
   building    Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
 
   @@map("calculation_configs")
+}
+
+model CommunicationBatch {
+  id            String                @id @default(cuid())
+  buildingId    String
+  year          Int
+  sourceFile    String?
+  retentionHint Int?
+  status        CommunicationBatchStatus @default(PENDING)
+  startedById   String?
+  startedAt     DateTime              @default(now())
+  completedAt   DateTime?
+  metadata      Json?
+
+  building      Building              @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  startedBy     User?                 @relation("CommunicationBatchStartedBy", fields: [startedById], references: [id])
+  communications Communication[]
+
+  @@index([buildingId, year])
+  @@map("communication_batches")
+}
+
+model Communication {
+  id                String                    @id @default(cuid())
+  buildingId        String
+  batchId           String?
+  unitId            String?
+  initiatedById     String?
+  year              Int?
+  channel           CommunicationChannel
+  deliveryStatus    CommunicationDeliveryStatus @default(PENDING)
+  subject           String?
+  previewText       String?
+  htmlBody          String?                   @db.Text
+  textBody          String?                   @db.Text
+  templateKey       String?
+  providerMessageId String?
+  metadata          Json?
+  queuedAt          DateTime?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  openedAt          DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  building          Building                  @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  batch             CommunicationBatch?       @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  unit              Unit?                     @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  initiatedBy       User?                     @relation("CommunicationInitiatedBy", fields: [initiatedById], references: [id])
+  events            CommunicationEvent[]
+  attachments       CommunicationAttachment[]
+  auditNotes        CommunicationAuditNote[]
+
+  @@index([buildingId, channel])
+  @@index([unitId])
+  @@map("communications")
+}
+
+model CommunicationEvent {
+  id               String                     @id @default(cuid())
+  communicationId  String
+  type             CommunicationEventType
+  source           CommunicationEventSource   @default(SYSTEM)
+  payload          Json?
+  userId           String?
+  createdAt        DateTime                   @default(now())
+
+  communication    Communication              @relation(fields: [communicationId], references: [id], onDelete: Cascade)
+  user             User?                      @relation("CommunicationEventActor", fields: [userId], references: [id])
+
+  @@index([communicationId, type])
+  @@map("communication_events")
+}
+
+model CommunicationAttachment {
+  id               String         @id @default(cuid())
+  communicationId  String
+  storagePath      String
+  filename         String
+  mimeType         String?
+  sizeBytes        Int?
+  createdAt        DateTime       @default(now())
+
+  communication    Communication  @relation(fields: [communicationId], references: [id], onDelete: Cascade)
+
+  @@map("communication_attachments")
+}
+
+model CommunicationAuditNote {
+  id               String    @id @default(cuid())
+  communicationId  String?
+  unitId           String?
+  userId           String?
+  note             String    @db.Text
+  createdAt        DateTime  @default(now())
+
+  communication    Communication? @relation(fields: [communicationId], references: [id], onDelete: SetNull)
+  unit             Unit?         @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  user             User?         @relation("CommunicationAuditAuthor", fields: [userId], references: [id])
+
+  @@index([unitId])
+  @@map("communication_audit_notes")
+}
+
+model UnitDeliveryRecord {
+  id             String                @id @default(cuid())
+  unitId         String
+  year           Int
+  method         PhysicalDeliveryMethod
+  dispatchedAt   DateTime?
+  deliveredAt    DateTime?
+  proofFilePath  String?
+  note           String?               @db.Text
+  createdById    String?
+  createdAt      DateTime              @default(now())
+
+  unit           Unit                  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  createdBy      User?                 @relation("UnitDeliveryRecordCreatedBy", fields: [createdById], references: [id])
+
+  @@index([unitId, year])
+  @@map("unit_delivery_records")
+}
+
+model CommunicationExport {
+  id             String        @id @default(cuid())
+  buildingId     String?
+  year           Int?
+  filters        Json?
+  status         ExportStatus  @default(PENDING)
+  storagePath    String?
+  createdById    String?
+  createdAt      DateTime      @default(now())
+  completedAt    DateTime?
+  errorMessage   String?       @db.Text
+
+  building       Building?     @relation(fields: [buildingId], references: [id], onDelete: SetNull)
+  createdBy      User?         @relation("CommunicationExportAuthor", fields: [createdById], references: [id])
+
+  @@index([buildingId, status])
+  @@map("communication_exports")
+}
+
+enum CommunicationBatchStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum CommunicationChannel {
+  EMAIL
+  SMS
+  LETTER
+  LETTER_WITH_RECEIPT
+}
+
+enum CommunicationDeliveryStatus {
+  PENDING
+  ENQUEUED
+  SENT
+  DELIVERED
+  OPENED
+  FAILED
+  CANCELLED
+}
+
+enum CommunicationEventType {
+  CREATED
+  ENQUEUED
+  SENT
+  DELIVERED
+  OPENED
+  FAILED
+  RESEND_REQUESTED
+  MANUAL_MARKED
+  EXPORT_GENERATED
+}
+
+enum CommunicationEventSource {
+  SYSTEM
+  QUEUE
+  WEBHOOK
+  MANUAL
+}
+
+enum PhysicalDeliveryMethod {
+  LETTER
+  LETTER_WITH_RECEIPT
+  HAND_DELIVERY
+  OTHER
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
 }

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import CalculationEngineTest from './CalculationEngineTest'
 import BillingGenerator from './BillingGenerator'
 import BillingResultsViewer from './BillingResultsViewer'
 import BuildingOverview from './BuildingOverview'
@@ -946,20 +945,6 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
             />
           </div>
 
-          <div className="pt-8 border-t border-gray-200 dark:border-slate-700">
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">🧪 Test výpočetního enginu</h3>
-            <CalculationEngineTest
-              buildingId={building.id}
-              services={buildingServices.map((s: any) => ({
-                id: s.id,
-                name: s.name,
-                code: s.code,
-                dataSourceType: s.dataSourceType,
-                dataSourceName: s.dataSourceName,
-                unitAttributeName: s.unitAttributeName,
-              }))}
-            />
-          </div>
         </div>
       )}
 

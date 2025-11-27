@@ -6,7 +6,9 @@
     "dev": "next dev -p 3000",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "queue:communications": "ts-node --compiler-options {\"module\":\"CommonJS\"} scripts/workers/communicationWorker.ts",
+    "queue:exports": "ts-node --compiler-options {\"module\":\"CommonJS\"} scripts/workers/exportWorker.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
@@ -14,6 +16,7 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
     "@azure/identity": "^4.13.0",
+    "@azure/service-bus": "^7.9.5",
     "@hello-pangea/dnd": "^18.0.1",
     "@hookform/resolvers": "^5.2.2",
     "@microsoft/microsoft-graph-client": "^3.0.7",

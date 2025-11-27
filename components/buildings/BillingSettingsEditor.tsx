@@ -8,6 +8,7 @@ import type { Service as PrismaService, Unit as PrismaUnit, Cost as PrismaCost }
 type BillingService = PrismaService & {
   method?: PrismaService['methodology']
   userMergeWithNext?: boolean
+  areaSource?: AreaSourceOption | null
 }
 
 type BillingUnit = PrismaUnit & {
@@ -21,11 +22,14 @@ type BillingCost = PrismaCost
 
 type GlobalOverrideState = Record<string, { buildingUnits?: string; share?: string; manualCost?: string }>
 type UnitOverrideState = Record<string, Record<string, { userUnits?: string; advance?: string }>>
+type UnitMonthlyBreakdown = { prescribed: number[]; payments: number[]; persons: number[] }
 
 type ManualOverridesSnapshot = {
   global?: GlobalOverrideState
   unit?: UnitOverrideState
 } | null
+
+type AreaSourceOption = 'TOTAL_AREA' | 'CHARGEABLE_AREA'
 
 type ServiceSnapshot = {
   serviceId?: string
@@ -51,6 +55,7 @@ type ServiceSnapshot = {
   advancePaymentColumn?: string | null
   excelColumn?: string | null
   groupShareLabel?: string | null
+  areaSource?: AreaSourceOption | null
 }
 
 type ConfigVersionSummary = {
@@ -83,6 +88,9 @@ const toNullableNumber = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+const resolveAreaSource = (service?: { areaSource?: AreaSourceOption | null }) : AreaSourceOption =>
+  service?.areaSource === 'CHARGEABLE_AREA' ? 'CHARGEABLE_AREA' : 'TOTAL_AREA'
+
 const mergeServiceSnapshot = (service: BillingService, snapshot: ServiceSnapshot): BillingService => {
   const resolvedMethod = (snapshot.methodology ?? snapshot.method ?? service.method ?? service.methodology) as BillingService['method']
   const nextMethod = resolvedMethod ?? service.methodology
@@ -108,6 +116,9 @@ const mergeServiceSnapshot = (service: BillingService, snapshot: ServiceSnapshot
     advancePaymentColumn: snapshot.advancePaymentColumn ?? service.advancePaymentColumn,
     excelColumn: snapshot.excelColumn ?? service.excelColumn,
     groupShareLabel: snapshot.groupShareLabel ?? service.groupShareLabel,
+    areaSource: snapshot.areaSource
+      ? resolveAreaSource({ areaSource: snapshot.areaSource })
+      : resolveAreaSource(service),
   }
 }
 
@@ -158,9 +169,14 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   const [tempMeterTypes, setTempMeterTypes] = useState<string[]>([])
   const [tempMeterSourceColumn, setTempMeterSourceColumn] = useState<string>('consumption')
 
+  // State pro konfiguraci plochy
+  const [editingAreaServiceId, setEditingAreaServiceId] = useState<string | null>(null)
+  const [tempAreaSource, setTempAreaSource] = useState<AreaSourceOption>('TOTAL_AREA')
+
   // State pro zálohy
   const [advancesData, setAdvancesData] = useState<Record<string, Record<string, { total: number }>>>({})
   const [advancePayments, setAdvancePayments] = useState<Record<string, Record<string, number>>>({})
+  const [monthlyBreakdown, setMonthlyBreakdown] = useState<Record<string, UnitMonthlyBreakdown>>({})
   const [billingSummary, setBillingSummary] = useState<{ current: BillingResultSummary | null; previous: BillingResultSummary | null } | null>(null)
   const [billingSummaryLoading, setBillingSummaryLoading] = useState(false)
   
@@ -287,6 +303,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
       .then(json => {
         setAdvancesData(json.data || {})
         setAdvancePayments(json.paidByUnitService || {})
+        setMonthlyBreakdown(json.monthlyBreakdown || {})
       })
       .catch(err => console.error('Failed to load advances', err))
   }, [buildingId, year])
@@ -333,6 +350,22 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   }, [units, selectedUnitId])
 
   const selectedUnit = useMemo(() => units.find(u => u.id === selectedUnitId) || units[0], [units, selectedUnitId])
+  const selectedMonthlyBreakdown = useMemo(() => monthlyBreakdown[selectedUnitId], [monthlyBreakdown, selectedUnitId])
+
+  const monthlyRows = useMemo(() => (
+    Array.from({ length: 12 }, (_, idx) => ({
+      month: idx + 1,
+      prescribed: selectedMonthlyBreakdown?.prescribed?.[idx] ?? 0,
+      payments: selectedMonthlyBreakdown?.payments?.[idx] ?? 0
+    }))
+  ), [selectedMonthlyBreakdown])
+
+  const monthlyTotals = useMemo(() => monthlyRows.reduce((acc, row) => ({
+    prescribed: acc.prescribed + row.prescribed,
+    payments: acc.payments + row.payments
+  }), { prescribed: 0, payments: 0 }), [monthlyRows])
+
+  const hasMonthlyData = useMemo(() => monthlyRows.some(row => row.prescribed !== 0 || row.payments !== 0), [monthlyRows])
 
   // Filtrování nákladů podle roku
   const filteredCosts = useMemo(() => {
@@ -473,17 +506,24 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const totalArea = units.reduce((sum, u: any) => sum + (u.totalArea || 0), 0)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const chargeableArea = units.reduce((sum, u: any) => sum + (u.floorArea ?? u.totalArea ?? 0), 0)
+    const useChargeableArea = resolveAreaSource(service) === 'CHARGEABLE_AREA'
+    const unitAreaValue = useChargeableArea
+      ? (unit.floorArea ?? unit.totalArea ?? 0)
+      : (unit.totalArea || 0)
+    const totalAreaValue = useChargeableArea ? chargeableArea : totalArea
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const totalPeople = units.reduce((sum, u: any) => sum + (u.residents || 0), 0)
     const unitCount = units.length
 
     const context: Record<string, number> = {
       TOTAL_COST: totalCost,
       UNIT_SHARE: unit.shareDenominator ? (unit.shareNumerator / unit.shareDenominator) : 0,
-      UNIT_AREA: unit.totalArea || 0,
+      UNIT_AREA: unitAreaValue,
       UNIT_PEOPLE: unit.residents || 0,
       UNIT_CONSUMPTION: unitConsumption,
       TOTAL_CONSUMPTION: totalConsumption,
-      TOTAL_AREA: totalArea,
+      TOTAL_AREA: totalAreaValue,
       TOTAL_PEOPLE: totalPeople,
       UNIT_COUNT: unitCount
     }
@@ -646,9 +686,76 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     setEditingMeterServiceId(null)
   }
 
+  const applyAreaSourceChange = (serviceId: string, nextSource: AreaSourceOption) => {
+    setLocalServices(prev => prev.map(s => (s.id === serviceId ? { ...s, areaSource: nextSource } : s)))
+    setGlobalOverrides(prev => {
+      const overrides = prev[serviceId]
+      if (!overrides?.buildingUnits) return prev
+      const nextOverrides = { ...prev }
+      const rest = { ...overrides }
+      delete rest.buildingUnits
+      if (Object.keys(rest).length === 0) {
+        delete nextOverrides[serviceId]
+      } else {
+        nextOverrides[serviceId] = rest
+      }
+      return nextOverrides
+    })
+  }
+
+  const openAreaConfig = (service: BillingService) => {
+    setEditingAreaServiceId(service.id)
+    setTempAreaSource(resolveAreaSource(service))
+  }
+
+  const saveAreaConfig = async () => {
+    if (!editingAreaServiceId) return
+    const nextSource = tempAreaSource
+    applyAreaSourceChange(editingAreaServiceId, nextSource)
+
+    const serviceToUpdate = localServices.find(s => s.id === editingAreaServiceId)
+    if (serviceToUpdate) {
+      try {
+        const res = await fetch(`/api/buildings/${buildingId}/services/${editingAreaServiceId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: serviceToUpdate.name,
+            code: serviceToUpdate.code,
+            methodology: serviceToUpdate.methodology || serviceToUpdate.method || 'AREA',
+            dataSourceType: serviceToUpdate.dataSourceType || null,
+            dataSourceName: serviceToUpdate.dataSourceName || null,
+            dataSourceColumn: serviceToUpdate.dataSourceColumn || null,
+            unitAttributeName: serviceToUpdate.unitAttributeName || null,
+            measurementUnit: serviceToUpdate.measurementUnit || null,
+            unitPrice: serviceToUpdate.unitPrice ?? null,
+            fixedAmountPerUnit: serviceToUpdate.fixedAmountPerUnit ?? null,
+            divisor: serviceToUpdate.divisor ?? null,
+            customFormula: serviceToUpdate.customFormula || null,
+            advancePaymentColumn: serviceToUpdate.advancePaymentColumn || null,
+            showOnStatement: serviceToUpdate.showOnStatement !== false,
+            isActive: serviceToUpdate.isActive !== false,
+            order: serviceToUpdate.order ?? 0,
+            userMergeWithNext: serviceToUpdate.userMergeWithNext || false,
+            areaSource: nextSource,
+          }),
+        })
+        if (!res.ok) {
+          throw new Error('Failed to persist area source')
+        }
+        router.refresh()
+      } catch (error) {
+        console.error('Failed to save area configuration', error)
+      }
+    }
+
+    setEditingAreaServiceId(null)
+  }
+
   // Pomocné výpočty pro celý dům
   const buildingStats = useMemo(() => {
     const totalArea = units.reduce((sum, u) => sum + (u.totalArea || 0), 0)
+    const chargeableArea = units.reduce((sum, u) => sum + (u.floorArea ?? u.totalArea ?? 0), 0)
     const totalPersonMonths = units.reduce((sum, u) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pmSum = u.personMonths?.reduce((s: number, pm: any) => s + pm.personCount, 0) || 0
@@ -706,7 +813,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
       }
     })
 
-    return { totalArea, totalPersonMonths, unitCount, consumptionByService }
+    return { totalArea, chargeableArea, totalPersonMonths, unitCount, consumptionByService }
   }, [units, localServices])
 
   // Výpočet základních hodnot pro službu (D, E, G)
@@ -743,8 +850,13 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
         unitAmount = ((unit.shareNumerator || 0) / (unit.shareDenominator || 1)) * 100
         break
       case 'AREA':
-        buildingAmount = buildingStats.totalArea
-        unitAmount = unit.totalArea || 0
+        {
+          const useChargeableArea = resolveAreaSource(service) === 'CHARGEABLE_AREA'
+          buildingAmount = useChargeableArea ? buildingStats.chargeableArea : buildingStats.totalArea
+          unitAmount = useChargeableArea
+            ? (unit.floorArea ?? unit.totalArea ?? 0)
+            : (unit.totalArea || 0)
+        }
         break
       case 'PERSON_MONTHS':
         buildingAmount = buildingStats.totalPersonMonths
@@ -1128,6 +1240,14 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     ))
   }
 
+  const toggleServiceActivity = (serviceId: string) => {
+    setLocalServices(prev => prev.map(service => {
+      if (service.id !== serviceId) return service
+      const isCurrentlyActive = service.isActive !== false
+      return { ...service, isActive: !isCurrentlyActive }
+    }))
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updateService = (serviceId: string, updates: any) => {
     setLocalServices(prev => prev.map(s => 
@@ -1136,6 +1256,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   }
 
   const displayedServices = localServices.filter(s => showHiddenServices || s.isActive !== false)
+  const editingAreaService = editingAreaServiceId ? localServices.find(s => s.id === editingAreaServiceId) : null
 
   const rowMetrics = displayedServices.map(service => {
     const preview = calculatePreview(service)
@@ -1574,6 +1695,95 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
         </div>
       )}
 
+      {editingAreaServiceId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md border border-gray-200 dark:border-slate-700 overflow-hidden transform transition-all scale-100">
+            <div className="bg-linear-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 px-8 py-6 border-b border-blue-200 dark:border-blue-800/40 flex items-start justify-between">
+              <div>
+                <p className="text-sm font-semibold text-blue-600 dark:text-blue-300 mb-1">Konfigurace plochy</p>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">{editingAreaService?.name}</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Vyberte, zda používat celkovou nebo započitatelnou plochu (Excel sloupec G vs. H).</p>
+              </div>
+              <button
+                onClick={() => setEditingAreaServiceId(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-2 hover:bg-white/50 dark:hover:bg-slate-700/50 rounded-lg"
+                title="Zavřít"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="px-8 py-7 space-y-6">
+              <div className="grid grid-cols-1 gap-4">
+                <label className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center gap-4 ${tempAreaSource === 'TOTAL_AREA' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-500 shadow-inner' : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:border-gray-300 dark:hover:border-slate-600'}`}>
+                  <input
+                    type="radio"
+                    name="area-source"
+                    value="TOTAL_AREA"
+                    checked={tempAreaSource === 'TOTAL_AREA'}
+                    onChange={() => setTempAreaSource('TOTAL_AREA')}
+                    className="hidden"
+                  />
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-2xl">🏢</div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Celková plocha</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Sloupec G (výkaz obsahuje balkony i sklepy).</p>
+                  </div>
+                  {tempAreaSource === 'TOTAL_AREA' && (
+                    <svg className="w-5 h-5 text-blue-600 dark:text-blue-300" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </label>
+                <label className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center gap-4 ${tempAreaSource === 'CHARGEABLE_AREA' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-500 shadow-inner' : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:border-gray-300 dark:hover:border-slate-600'}`}>
+                  <input
+                    type="radio"
+                    name="area-source"
+                    value="CHARGEABLE_AREA"
+                    checked={tempAreaSource === 'CHARGEABLE_AREA'}
+                    onChange={() => setTempAreaSource('CHARGEABLE_AREA')}
+                    className="hidden"
+                  />
+                  <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-2xl">📐</div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Započitatelná plocha</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Sloupec H (jen plocha zahrnutá do rozúčtování).</p>
+                  </div>
+                  {tempAreaSource === 'CHARGEABLE_AREA' && (
+                    <svg className="w-5 h-5 text-blue-600 dark:text-blue-300" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </label>
+              </div>
+
+              <div className="bg-gray-50 dark:bg-slate-900/40 border border-gray-200 dark:border-slate-700 rounded-2xl p-4 text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                <p><strong className="font-semibold text-gray-900 dark:text-white">Celková plocha domu:</strong> {buildingStats.totalArea.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</p>
+                <p className="mt-1"><strong className="font-semibold text-gray-900 dark:text-white">Započitatelná plocha:</strong> {buildingStats.chargeableArea.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</p>
+                <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">Přepnutím zdroje se automaticky přepočítají jednotky domu i bytu (sloupce E a G). Pokud jste měli ruční přepis hodnoty domu, vymažeme jej, aby se zobrazila nová plocha.</p>
+              </div>
+            </div>
+
+            <div className="px-8 py-5 bg-gray-50 dark:bg-slate-900/40 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-3">
+              <button
+                onClick={() => setEditingAreaServiceId(null)}
+                className="px-6 py-2.5 text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-xl font-semibold transition-all"
+              >
+                Zrušit
+              </button>
+              <button
+                onClick={saveAreaConfig}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-lg transition-colors"
+              >
+                ✓ Uložit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hlavní editor - Moderní tabulka */}
       <div className="bg-white dark:bg-slate-800 shadow-lg rounded-2xl overflow-hidden border border-gray-200 dark:border-slate-700">
         <div className="bg-linear-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 px-8 py-5 border-b border-blue-200 dark:border-blue-800/50 flex justify-between items-center">
@@ -1647,8 +1857,39 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                               <td className="px-2 py-2.5 text-center text-gray-400 dark:text-gray-500 font-mono text-xs font-bold">
                                 {index + 1}
                               </td>
-                              <td className="px-4 py-2.5 font-semibold text-gray-900 dark:text-white text-sm">
-                                {service.name}
+                              <td className="px-4 py-2.5 text-sm">
+                                <div className="flex items-start gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleServiceActivity(service.id)}
+                                    className={`mt-0.5 p-1.5 rounded-lg border text-gray-500 transition-colors ${
+                                      service.isActive === false
+                                        ? 'border-gray-300 bg-gray-100 dark:border-slate-600 dark:bg-slate-800 text-gray-400'
+                                        : 'border-transparent hover:border-gray-200 hover:bg-gray-100 dark:hover:bg-slate-700'
+                                    }`}
+                                    title={service.isActive === false ? 'Zobrazit řádek' : 'Skrýt řádek'}
+                                    aria-label={service.isActive === false ? 'Zobrazit službu' : 'Skrýt službu'}
+                                  >
+                                    {service.isActive === false ? (
+                                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                    ) : (
+                                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                      </svg>
+                                    )}
+                                  </button>
+                                  <div>
+                                    <div className="font-semibold text-gray-900 dark:text-white">{service.name}</div>
+                                    {service.isActive === false && (
+                                      <span className="text-[10px] font-semibold uppercase tracking-widest text-rose-500 dark:text-rose-300">
+                                        Skryto
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </td>
                               <td className="px-3 py-2.5">
                                 <div className="relative flex items-center gap-1">
@@ -1674,6 +1915,16 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                                        className="shrink-0 p-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
                                        title="Konfigurace měřidel"
                                        aria-label="Konfigurace měřidel"
+                                     >
+                                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                     </button>
+                                  )}
+                                  {service.method === 'AREA' && (
+                                     <button
+                                       onClick={() => openAreaConfig(service)}
+                                       className="shrink-0 p-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
+                                       title="Konfigurace plochy"
+                                       aria-label="Konfigurace plochy"
                                      >
                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                                      </button>
@@ -1960,6 +2211,86 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
             </div>
           </div>
         )}
+      </div>
+
+      <div className="mt-8">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-4">
+          <div>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Kontrola předpisů a plateb</p>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Měsíční přehled za rok {year}</h3>
+          </div>
+          <span className="text-sm text-gray-500 dark:text-gray-400">Jednotka {selectedUnit?.unitNumber ?? '—'}</span>
+        </div>
+
+        {!hasMonthlyData && (
+          <p className="text-sm text-amber-600 dark:text-amber-400 mb-3">
+            Pro vybraný rok zatím nejsou uložené žádné předpisy ani platby. Zobrazené tabulky ukazují nulové hodnoty.
+          </p>
+        )}
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl shadow-sm">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
+              <h4 className="text-base font-semibold text-gray-900 dark:text-white">Přehled úhrad</h4>
+              <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrencyValue(monthlyTotals.payments)}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-slate-900/40 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wide">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Měsíc</th>
+                    <th className="px-4 py-3 text-right">Uhrazeno</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                  {monthlyRows.map((row) => (
+                    <tr key={`paid-${row.month}`} className="text-gray-900 dark:text-slate-200">
+                      <td className="px-4 py-2">{row.month}</td>
+                      <td className="px-4 py-2 text-right font-mono">{formatCurrencyValue(row.payments)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50 dark:bg-slate-900/40 border-t border-gray-100 dark:border-slate-700">
+                  <tr>
+                    <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Celkem</td>
+                    <td className="px-4 py-3 text-right font-bold text-gray-900 dark:text-white">{formatCurrencyValue(monthlyTotals.payments)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl shadow-sm">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
+              <h4 className="text-base font-semibold text-gray-900 dark:text-white">Přehled předpisů</h4>
+              <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">{formatCurrencyValue(monthlyTotals.prescribed)}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-slate-900/40 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wide">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Měsíc</th>
+                    <th className="px-4 py-3 text-right">Předpis</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                  {monthlyRows.map((row) => (
+                    <tr key={`prescribed-${row.month}`} className="text-gray-900 dark:text-slate-200">
+                      <td className="px-4 py-2">{row.month}</td>
+                      <td className="px-4 py-2 text-right font-mono">{formatCurrencyValue(row.prescribed)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50 dark:bg-slate-900/40 border-t border-gray-100 dark:border-slate-700">
+                  <tr>
+                    <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200">Celkem</td>
+                    <td className="px-4 py-3 text-right font-bold text-gray-900 dark:text-white">{formatCurrencyValue(monthlyTotals.prescribed)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

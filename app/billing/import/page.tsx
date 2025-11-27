@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import DashboardNav from '@/components/dashboard/DashboardNav'
 import CompleteImport from '@/components/buildings/CompleteImport'
+import { prisma } from '@/lib/prisma'
 
 export default async function CompleteImportPage({
   searchParams,
@@ -18,6 +19,11 @@ export default async function CompleteImportPage({
   const { buildingId } = await searchParams
   const currentYear = new Date().getFullYear() - 1
 
+  const buildings = await prisma.building.findMany({
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true },
+  })
+
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardNav session={session} />
@@ -31,7 +37,7 @@ export default async function CompleteImportPage({
             </p>
           </div>
 
-          <CompleteImport year={currentYear} buildingId={buildingId} />
+          <CompleteImport year={currentYear} buildingId={buildingId} buildings={buildings} />
 
           <div className="mt-8 bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">📋 Co bude importováno</h2>

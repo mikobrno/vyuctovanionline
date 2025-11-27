@@ -54,6 +54,7 @@ export async function PATCH(
         showOnStatement: body.showOnStatement,
         isActive: body.isActive,
         order: body.order,
+        areaSource: body.areaSource,
         userMergeWithNext: body.userMergeWithNext ?? service.userMergeWithNext,
         serviceGroupId: body.serviceGroupId,
         groupShareLabel: body.groupShareLabel,

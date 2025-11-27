@@ -6,6 +6,7 @@ import StatsCards from '@/components/dashboard/StatsCards'
 import CompleteImport from '@/components/buildings/CompleteImport'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
+import DashboardBuildingSelect, { BuildingOption } from '@/components/dashboard/DashboardBuildingSelect'
 
 export default async function DashboardPage({
   searchParams,
@@ -20,17 +21,14 @@ export default async function DashboardPage({
 
   const resolvedSearchParams = await searchParams
   const buildingId = typeof resolvedSearchParams.buildingId === 'string' ? resolvedSearchParams.buildingId : undefined
-  
-  let buildingName = ''
-  if (buildingId) {
-    const building = await prisma.building.findUnique({
-      where: { id: buildingId },
-      select: { name: true }
-    })
-    if (building) {
-      buildingName = building.name
-    }
-  }
+
+  const buildings: BuildingOption[] = await prisma.building.findMany({
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true }
+  })
+
+  const selectedBuilding = buildingId ? buildings.find((b: BuildingOption) => b.id === buildingId) : undefined
+  const buildingName = selectedBuilding?.name ?? ''
 
   return (
     <AppLayout user={session.user}>
@@ -58,8 +56,24 @@ export default async function DashboardPage({
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">Rychlý import dat</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">Nahrajte Excel soubor pro hromadné zpracování.</p>
             </div>
+            <form
+              action="/dashboard"
+              method="get"
+              className="flex flex-col gap-3 sm:flex-row sm:items-end"
+            >
+              <DashboardBuildingSelect
+                buildings={buildings}
+                initialBuildingId={buildingId}
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 transition-colors self-start sm:self-auto"
+              >
+                Načíst
+              </button>
+            </form>
           </div>
-          <CompleteImport buildingId={buildingId} />
+          <CompleteImport buildingId={buildingId} buildings={buildings} />
         </div>
 
         {/* Rychlé akce */}

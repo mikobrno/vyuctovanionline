@@ -1,7 +1,9 @@
 'use client'
 
+import Link from 'next/link'
 import { signOut } from 'next-auth/react'
 import { Session } from 'next-auth'
+import { ThemeToggle } from '@/components/ThemeToggle'
 
 interface DashboardNavProps {
   session: Session
@@ -13,7 +15,7 @@ export default function DashboardNav({ session }: DashboardNavProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
-            <a href="/dashboard" className="flex items-center group">
+            <Link href="/dashboard" className="flex items-center group">
               <div className="p-2 bg-teal-50 dark:bg-teal-900/30 rounded-xl group-hover:bg-teal-100 dark:group-hover:bg-teal-900/50 transition-colors">
                 <svg className="h-6 w-6 text-teal-600 dark:text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -22,25 +24,26 @@ export default function DashboardNav({ session }: DashboardNavProps) {
               <span className="ml-3 text-xl font-bold text-gray-900 dark:text-white tracking-tight">
                 Vyúčtování<span className="text-teal-600 dark:text-teal-400">Online</span>
               </span>
-            </a>
+            </Link>
 
             <div className="hidden md:flex ml-10 space-x-2">
-              <a
+              <Link
                 href="/dashboard"
                 className="text-gray-600 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-gray-50 dark:hover:bg-slate-700 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
               >
                 Dashboard
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/buildings"
                 className="text-gray-600 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-gray-50 dark:hover:bg-slate-700 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
               >
                 Domy
-              </a>
+              </Link>
             </div>
           </div>
 
           <div className="flex items-center space-x-4">
+            <ThemeToggle />
             <div className="text-right hidden sm:block">
               <p className="text-sm font-bold text-gray-900 dark:text-white">
                 {session.user.name || session.user.email}

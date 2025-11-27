@@ -359,7 +359,7 @@ export async function calculateServiceDistribution(
     // FALLBACK NA STAROU LOGIKU (pro zpětnou kompatibilitu)
     default: {
       // Pokud není nastaven dataSourceType, použít starý methodology
-      return calculateLegacyMethodology(service.methodology, units, totalCost)
+      return calculateLegacyMethodology(service, units, totalCost)
     }
   }
 
@@ -383,13 +383,13 @@ function getAttributeLabel(attributeName: string): string {
  * Stará logika pro zpětnou kompatibilitu
  */
 async function calculateLegacyMethodology(
-  methodology: string,
+  service: { methodology: string; areaSource?: 'TOTAL_AREA' | 'CHARGEABLE_AREA' },
   units: Unit[],
   totalCost: number
 ): Promise<CalculationResult[]> {
   const results: CalculationResult[] = []
 
-  switch (methodology) {
+  switch (service.methodology) {
     case 'OWNERSHIP_SHARE': {
       for (const unit of units) {
         const share = unit.shareNumerator / unit.shareDenominator
@@ -411,20 +411,26 @@ async function calculateLegacyMethodology(
     }
 
     case 'AREA': {
-      const totalArea = units.reduce((sum, u) => sum + (u.floorArea ?? 0), 0)
-      const pricePerM2 = totalCost / totalArea
+      const usesChargeableArea = service.areaSource === 'CHARGEABLE_AREA'
+      const totalArea = units.reduce((sum, u) => {
+        const areaValue = usesChargeableArea ? (u.floorArea ?? u.totalArea ?? 0) : (u.totalArea || 0)
+        return sum + areaValue
+      }, 0)
+      const pricePerM2 = totalArea > 0 ? totalCost / totalArea : 0
       for (const unit of units) {
-        const floorArea = unit.floorArea ?? 0
-        const amount = floorArea * pricePerM2
+        const unitArea = usesChargeableArea ? (unit.floorArea ?? unit.totalArea ?? 0) : (unit.totalArea || 0)
+        const amount = totalArea > 0 ? unitArea * pricePerM2 : 0
         results.push({
           unitId: unit.id,
           unitName: unit.unitNumber,
           amount: Math.round(amount * 100) / 100,
-          formula: `${floorArea.toFixed(2)} m² × ${pricePerM2.toFixed(2)} Kč/m²`,
+          formula: totalArea > 0
+            ? `${unitArea.toFixed(2)} m² × ${pricePerM2.toFixed(2)} Kč/m²`
+            : 'Chybí data o ploše',
           breakdown: {
             totalCost,
             divisor: totalArea,
-            unitValue: floorArea,
+            unitValue: unitArea,
             pricePerUnit: pricePerM2,
           },
         })

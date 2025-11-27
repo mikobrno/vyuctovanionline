@@ -1,6 +1,8 @@
 import { prisma } from './prisma'
 import { CalculationMethod } from '@prisma/client'
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 interface UnitCalculationData {
   unitId: string
   unitNumber: string
@@ -246,8 +248,13 @@ export class BillingCalculator {
         return units.reduce((sum, unit) => sum + (unit.ownershipShare || 0), 0);
       
       case 'AREA':
-        // Součet všech ploch bytů v m²
-        return units.reduce((sum, unit) => sum + (unit.area || 0), 0);
+        // Součet všech ploch bytů podle nastaveného zdroje
+        return units.reduce((sum, unit) => {
+          const areaValue = service.areaSource === 'CHARGEABLE_AREA'
+            ? (unit.floorArea ?? unit.totalArea ?? 0)
+            : (unit.totalArea || 0);
+          return sum + areaValue;
+        }, 0);
       
       case 'PERSON_MONTHS':
         // Součet všech osobo-měsíců
@@ -298,11 +305,22 @@ export class BillingCalculator {
 
       // 2. PODLE VÝMĚRY
       case 'AREA':
-        const totalArea = allUnits.reduce((sum, u) => sum + u.totalArea, 0)
-        unitCost = (totalServiceCost / totalArea) * unitData.area
-        calculationBasis = `(${totalServiceCost.toFixed(2)} Kč / ${totalArea.toFixed(2)} m²) × ${unitData.area.toFixed(2)} m² = ${unitCost.toFixed(2)} Kč`
-        buildingConsumption = totalArea
-        unitConsumption = unitData.area
+        const usesChargeableArea = service.areaSource === 'CHARGEABLE_AREA'
+        const totalArea = allUnits.reduce((sum, u) => {
+          const areaValue = usesChargeableArea ? (u.floorArea ?? u.totalArea ?? 0) : (u.totalArea || 0)
+          return sum + areaValue
+        }, 0)
+        const unitArea = usesChargeableArea ? (currentUnit.floorArea ?? currentUnit.totalArea ?? 0) : (currentUnit.totalArea || 0)
+
+        if (totalArea > 0) {
+          unitCost = (totalServiceCost / totalArea) * unitArea
+          calculationBasis = `(${totalServiceCost.toFixed(2)} Kč / ${totalArea.toFixed(2)} m²) × ${unitArea.toFixed(2)} m² = ${unitCost.toFixed(2)} Kč`
+          buildingConsumption = totalArea
+          unitConsumption = unitArea
+        } else {
+          unitCost = 0
+          calculationBasis = 'Chybí data o ploše'
+        }
         break
 
       // 3. OSOBO-MĚSÍCE
@@ -336,12 +354,10 @@ export class BillingCalculator {
         const meter = currentUnit.meters.find((m: { type: string; isActive: boolean }) => m.type === meterType && m.isActive)
         
         // Zkontrolovat, zda existuje předvypočítaný náklad (z Excelu)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const readingWithPrecalc = meter?.readings.find((r: any) => r.precalculatedCost !== null && r.precalculatedCost !== undefined)
 
         if (readingWithPrecalc) {
           // POUŽÍT PŘEDVYPOČÍTANÝ NÁKLAD Z EXCELU
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           unitCost = (readingWithPrecalc as any).precalculatedCost
           unitConsumption = readingWithPrecalc.consumption || 0
           calculationBasis = `Převzato z externího výpočtu (Excel): ${unitCost.toFixed(2)} Kč`

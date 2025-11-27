@@ -1,4 +1,4 @@
-import { PrismaClient, CalculationMethod } from '@prisma/client';
+import { CalculationMethod } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 interface ServiceCalculationResult {
@@ -283,17 +283,25 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
           }
           break;
 
-        case 'AREA': // Podle plochy
-          const unitArea = unit.totalArea || 0;
-          buildingConsumption = totalArea;
+        case 'AREA': { // Podle plochy
+          const usesChargeableArea = service.areaSource === 'CHARGEABLE_AREA';
+          const buildingAreaTotal = usesChargeableArea ? totalChargeableArea : totalArea;
+          const unitArea = usesChargeableArea
+            ? (unit.floorArea ?? unit.totalArea ?? 0)
+            : (unit.totalArea || 0);
+
+          buildingConsumption = buildingAreaTotal;
           unitConsumption = unitArea;
-          
-          if (totalArea > 0) {
-            pricePerUnit = serviceBuildingCost / totalArea;
-            calculatedCost = safeNumber(serviceBuildingCost * (unitArea / totalArea));
-            basisText = `${unitArea.toFixed(2)} m² / ${totalArea.toFixed(2)} m²`;
+
+          if (buildingAreaTotal > 0) {
+            pricePerUnit = serviceBuildingCost / buildingAreaTotal;
+            calculatedCost = safeNumber(serviceBuildingCost * (unitArea / buildingAreaTotal));
+            basisText = `${usesChargeableArea ? 'Započitatelná' : 'Celková'} plocha: ${unitArea.toFixed(2)} m² / ${buildingAreaTotal.toFixed(2)} m²`;
+          } else {
+            basisText = 'Chybí data o ploše';
           }
           break;
+        }
 
         case 'PERSON_MONTHS': // Na osoby
           const unitPeople = unit.residents || 0;

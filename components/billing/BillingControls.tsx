@@ -120,6 +120,7 @@ export function BillingControls({ buildingId, year, status = 'DRAFT', billingPer
   };
 
   const isLocked = status === 'APPROVED' || status === 'SENT';
+  const isDeleteLocked = status === 'SENT';
 
   return (
     <div className="flex flex-wrap gap-3 mb-6 items-center">
@@ -149,9 +150,9 @@ export function BillingControls({ buildingId, year, status = 'DRAFT', billingPer
       {/* Tlačítko Smazat */}
       <button 
         onClick={handleDelete} 
-        disabled={isDeleting || isLocked} 
+        disabled={isDeleting || isDeleteLocked} 
         className={`inline-flex items-center justify-center rounded-xl text-sm font-medium transition-colors h-11 px-4 border shadow-sm ${
-          isLocked 
+          isDeleteLocked 
             ? 'border-gray-200 dark:border-slate-700 text-gray-400 dark:text-gray-500 cursor-not-allowed' 
             : 'border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 bg-white dark:bg-slate-800'
         }`}
