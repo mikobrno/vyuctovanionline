@@ -181,6 +181,49 @@ export async function POST(
   }
 }
 
+// PUT - Aktualizace konfigurace existující verze
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; versionId: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session) return NextResponse.json({ error: 'Nepřihlášen' }, { status: 401 })
+
+    const { id, versionId } = await params
+    const body = await request.json()
+    const { services, manualOverrides } = body
+
+    const version = await calculationConfigModel.findUnique({
+      where: { id: versionId },
+    })
+
+    if (!version || version.buildingId !== id) {
+      return NextResponse.json({ error: 'Verze nenalezena' }, { status: 404 })
+    }
+
+    // Aktualizuj konfiguraci verze
+    const updatedVersion = await calculationConfigModel.update({
+      where: { id: versionId },
+      data: {
+        config: {
+          services: services || [],
+          manualOverrides: manualOverrides || null,
+        },
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      id: updatedVersion.id,
+      name: updatedVersion.name,
+    })
+  } catch (error) {
+    console.error('Failed to update config version', error)
+    return NextResponse.json({ error: 'Chyba při aktualizaci verze' }, { status: 500 })
+  }
+}
+
 // PATCH - Nastavení výchozí verze
 export async function PATCH(
   request: NextRequest,

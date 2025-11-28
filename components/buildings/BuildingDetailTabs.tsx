@@ -7,6 +7,7 @@ import BillingResultsViewer from './BillingResultsViewer'
 import BuildingOverview from './BuildingOverview'
 import BillingSettingsEditor from './BillingSettingsEditor'
 import { BuildingTemplates } from './BuildingTemplates'
+import ServiceMappingUploader from './ServiceMappingUploader'
  
 
 interface BuildingDetailTabsProps {
@@ -936,9 +937,25 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
       {/* Nastavení */}
       {tab === 'settings' && (
         <div className="space-y-8">
+          {/* Mapování služeb */}
+          <ServiceMappingUploader 
+            buildingId={building.id}
+            buildingName={building.name}
+            hasMapping={building.services?.some((s: any) => s.advancePaymentColumn)}
+            services={building.services?.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              code: s.code,
+              excelColumn: s.excelColumn,
+              advancePaymentColumn: s.advancePaymentColumn,
+              isActive: s.isActive
+            })) || []}
+          />
+          
           <div>
             <BillingSettingsEditor 
               buildingId={building.id}
+              building={building}
               services={servicesState}
               units={buildingUnits}
               costs={buildingCosts}

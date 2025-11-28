@@ -1,8 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 
 interface ImportSummary {
   building: {
@@ -40,25 +39,23 @@ interface ImportSummary {
 
 interface ImportResult {
   message: string
-  summary: ImportSummary
+  summary?: ImportSummary
+  // Pro JSON auto-import
+  building?: { id: string; name: string; created: boolean }
+  year?: number
+  advances?: { created: number; updated: number; total: number }
   logs?: string[]
-}
-
-type BuildingSelectOption = {
-  id: string
-  name: string
 }
 
 interface CompleteImportProps {
   year?: number
   buildingId?: string
-  buildings?: BuildingSelectOption[]
+  // Už nepotřebujeme buildings - auto-detekce z JSON
 }
 
 export default function CompleteImport({
   year = new Date().getFullYear() - 1,
   buildingId,
-  buildings = [],
 }: CompleteImportProps) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -69,60 +66,6 @@ export default function CompleteImport({
   const [progress, setProgress] = useState<string[]>([])
   const [currentStep, setCurrentStep] = useState('')
   const [percentage, setPercentage] = useState(0)
-  const [localBuildingId, setLocalBuildingId] = useState(buildingId ?? '')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const pickerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    setLocalBuildingId(buildingId ?? '')
-  }, [buildingId])
-
-  const normalizedBuildings = useMemo(() => buildings ?? [], [buildings])
-
-  const filteredBuildings = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return normalizedBuildings
-    }
-    const normalizedQuery = searchTerm
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-
-    return normalizedBuildings.filter((building) =>
-      building.name
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .includes(normalizedQuery)
-    )
-  }, [normalizedBuildings, searchTerm])
-
-  const resolvedBuildingId = buildingId ?? localBuildingId ?? ''
-
-  const selectedBuilding = useMemo(
-    () => normalizedBuildings.find((building) => building.id === resolvedBuildingId) || null,
-    [normalizedBuildings, resolvedBuildingId]
-  )
-
-  const canPickBuilding = !resolvedBuildingId && normalizedBuildings.length > 0
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
-        setPickerOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  useEffect(() => {
-    if (!selectedBuilding) {
-      return
-    }
-    setSearchTerm(selectedBuilding.name)
-  }, [selectedBuilding])
 
   const resetInput = () => {
     if (inputRef.current) {
@@ -130,7 +73,7 @@ export default function CompleteImport({
     }
   }
 
-  const uploadFile = useCallback(async (file: File, targetBuildingId?: string) => {
+  const uploadFile = useCallback(async (file: File) => {
     setUploading(true)
     setError(null)
     setResult(null)
@@ -151,16 +94,68 @@ export default function CompleteImport({
 
       const formData = new FormData()
       formData.append('file', file)
-      if (targetBuildingId) {
-        formData.append('buildingId', targetBuildingId)
+      if (buildingId) {
+        formData.append('buildingId', buildingId)
       }
       formData.append('year', year.toString())
 
       setProgress(prev => [...prev, '📤 Odesílám data na server...'])
-      setCurrentStep(isJson ? 'Zpracovávám JSON soubor...' : 'Zpracovávám Excel soubor...')
-
-      // Volat správný endpoint podle typu souboru
-      const endpoint = isJson ? '/api/import/json' : '/api/import/complete'
+      
+      if (isJson) {
+        // Pro JSON soubory použijeme auto-detect endpoint
+        setCurrentStep('Zpracovávám JSON soubor (automatická detekce)...')
+        setProgress(prev => [...prev, '🔍 Automaticky rozpoznávám dům a rok z JSON...'])
+        
+        const response = await fetch('/api/import/json-auto', {
+          method: 'POST',
+          body: formData,
+        })
+        
+        const data = await response.json()
+        
+        if (!response.ok) {
+          throw new Error(data.error || data.message || 'Import se nezdařil')
+        }
+        
+        // Úspěšný JSON import
+        setProgress(prev => [...prev, `🏢 Dům: ${data.building.name} ${data.building.created ? '(nově vytvořen)' : '(existující)'}`])
+        setProgress(prev => [...prev, `📅 Rok: ${data.year}`])
+        setProgress(prev => [...prev, `💰 Předpisy záloh: ${data.advances.total} záznamů (${data.advances.created} nových)`])
+        
+        // Info o mapování služeb
+        if (data.serviceMapping) {
+          if (data.serviceMapping.hasMapping) {
+            setProgress(prev => [...prev, `🔗 Mapování služeb: ${data.serviceMapping.mappedServices}/${data.serviceMapping.totalServices} služeb nakonfigurováno`])
+          } else if (data.serviceMapping.unmappedJsonKeys?.length > 0) {
+            setProgress(prev => [...prev, `⚠️ Služby bez mapování: ${data.serviceMapping.unmappedJsonKeys.join(', ')}`])
+            setProgress(prev => [...prev, `💡 Tip: Nahrajte Excel s mapováním služeb v Nastavení domu`])
+          }
+        }
+        
+        // Warnings
+        if (data.warnings?.length > 0) {
+          for (const warning of data.warnings) {
+            setProgress(prev => [...prev, warning])
+          }
+        }
+        
+        setCurrentStep('✅ Import dokončen!')
+        setResult(data)
+        setPercentage(100)
+        router.refresh()
+        
+        // Přesměrování na detail domu
+        if (data.building?.id) {
+          setTimeout(() => {
+            router.push(`/buildings/${data.building.id}`)
+          }, 1500)
+        }
+        return
+      }
+      
+      // Pro Excel soubory - původní logika
+      setCurrentStep('Zpracovávám Excel soubor...')
+      const endpoint = '/api/import/complete'
       const response = await fetch(endpoint, {
         method: 'POST',
         body: formData,
@@ -289,19 +284,14 @@ export default function CompleteImport({
       setUploading(false)
       resetInput()
     }
-  }, [year, router])
+  }, [year, router, buildingId])
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) {
       return
     }
 
-    if (!resolvedBuildingId) {
-      setError('Vyberte prosím dům, pro který chcete import provést.')
-      return
-    }
-
-    void uploadFile(files[0], resolvedBuildingId)
+    void uploadFile(files[0])
   }
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -331,134 +321,31 @@ export default function CompleteImport({
         Nahrát kompletní vyúčtování
       </h2>
       
-      {!resolvedBuildingId ? (
-        canPickBuilding ? (
-          <div className="mb-6 bg-gray-50 dark:bg-slate-900/30 border border-gray-200 dark:border-slate-700 p-6 rounded-2xl">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Vyberte dům pro import</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              Klikněte do pole níže, začněte psát název domu a rovnou jej vyberte – stejné chování jako v horním přepínači.
-            </p>
-            <div className="mt-4" ref={pickerRef}>
-              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                Vyberte dům
-              </label>
-              <div className="relative mt-1">
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(event) => {
-                    setSearchTerm(event.target.value)
-                    if (localBuildingId) {
-                      setLocalBuildingId('')
-                    }
-                    setPickerOpen(true)
-                  }}
-                  onFocus={() => setPickerOpen(true)}
-                  placeholder="Začněte psát název domu..."
-                  className="w-full rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-teal-500"
-                  autoComplete="off"
-                />
-                <svg
-                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-
-                {pickerOpen && (
-                  <div className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                    {filteredBuildings.length > 0 ? (
-                      filteredBuildings.map((option) => {
-                        const isActive = option.id === localBuildingId
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors ${
-                              isActive
-                                ? 'bg-teal-50 text-teal-700 dark:bg-teal-900/40 dark:text-teal-200'
-                                : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-slate-800'
-                            }`}
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => {
-                              setLocalBuildingId(option.id)
-                              setSearchTerm(option.name)
-                              setPickerOpen(false)
-                              setError(null)
-                            }}
-                          >
-                            <span className="truncate">{option.name}</span>
-                            {isActive && (
-                              <svg className="h-4 w-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                            )}
-                          </button>
-                        )
-                      })
-                    ) : (
-                      <div className="px-4 py-3 text-sm text-gray-500 dark:text-gray-300">
-                        Žádný dům neodpovídá hledanému výrazu.
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            <p className="mt-4 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Po výběru domu se zobrazí importní formulář níže.
+      {/* Info box o automatické detekci */}
+      <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-4 rounded-xl">
+        <div className="flex items-start gap-3">
+          <span className="text-2xl">🔍</span>
+          <div>
+            <h3 className="text-sm font-bold text-blue-800 dark:text-blue-200 mb-1">Automatická detekce</h3>
+            <p className="text-sm text-blue-700 dark:text-blue-300">
+              Stačí nahrát JSON soubor - systém automaticky rozpozná dům a rok z dat v souboru.
+              Pokud dům neexistuje, vytvoří se automaticky.
             </p>
           </div>
-        ) : (
-          <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-6 rounded-xl flex items-start gap-3">
-            <div className="shrink-0 p-1 bg-yellow-100 dark:bg-yellow-900/40 rounded-lg text-yellow-600 dark:text-yellow-400">
-              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-yellow-800 dark:text-yellow-200 mb-2">Není k dispozici žádný dům</h3>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                Nejdříve prosím vytvořte alespoň jeden dům. Poté jej budete moct vybrat přímo zde a spustit import.
-              </p>
-              <div className="mt-4">
-                <Link href="/buildings" className="inline-flex items-center px-4 py-2 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 rounded-lg text-sm font-bold hover:bg-yellow-200 dark:hover:bg-yellow-900/60 transition-colors">
-                  Přejít na seznam domů &rarr;
-                </Link>
-              </div>
-            </div>
-          </div>
-        )
-      ) : (
-        <>
-          {selectedBuilding && (
-            <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm text-teal-800 dark:border-teal-900/40 dark:bg-teal-900/10 dark:text-teal-200">
-              <span className="font-semibold uppercase tracking-wide text-xs text-teal-700 dark:text-teal-200">Vybraný dům:</span>
-              <span className="text-base font-bold text-gray-900 dark:text-white">{selectedBuilding.name}</span>
-            </div>
-          )}
-          <div className="mb-6">
-            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-              Rok vyúčtování
-            </label>
-            <div className="text-lg font-bold text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-900 px-4 py-2 rounded-xl inline-block border border-gray-200 dark:border-slate-700">
-              {year}
-            </div>
-          </div>
+        </div>
+      </div>
 
-          <div 
-            className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all duration-200 ${
-              dragActive 
-                ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20' 
-                : 'border-gray-300 dark:border-slate-600 hover:border-teal-400 dark:hover:border-teal-500 hover:bg-gray-50 dark:hover:bg-slate-700/50'
-            }`}
-          >
-            <input
-              ref={inputRef}
-              id="complete-upload"
-              type="file"
+      <div 
+        className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all duration-200 ${
+          dragActive 
+            ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20' 
+            : 'border-gray-300 dark:border-slate-600 hover:border-teal-400 dark:hover:border-teal-500 hover:bg-gray-50 dark:hover:bg-slate-700/50'
+        }`}
+      >
+        <input
+          ref={inputRef}
+          id="complete-upload"
+          type="file"
               accept=".xlsx,.xls,.json"
               className="hidden"
               onChange={handleChange}
@@ -538,60 +425,85 @@ export default function CompleteImport({
                   Souhrn importu
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                  {/* Dům - podporuje oba formáty (summary.building nebo building) */}
                   <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
                     <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Dům</p>
-                    <p className="text-lg font-bold text-gray-900 dark:text-white truncate" title={result.summary.building.name}>
-                      {result.summary.building.name}
+                    <p className="text-lg font-bold text-gray-900 dark:text-white truncate" title={(result.summary?.building || result.building)?.name}>
+                      {(result.summary?.building || result.building)?.name}
                     </p>
-                    {result.summary.building.created && <span className="inline-block mt-1 text-[10px] font-bold bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded-full">NOVÝ</span>}
+                    {(result.summary?.building || result.building)?.created && <span className="inline-block mt-1 text-[10px] font-bold bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded-full">NOVÝ</span>}
                   </div>
                   
-                  <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
-                    <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Jednotky</p>
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.summary.units.total}</p>
-                      {result.summary.units.created > 0 && (
-                        <span className="text-xs font-bold text-green-600 dark:text-green-400">
-                          +{result.summary.units.created} nových
-                        </span>
-                      )}
+                  {/* Rok - jen pro JSON auto-import */}
+                  {result.year && (
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
+                      <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Rok</p>
+                      <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.year}</p>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
-                    <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Služby</p>
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.summary.services.total}</p>
-                      {result.summary.services.created > 0 && (
-                        <span className="text-xs font-bold text-green-600 dark:text-green-400">
-                          +{result.summary.services.created} nových
-                        </span>
-                      )}
+                  {/* Jednotky - jen pro Excel import */}
+                  {result.summary?.units && (
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
+                      <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Jednotky</p>
+                      <div className="flex items-baseline gap-2">
+                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.summary.units.total}</p>
+                        {result.summary.units.created > 0 && (
+                          <span className="text-xs font-bold text-green-600 dark:text-green-400">
+                            +{result.summary.units.created} nových
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
-                    <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Náklady (faktury)</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.summary.costs.total}</p>
-                  </div>
+                  {/* Služby - jen pro Excel import */}
+                  {result.summary?.services && (
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
+                      <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Služby</p>
+                      <div className="flex items-baseline gap-2">
+                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.summary.services.total}</p>
+                        {result.summary.services.created > 0 && (
+                          <span className="text-xs font-bold text-green-600 dark:text-green-400">
+                            +{result.summary.services.created} nových
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-                  <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
-                    <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Odečty</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.summary.readings.total}</p>
-                  </div>
+                  {/* Náklady - jen pro Excel import */}
+                  {result.summary?.costs && (
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
+                      <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Náklady (faktury)</p>
+                      <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.summary.costs.total}</p>
+                    </div>
+                  )}
 
-                  <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
-                    <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Platby</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.summary.payments.total}</p>
-                  </div>
+                  {/* Odečty - jen pro Excel import */}
+                  {result.summary?.readings && (
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
+                      <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Odečty</p>
+                      <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.summary.readings.total}</p>
+                    </div>
+                  )}
 
-                  {result.summary.advances && (
+                  {/* Platby - jen pro Excel import */}
+                  {result.summary?.payments && (
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50">
+                      <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Platby</p>
+                      <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.summary.payments.total}</p>
+                    </div>
+                  )}
+
+                  {/* Předpisy záloh - podporuje oba formáty */}
+                  {(result.summary?.advances || result.advances) && (
                     <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50 col-span-2 md:col-span-3">
                       <p className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Předpis záloh</p>
                       <div className="flex items-baseline gap-3">
-                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.summary.advances.total}</p>
+                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{(result.summary?.advances || result.advances)?.total}</p>
                         <span className="text-xs font-medium text-gray-500 dark:text-slate-400">
-                          ({result.summary.advances.created} nových, {result.summary.advances.updated} upraveno)
+                          ({(result.summary?.advances || result.advances)?.created} nových, {(result.summary?.advances || result.advances)?.updated} upraveno)
                         </span>
                       </div>
                     </div>
@@ -599,7 +511,7 @@ export default function CompleteImport({
                 </div>
                 <div className="mt-6 flex justify-end">
                   <a
-                    href={`/buildings/${result.summary.building.id}`}
+                    href={`/buildings/${(result.summary?.building || result.building)?.id}`}
                     className="inline-flex items-center px-6 py-3 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                   >
                     Zobrazit detail domu &rarr;
@@ -607,7 +519,7 @@ export default function CompleteImport({
                 </div>
               </div>
 
-              {result.summary.warnings.length > 0 && (
+              {result.summary?.warnings && result.summary.warnings.length > 0 && (
                 <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-2xl overflow-hidden">
                   <div className="px-6 py-4 bg-yellow-100 dark:bg-yellow-900/40 border-b border-yellow-200 dark:border-yellow-800">
                     <h3 className="text-sm font-bold text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
@@ -627,7 +539,7 @@ export default function CompleteImport({
                 </div>
               )}
 
-              {result.summary.errors.length > 0 && (
+              {result.summary?.errors && result.summary.errors.length > 0 && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl overflow-hidden">
                   <div className="px-6 py-4 bg-red-100 dark:bg-red-900/40 border-b border-red-200 dark:border-red-800">
                     <h3 className="text-sm font-bold text-red-800 dark:text-red-200 flex items-center gap-2">
@@ -648,8 +560,6 @@ export default function CompleteImport({
               )}
             </div>
           )}
-        </>
-      )}
     </div>
   )
 }

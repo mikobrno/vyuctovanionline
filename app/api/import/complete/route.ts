@@ -2,9 +2,35 @@ import { NextRequest } from 'next/server'
 import { read, utils } from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import { CalculationMethod, DataSourceType, MeterType, Service, Meter } from '@prisma/client'
+import * as fs from 'fs/promises'
+import * as path from 'path'
 
 export const runtime = 'nodejs'
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
+
+// Mapování JSON klíčů predpisů na možné názvy služeb v DB
+const PREDPISY_SERVICE_MAP: Record<string, string[]> = {
+  elektrika: ['elektrika', 'elektricka energie', 'elektrická energie', 'elektrina', 'elektrické', 'elektrická energie (společné prostory)'],
+  uklid: ['uklid', 'úklid', 'uklid bytoveho domu', 'úklid bytového domu'],
+  komin: ['komin', 'komín', 'kominy', 'komíny'],
+  vytah: ['vytah', 'výtah', 'pravidelna udrzba vytah', 'pravidelná údržba výtah'],
+  voda: ['voda', 'studena voda', 'studená voda', 'vodne', 'vodné', 'vodne a stocne', 'vodné a stočné'],
+  sprava: ['sprava', 'správa', 'sprava domu', 'správa domu'],
+  opravy: ['opravy', 'fond oprav', 'fond opravy'],
+  teplo: ['teplo', 'vytapeni', 'vytápění'],
+  tuv: ['tuv', 'teplá voda', 'tepla voda', 'ohrev', 'ohřev', 'ohrev teple vody', 'ohřev teplé vody', 'ohřev teplé vody (tuv)'],
+  pojisteni: ['pojisteni', 'pojištění', 'pojisteni domu', 'pojištění domu'],
+  ostatni_sklep: ['ostatni sklep', 'ostatní sklep', 'ostatni naklady garaz', 'ostatní náklady garáž', 'ostatní náklady (garáž a sklepy)'],
+  internet: ['internet'],
+  ostatni_upc: ['ostatni upc', 'ostatní upc', 'upc', 'ostatní náklady - upc', 'ostatni naklady - upc', 'ostatní náklady upc'],
+  sta: ['sta', 'antena', 'anténa', 'spolecna antena', 'společná anténa'],
+  spolecne_naklady: ['spolecne naklady', 'společné náklady'],
+  statutari: ['statutari', 'statutární', 'odmena vyboru', 'odměna výboru', 'mzdové náklady', 'mzdove naklady'],
+  najemne: ['najemne', 'nájemné', 'ostatni najemne', 'ostatní nájemné'],
+  sluzby: ['sluzby', 'služby', 'ostatní služby'],
+  ostatni_sluzby: ['ostatni sluzby', 'ostatní služby', 'ostatni sluzby 2', 'ostatní služby 2'],
+  poplatek_pes: ['poplatek pes', 'poplatek za psa', 'tvorba na splatku', 'tvorba na splátku', 'tvorba na splátku úvěru', 'uver', 'úvěr']
+}
 
 // Mapování názvů záložek na typy měřidel
 const SHEET_TO_METER_TYPE: Record<string, string> = {
@@ -28,6 +54,111 @@ function normalizeHeaderCell(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+// Funkce pro nalezení služby podle JSON klíče předpisu
+function findServiceByPredpisKey(services: Service[], predpisKey: string): Service | undefined {
+  const possibleNames = PREDPISY_SERVICE_MAP[predpisKey]
+  if (!possibleNames) return undefined
+  
+  for (const name of possibleNames) {
+    const normalizedName = normalizeHeaderCell(name)
+    const found = services.find(s => normalizeHeaderCell(s.name) === normalizedName)
+    if (found) return found
+  }
+  
+  // Fuzzy fallback - hledáme částečnou shodu
+  for (const name of possibleNames) {
+    const normalizedName = normalizeHeaderCell(name)
+    const found = services.find(s => {
+      const sName = normalizeHeaderCell(s.name)
+      return sName.includes(normalizedName) || normalizedName.includes(sName)
+    })
+    if (found) return found
+  }
+  
+  return undefined
+}
+
+// Typy pro JSON strukturu předpisů
+interface JsonPredpis {
+  oznaceni: string
+  uzivatel?: string
+  [key: string]: string | Record<string, number> | undefined
+}
+
+interface JsonHouseInfo {
+  nazev?: string
+  sidlo?: string
+}
+
+interface JsonVstupniData {
+  adresa?: string
+  spravce?: string
+}
+
+interface JsonData {
+  house_info?: JsonHouseInfo
+  vstupni_data?: JsonVstupniData
+  predpisy?: JsonPredpis[]
+}
+
+// Funkce pro načtení JSON souboru s předpisy
+async function loadJsonPredpisy(jsonPath: string): Promise<JsonData | null> {
+  try {
+    const content = await fs.readFile(jsonPath, 'utf-8')
+    return JSON.parse(content) as JsonData
+  } catch {
+    return null
+  }
+}
+
+// Funkce pro kontrolu zda JSON data odpovídají budově
+function jsonMatchesBuilding(jsonData: JsonData, buildingName: string, buildingAddress: string | null): boolean {
+  const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+  
+  const buildingNameNorm = normalize(buildingName)
+  const buildingAddrNorm = buildingAddress ? normalize(buildingAddress) : ''
+  
+  // Zkusíme párovat podle house_info
+  if (jsonData.house_info) {
+    const jsonNazev = jsonData.house_info.nazev ? normalize(jsonData.house_info.nazev) : ''
+    const jsonSidlo = jsonData.house_info.sidlo ? normalize(jsonData.house_info.sidlo) : ''
+    
+    // Částečná shoda názvu nebo sídla
+    if (jsonNazev && (jsonNazev.includes(buildingNameNorm) || buildingNameNorm.includes(jsonNazev))) return true
+    if (jsonSidlo && buildingAddrNorm && (jsonSidlo.includes(buildingAddrNorm) || buildingAddrNorm.includes(jsonSidlo))) return true
+    
+    // Extrahujeme ulici z adresy pro porovnání
+    const extractStreet = (addr: string) => {
+      const match = addr.match(/^([^,\d]+)/i)
+      return match ? normalize(match[1]) : ''
+    }
+    
+    const jsonStreet = extractStreet(jsonSidlo)
+    const buildingStreet = extractStreet(buildingNameNorm) || extractStreet(buildingAddrNorm)
+    
+    if (jsonStreet && buildingStreet && (jsonStreet.includes(buildingStreet) || buildingStreet.includes(jsonStreet))) return true
+  }
+  
+  // Zkusíme párovat podle vstupni_data.adresa
+  if (jsonData.vstupni_data?.adresa) {
+    const jsonAdresa = normalize(jsonData.vstupni_data.adresa)
+    if (jsonAdresa && buildingAddrNorm && (jsonAdresa.includes(buildingAddrNorm) || buildingAddrNorm.includes(jsonAdresa))) return true
+    
+    // Extrahujeme ulici
+    const extractStreet = (addr: string) => {
+      const match = addr.match(/^([^,\d]+)/i)
+      return match ? normalize(match[1]) : ''
+    }
+    
+    const jsonStreet = extractStreet(jsonAdresa)
+    const buildingStreet = extractStreet(buildingNameNorm) || extractStreet(buildingAddrNorm)
+    
+    if (jsonStreet && buildingStreet && (jsonStreet.includes(buildingStreet) || buildingStreet.includes(jsonStreet))) return true
+  }
+  
+  return false
 }
 
 function parseNumberCell(value: string | undefined) {
@@ -1414,6 +1545,118 @@ export async function POST(req: NextRequest) {
       // 7. IMPORT PŘEDPISŮ
       await send({ type: 'progress', percentage: 95, step: 'Importuji předpisy záloh...' })
       
+      // Rok pro předpisy
+      const periodYear = billingPeriodRecord?.year ?? parseInt(billingPeriod, 10)
+      
+      // --- PRIORITA 1: Zkusíme načíst předpisy z JSON souboru ---
+      let jsonPredpisyImported = false
+      const jsonFileName = `${billingPeriod}.json` // např. "2024.json"
+      const jsonPath = path.join(process.cwd(), 'public', 'import', jsonFileName)
+      
+      await log(`[Předpis] Hledám JSON soubor: ${jsonPath}`)
+      
+      const jsonData = await loadJsonPredpisy(jsonPath)
+      
+      if (jsonData?.predpisy && jsonData.predpisy.length > 0) {
+        // KONTROLA: Zkontrolujeme zda JSON odpovídá importované budově
+        const jsonMatchesBldg = jsonMatchesBuilding(jsonData, building.name, building.address)
+        
+        if (!jsonMatchesBldg) {
+          const jsonBuildingInfo = jsonData.house_info?.nazev || jsonData.vstupni_data?.adresa || 'neznámá'
+          await log(`[Předpis] ⚠️ JSON soubor je pro jinou budovu (${jsonBuildingInfo}), přeskakuji JSON import`)
+          await log(`[Předpis] Aktuální budova: ${building.name} (${building.address || 'bez adresy'})`)
+        } else {
+          await log(`[Předpis] ✓ JSON soubor odpovídá budově ${building.name}`)
+        
+        await log(`[Předpis] Nalezen JSON soubor s ${jsonData.predpisy.length} jednotkami`)
+        
+        // Načteme všechny služby pro budovu
+        const allServices = await prisma.service.findMany({ where: { buildingId: building.id } })
+        await log(`[Předpis] Nalezeno ${allServices.length} služeb v DB`)
+        
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const advancesToCreate: any[] = []
+        let matchedServices = 0
+        let unmatchedKeys: string[] = []
+        
+        for (const predpis of jsonData.predpisy) {
+          // Najdeme jednotku podle oznaceni (např. "Byt č. 1513/01")
+          const unitOznaceni = predpis.oznaceni
+          const strippedOznaceni = stripUnitPrefixes(unitOznaceni)
+          const unit = unitMap.get(unitOznaceni) || unitMap.get(strippedOznaceni)
+          
+          if (!unit) {
+            await log(`[Předpis JSON] Jednotka nenalezena: "${unitOznaceni}"`)
+            continue
+          }
+          
+          // Procházíme všechny klíče v predpisu (kromě oznaceni a uzivatel)
+          for (const [key, value] of Object.entries(predpis)) {
+            if (key === 'oznaceni' || key === 'uzivatel') continue
+            if (typeof value !== 'object' || value === null) continue
+            
+            // value je Record<string, number> s měsíci jako klíči
+            const monthlyData = value as Record<string, number>
+            
+            // Najdeme službu podle klíče
+            const service = findServiceByPredpisKey(allServices, key)
+            if (!service) {
+              if (!unmatchedKeys.includes(key)) {
+                unmatchedKeys.push(key)
+              }
+              continue
+            }
+            
+            matchedServices++
+            
+            // Přidáme zálohy pro každý měsíc
+            for (const [monthStr, amount] of Object.entries(monthlyData)) {
+              const month = parseInt(monthStr, 10)
+              if (isNaN(month) || month < 1 || month > 12) continue
+              if (amount <= 0) continue
+              
+              advancesToCreate.push({
+                unitId: unit.id,
+                serviceId: service.id,
+                year: periodYear,
+                month: month,
+                amount: amount
+              })
+            }
+          }
+        }
+        
+        if (unmatchedKeys.length > 0) {
+          await log(`[Předpis JSON] Nenalezené služby pro klíče: ${unmatchedKeys.join(', ')}`)
+        }
+        
+        if (advancesToCreate.length > 0) {
+          // Smažeme staré zálohy pro tuto budovu a období
+          await prisma.advanceMonthly.deleteMany({
+            where: {
+              unit: { buildingId: building.id },
+              year: periodYear
+            }
+          })
+          
+          await prisma.advanceMonthly.createMany({
+            data: advancesToCreate
+          })
+          
+          summary.advances = { created: advancesToCreate.length, updated: 0, total: advancesToCreate.length }
+          await log(`[Předpis JSON] Úspěšně importováno ${advancesToCreate.length} záznamů záloh z JSON (${matchedServices} mapování služeb)`)
+          jsonPredpisyImported = true
+        } else {
+          await log(`[Předpis JSON] Žádné zálohy k importu z JSON`)
+        }
+        } // konec else (jsonMatchesBldg)
+      } else {
+        await log(`[Předpis] JSON soubor nenalezen nebo neobsahuje předpisy, používám Excel`)
+      }
+      
+      // --- FALLBACK: Excel import (pouze pokud JSON nebylo úspěšné) ---
+      if (!jsonPredpisyImported) {
+      
       let advancesSheetName = workbook.SheetNames.find(name => {
         const n = name.toLowerCase().replace(/\s+/g, ' ').trim()
         return n === 'předpis po mesici' || n === 'predpis po mesici'
@@ -1425,6 +1668,7 @@ export async function POST(req: NextRequest) {
             return n.includes('zálohy') || n.includes('zalohy')
          })
       }
+
 
       if (advancesSheetName) {
         await log(`[Předpis] Začínám zpracování listu "${advancesSheetName}"...`)
@@ -1466,16 +1710,74 @@ export async function POST(req: NextRequest) {
             }
             return colIndex
           }
-          const periodYear = billingPeriodRecord?.year
           
-          // --- NOVÁ LOGIKA: Mapování přes "Vstupní data" ---
+          const serviceMapping: { serviceId: string, colIndex: number, serviceName: string }[] = []
+          
+          // --- NOVÁ LOGIKA 0: Mapování přímo z hlavičky listu "Předpis po měsíci" (řádek 1) ---
+          // V řádku 1 jsou názvy služeb (např. "Vodné a stočné", "Teplo") přímo ve sloupcích
+          // kde jsou i data záloh. Sloupce mají strukturu: 12 měsíců + celkem.
+          {
+            const headerRow = rawData[0] as unknown[] | undefined
+            if (headerRow && headerRow.length > 0) {
+              const services = await prisma.service.findMany({ where: { buildingId: building.id } })
+              const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ')
+              
+              await log(`[Předpis] Hledám názvy služeb v řádku 1 listu "${advancesSheetName}"...`)
+              
+              for (let colIdx = 0; colIdx < headerRow.length; colIdx++) {
+                const cellValue = String(headerRow[colIdx] ?? '').trim()
+                if (!cellValue || cellValue.length < 3) continue
+                
+                // Přeskočíme buňky které vypadají jako čísla měsíců nebo "celkem"
+                if (/^\d+$/.test(cellValue)) continue
+                if (/^(celkem|součet|suma|měsíc|mesic|seznam)$/i.test(cellValue)) continue
+                
+                // Hledáme službu s odpovídajícím názvem
+                const normalizedCell = normalize(cellValue)
+                let matchedService = services.find(s => normalize(s.name) === normalizedCell)
+                
+                // Fuzzy matching - pokud není přesná shoda
+                if (!matchedService) {
+                  matchedService = services.find(s => {
+                    const sName = normalize(s.name)
+                    return sName.includes(normalizedCell) || normalizedCell.includes(sName)
+                  })
+                }
+                
+                if (matchedService) {
+                  // Najdeme sloupec s "celkem" pro tuto službu (obvykle 13 sloupců doprava)
+                  // nebo použijeme přímo tento sloupec jako začátek bloku měsíců
+                  const colLetter = utils.encode_col(colIdx)
+                  
+                  // Zkontrolujeme, jestli už nemáme mapování pro tuto službu
+                  const existingMapping = serviceMapping.find(m => m.serviceId === matchedService!.id)
+                  if (!existingMapping) {
+                    serviceMapping.push({ 
+                      serviceId: matchedService.id, 
+                      colIndex: colIdx, 
+                      serviceName: matchedService.name 
+                    })
+                    await log(`[Předpis] Mapování z hlavičky: "${cellValue}" -> služba "${matchedService.name}" (sloupec ${colLetter}, index ${colIdx})`)
+                    
+                    // Aktualizujeme službu v DB s advancePaymentColumn
+                    await prisma.service.update({
+                      where: { id: matchedService.id },
+                      data: { advancePaymentColumn: colLetter }
+                    })
+                  }
+                }
+              }
+              
+              await log(`[Předpis] Nalezeno ${serviceMapping.length} služeb z hlavičky listu.`)
+            }
+          }
+          
+          // --- NOVÁ LOGIKA 1: Mapování přes "Vstupní data" (fallback) ---
           const inputSheetName = workbook.SheetNames.find(name => 
             name.toLowerCase().includes('vstupní') || name.toLowerCase().includes('vstupni') || name.toLowerCase().includes('input')
           )
           
-          const serviceMapping: { serviceId: string, colIndex: number, serviceName: string }[] = []
-          
-          if (inputSheetName) {
+          if (serviceMapping.length === 0 && inputSheetName) {
              const inputSheet = workbook.Sheets[inputSheetName]
              const inputData = utils.sheet_to_json<unknown[]>(inputSheet, { header: 1, defval: '' })
              
@@ -1816,6 +2118,8 @@ export async function POST(req: NextRequest) {
           summary.errors.push(`Předpisy: ${e instanceof Error ? e.message : String(e)}`)
         }
       }
+      
+      } // konec if (!jsonPredpisyImported)
 
       // 7b. IMPORT PŘEDPISŮ (CELKEM - Predpisy_celkem)
       // ZAKÁZÁNO NA ŽÁDOST UŽIVATELE - Celkové zálohy se počítají součtem jednotlivých služeb

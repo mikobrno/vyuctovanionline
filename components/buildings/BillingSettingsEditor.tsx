@@ -124,6 +124,11 @@ const mergeServiceSnapshot = (service: BillingService, snapshot: ServiceSnapshot
 
 interface BillingSettingsEditorProps {
   buildingId: string
+  building?: {
+    id: string
+    name: string
+    bankAccount?: string | null
+  }
   services: BillingService[]
   units: BillingUnit[]
   costs: BillingCost[]
@@ -138,12 +143,12 @@ type BillingResultSummary = {
   result: number
 }
 
-export default function BillingSettingsEditor({ buildingId, services, units, costs }: BillingSettingsEditorProps) {
+export default function BillingSettingsEditor({ buildingId, building, services, units, costs }: BillingSettingsEditorProps) {
   const router = useRouter()
   const [localServices, setLocalServices] = useState<BillingService[]>(services)
   const [selectedUnitId, setSelectedUnitId] = useState<string>(units[0]?.id || '')
   const [showHiddenServices, setShowHiddenServices] = useState(false)
-  const [hideZeroCosts, setHideZeroCosts] = useState(false)
+  const [hideZeroCosts, setHideZeroCosts] = useState(true)
   const [saving, setSaving] = useState(false)
   const [year, setYear] = useState<number>(new Date().getFullYear() - 1)
   
@@ -1178,9 +1183,10 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   const handleSave = async () => {
     setSaving(true)
     try {
-      // Prepare services with overrides
-      const servicesToSave = localServices.map(s => ({
+      // Prepare services with overrides and correct order
+      const servicesToSave = localServices.map((s, index) => ({
         ...s,
+        order: index, // Save the current position as order
         divisor: globalOverrides[s.id]?.buildingUnits || null, // Save building units override as divisor
         manualCost: globalOverrides[s.id]?.manualCost || null,
         manualShare: globalOverrides[s.id]?.share || null,
@@ -1190,12 +1196,54 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
         userMergeWithNext: s.userMergeWithNext || false
       }))
 
+      // 1. Uložit do databáze (tabulka Service)
       const res = await fetch(`/api/buildings/${buildingId}/services/reorder`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ services: servicesToSave }),
       })
       if (!res.ok) throw new Error('Failed to save')
+
+      // 2. Najít výchozí verzi (s hvězdičkou) a aktualizovat ji
+      const defaultVersion = versions.find(v => v.isDefault)
+      if (defaultVersion) {
+        const versionRes = await fetch(`/api/buildings/${buildingId}/config-versions/${defaultVersion.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            services: localServices.map((s, index) => ({
+              serviceId: s.id,
+              code: s.code,
+              methodology: s.method,
+              method: s.method,
+              order: index,
+              dataSourceType: s.dataSourceType,
+              dataSourceName: s.dataSourceName,
+              dataSourceColumn: s.dataSourceColumn,
+              unitAttributeName: s.unitAttributeName,
+              measurementUnit: s.measurementUnit,
+              unitPrice: s.unitPrice,
+              fixedAmountPerUnit: s.fixedAmountPerUnit,
+              divisor: globalOverrides[s.id]?.buildingUnits || s.divisor,
+              manualCost: globalOverrides[s.id]?.manualCost || s.manualCost,
+              manualShare: globalOverrides[s.id]?.share || s.manualShare,
+              customFormula: s.customFormula,
+              userMergeWithNext: s.userMergeWithNext || false,
+              showOnStatement: s.showOnStatement,
+              isActive: s.isActive,
+              advancePaymentColumn: s.advancePaymentColumn,
+              excelColumn: s.excelColumn,
+              groupShareLabel: s.groupShareLabel,
+              areaSource: s.areaSource,
+            })),
+            manualOverrides: { global: globalOverrides, unit: unitOverrides },
+          }),
+        })
+        if (!versionRes.ok) {
+          console.warn('Failed to update default version, but DB save succeeded')
+        }
+      }
+
       router.refresh()
     } catch (err) {
       console.error(err)
@@ -2328,7 +2376,8 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
         {billingSummaryLoading ? (
           <div className="text-sm text-gray-500 dark:text-gray-400">Načítám souhrn vyúčtování…</div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
+          <>
+            <div className="grid gap-4 md:grid-cols-2">
             <div className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl p-5 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <div>
@@ -2413,6 +2462,126 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
               </div>
             </div>
           </div>
+
+          {/* Celkový souhrn k úhradě / vyplacení */}
+          {(() => {
+            // Zůstatek z tabulky (součet balance = zálohy - náklady)
+            // Kladný = přeplatek, záporný = nedoplatek
+            const currentBalance = rowMetrics.reduce((sum, m, idx) => 
+              displayedServices[idx]?.isActive !== false ? sum + m.balance : sum, 0)
+            
+            // Nedoplatek/přeplatek na zálohách (předepsané - uhrazené)
+            // Kladný = chybí doplatit, záporný = přeplatek
+            const advanceDiff = (currentAdvancePrescribed ?? 0) - (currentAdvancePaid ?? 0)
+            
+            // Výsledek minulého období (kladný = přeplatek, záporný = nedoplatek/dluh)
+            const previousBalance = billingSummary?.previous?.result ?? 0
+            
+            // Celková částka = zůstatek z tabulky - nedoplatek záloh + zůstatek minulého období
+            // currentBalance je už zálohy - náklady
+            // advanceDiff je předepsané - uhrazené (kladný = dluh)
+            // Takže: currentBalance - advanceDiff + previousBalance
+            // Nebo jednodušeji: currentBalance + previousBalance - advanceDiff
+            const totalAmount = Math.round(currentBalance - advanceDiff + previousBalance)
+            
+            const isOverpayment = totalAmount > 0
+            const absoluteAmount = Math.abs(totalAmount)
+
+            return (
+              <div className={`mt-4 p-5 rounded-2xl border-2 ${
+                isOverpayment 
+                  ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' 
+                  : 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800'
+              }`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className={`text-lg font-bold ${
+                    isOverpayment 
+                      ? 'text-emerald-700 dark:text-emerald-300' 
+                      : 'text-rose-700 dark:text-rose-300'
+                  }`}>
+                    {isOverpayment ? '💰 K vyplacení' : '📋 K úhradě'}
+                  </h3>
+                  <span className={`text-3xl font-bold ${
+                    isOverpayment 
+                      ? 'text-emerald-600 dark:text-emerald-400' 
+                      : 'text-rose-600 dark:text-rose-400'
+                  }`}>
+                    {absoluteAmount.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                  </span>
+                </div>
+                
+                <div className="grid gap-2 text-sm mb-4">
+                  <div className="flex justify-between text-gray-600 dark:text-gray-300">
+                    <span>Výsledek z tabulky (zálohy − náklady)</span>
+                    <span className={`font-semibold ${currentBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {Math.round(currentBalance).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                    </span>
+                  </div>
+                  {advanceDiff !== 0 && (
+                    <div className="flex justify-between text-gray-600 dark:text-gray-300">
+                      <span>{advanceDiff > 0 ? 'Nedoplatek na zálohách' : 'Přeplatek na zálohách'}</span>
+                      <span className={`font-semibold ${advanceDiff > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                        {Math.round(-advanceDiff).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                      </span>
+                    </div>
+                  )}
+                  {previousBalance !== 0 && (
+                    <div className="flex justify-between text-gray-600 dark:text-gray-300">
+                      <span>{previousBalance >= 0 ? 'Přeplatek z minulého období' : 'Nedoplatek z minulého období'}</span>
+                      <span className={`font-semibold ${previousBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {Math.round(previousBalance).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                      </span>
+                    </div>
+                  )}
+                  <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-1">
+                    <div className={`flex justify-between font-bold ${
+                      isOverpayment 
+                        ? 'text-emerald-700 dark:text-emerald-300' 
+                        : 'text-rose-700 dark:text-rose-300'
+                    }`}>
+                      <span>Celkem {isOverpayment ? 'k vyplacení' : 'k úhradě'}</span>
+                      <span>{totalAmount.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Informace o platbě */}
+                <div className={`p-4 rounded-xl ${
+                  isOverpayment 
+                    ? 'bg-emerald-100 dark:bg-emerald-900/30' 
+                    : 'bg-rose-100 dark:bg-rose-900/30'
+                }`}>
+                  {isOverpayment ? (
+                    <p className="text-sm text-emerald-800 dark:text-emerald-200">
+                      <span className="font-semibold">Přeplatek bude vyplacen</span> na bankovní účet člena SVJ vedený v evidenci.
+                      {selectedUnit?.owners?.[0]?.lastName && (
+                        <span className="block mt-1 text-emerald-600 dark:text-emerald-400">
+                          Vlastník: {selectedUnit.owners[0].lastName}
+                        </span>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-rose-800 dark:text-rose-200">
+                      <span className="font-semibold">Uhraďte prosím na účet:</span>
+                      {building?.bankAccount ? (
+                        <span className="block mt-1 font-mono text-lg font-bold text-rose-700 dark:text-rose-300">
+                          {building.bankAccount}
+                        </span>
+                      ) : (
+                        <span className="block mt-1 text-rose-600 dark:text-rose-400 italic">
+                          Číslo účtu není nastaveno v administraci domu
+                        </span>
+                      )}
+                      <span className="block mt-2 text-rose-600 dark:text-rose-400">
+                        Variabilní symbol: <span className="font-mono font-bold">{selectedUnit?.unitNumber?.replace(/\D/g, '') || '—'}</span>
+                      </span>
+                    </p>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+          </>
         )}
       </div>
 
