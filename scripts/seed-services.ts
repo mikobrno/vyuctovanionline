@@ -191,56 +191,68 @@ const servicesList = [
 async function main() {
   console.log('🚀 Začínám import služeb...');
 
-  // 1. Najít první budovu (nebo upravit pro konkrétní ID)
-  const building = await prisma.building.findFirst();
+  const targetArg = process.argv[2];
+  let buildings: Awaited<ReturnType<typeof prisma.building.findMany>>;
 
-  if (!building) {
-    console.error('❌ V databázi není žádná budova. Nejdříve vytvořte budovu.');
-    process.exit(1);
-  }
-
-  console.log(`🏢 Importuji služby pro budovu: ${building.name} (${building.id})`);
-
-  let createdCount = 0;
-  let updatedCount = 0;
-
-  for (const service of servicesList) {
-    // Nahradit | za " - " pro lepší čitelnost
-    const formattedName = service.name.replace(/\|/g, ' - ');
-
-    // Upsert služby podle kódu
-    const result = await prisma.service.upsert({
-      where: {
-        buildingId_code: {
-          buildingId: building.id,
-          code: service.code,
-        },
-      },
-      update: {
-        name: formattedName,
-        // Neměníme metodiku, pokud už existuje, aby se nerozbilo nastavení
-      },
-      create: {
-        buildingId: building.id,
-        code: service.code,
-        name: formattedName,
-        methodology: 'OWNERSHIP_SHARE', // Defaultní metodika, uživatel si musí nastavit
-        order: parseInt(service.code),
-        showOnStatement: true,
-      },
-    });
-
-    // Detekce vytvoření vs aktualizace (podle createdAt)
-    if (result.createdAt.getTime() === result.updatedAt.getTime()) {
-      createdCount++;
-    } else {
-      updatedCount++;
+  if (targetArg && targetArg !== '--all') {
+    const building = await prisma.building.findUnique({ where: { id: targetArg } });
+    if (!building) {
+      console.error(`❌ Budova s ID "${targetArg}" neexistuje.`);
+      process.exit(1);
+    }
+    buildings = [building];
+  } else {
+    buildings = await prisma.building.findMany();
+    if (!buildings.length) {
+      console.error('❌ V databázi není žádná budova. Nejdříve vytvořte budovu.');
+      process.exit(1);
     }
   }
 
-  console.log(`✅ Hotovo!`);
-  console.log(`   Vytvořeno: ${createdCount}`);
-  console.log(`   Aktualizováno: ${updatedCount}`);
+  for (const building of buildings) {
+    console.log(`🏢 Importuji služby pro budovu: ${building.name} (${building.id})`);
+
+    let createdCount = 0;
+    let updatedCount = 0;
+
+    for (const service of servicesList) {
+      // Nahradit | za " - " pro lepší čitelnost
+      const formattedName = service.name.replace(/\|/g, ' - ');
+
+      // Upsert služby podle kódu
+      const result = await prisma.service.upsert({
+        where: {
+          buildingId_code: {
+            buildingId: building.id,
+            code: service.code,
+          },
+        },
+        update: {
+          name: formattedName,
+          // Neměníme metodiku, pokud už existuje, aby se nerozbilo nastavení
+        },
+        create: {
+          buildingId: building.id,
+          code: service.code,
+          name: formattedName,
+          methodology: 'OWNERSHIP_SHARE', // Defaultní metodika, uživatel si musí nastavit
+          order: parseInt(service.code),
+          showOnStatement: true,
+        },
+      });
+
+      // Detekce vytvoření vs aktualizace (podle createdAt)
+      if (result.createdAt.getTime() === result.updatedAt.getTime()) {
+        createdCount++;
+      } else {
+        updatedCount++;
+      }
+    }
+
+    console.log(`   ✅ Hotovo pro ${building.name}`);
+    console.log(`      Vytvořeno: ${createdCount}`);
+    console.log(`      Aktualizováno: ${updatedCount}`);
+  }
 }
 
 main()

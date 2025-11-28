@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import AppLayout from '@/components/layout/AppLayout'
+import BillingPeriodActions from '@/components/billing/BillingPeriodActions'
 import { prisma } from '@/lib/prisma'
 import { BillingPeriod, BillingStatus } from '@prisma/client'
 
@@ -115,6 +116,9 @@ export default async function BillingPage({
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Vytvořeno
                 </th>
+                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Akce
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
@@ -153,6 +157,14 @@ export default async function BillingPage({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                     {new Date(period.createdAt).toLocaleString('cs-CZ')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500 dark:text-gray-400">
+                    <BillingPeriodActions
+                      billingPeriodId={period.id}
+                      year={period.year}
+                      buildingName={period.building.name}
+                      resultsCount={period._count.results}
+                    />
                   </td>
                 </tr>
               ))}

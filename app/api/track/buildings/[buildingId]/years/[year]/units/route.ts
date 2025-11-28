@@ -32,8 +32,10 @@ const DEFAULT_PAGE_SIZE = 25
 
 export async function GET(
   request: Request,
-  { params }: { params: { buildingId: string; year: string } }
+  props: { params: Promise<{ buildingId: string; year: string }> }
 ) {
+  const params = await props.params;
+  const { buildingId, year } = params;
   const session = await getServerSession(authOptions)
 
   if (!session) {

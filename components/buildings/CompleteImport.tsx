@@ -139,8 +139,11 @@ export default function CompleteImport({
     setCurrentStep('Připravuji import...')
     
     try {
-      if (!/\.xlsx?$/i.test(file.name)) {
-        throw new Error('Podporované jsou pouze soubory XLS nebo XLSX')
+      const isJson = /\.json$/i.test(file.name)
+      const isExcel = /\.xlsx?$/i.test(file.name)
+      
+      if (!isJson && !isExcel) {
+        throw new Error('Podporované jsou pouze soubory XLS, XLSX nebo JSON')
       }
 
       setProgress(prev => [...prev, `📄 Načítám soubor: ${file.name}`])
@@ -154,9 +157,11 @@ export default function CompleteImport({
       formData.append('year', year.toString())
 
       setProgress(prev => [...prev, '📤 Odesílám data na server...'])
-      setCurrentStep('Zpracovávám Excel soubor...')
+      setCurrentStep(isJson ? 'Zpracovávám JSON soubor...' : 'Zpracovávám Excel soubor...')
 
-      const response = await fetch('/api/import/complete', {
+      // Volat správný endpoint podle typu souboru
+      const endpoint = isJson ? '/api/import/json' : '/api/import/complete'
+      const response = await fetch(endpoint, {
         method: 'POST',
         body: formData,
       })
@@ -454,7 +459,7 @@ export default function CompleteImport({
               ref={inputRef}
               id="complete-upload"
               type="file"
-              accept=".xlsx,.xls"
+              accept=".xlsx,.xls,.json"
               className="hidden"
               onChange={handleChange}
               disabled={uploading}
@@ -492,7 +497,7 @@ export default function CompleteImport({
               <p className="text-sm text-gray-500 dark:text-slate-400">
                 {uploading ? 'Prosím čekejte...' : 'nebo přetáhněte soubor sem'}
               </p>
-              <p className="text-xs text-gray-400 dark:text-slate-500 mt-4 font-mono bg-gray-100 dark:bg-slate-900 inline-block px-2 py-1 rounded">Podporované formáty: .xlsx, .xls</p>
+              <p className="text-xs text-gray-400 dark:text-slate-500 mt-4 font-mono bg-gray-100 dark:bg-slate-900 inline-block px-2 py-1 rounded">Podporované formáty: .xlsx, .xls, .json</p>
             </label>
           </div>
 

@@ -143,6 +143,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
   const [localServices, setLocalServices] = useState<BillingService[]>(services)
   const [selectedUnitId, setSelectedUnitId] = useState<string>(units[0]?.id || '')
   const [showHiddenServices, setShowHiddenServices] = useState(false)
+  const [hideZeroCosts, setHideZeroCosts] = useState(false)
   const [saving, setSaving] = useState(false)
   const [year, setYear] = useState<number>(new Date().getFullYear() - 1)
   
@@ -157,7 +158,9 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
 
   // State pro import
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const jsonInputRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
+  const [importingJson, setImportingJson] = useState(false)
 
   // State pro editor vzorců
   const [editingFormulaServiceId, setEditingFormulaServiceId] = useState<string | null>(null)
@@ -1092,6 +1095,85 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     }
   }
 
+  // Handler pro nahrání JSON
+  const handleJsonUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!buildingId) {
+      alert('Chyba: Není k dispozici ID budovy. Prosím obnovte stránku.')
+      return
+    }
+
+    if (!confirm('Opravdu chcete přehrát aktuální data novým importem z JSON? Veškeré ruční úpravy mohou být ztraceny.')) {
+      if (jsonInputRef.current) jsonInputRef.current.value = ''
+      return
+    }
+
+    setImportingJson(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('buildingId', buildingId)
+
+    try {
+      const res = await fetch('/api/import/json', {
+        method: 'POST',
+        body: formData,
+      })
+      
+      if (!res.ok) {
+        // Streaming response - read it
+        const reader = res.body?.getReader()
+        let errorMessage = 'Import selhal'
+        if (reader) {
+          const decoder = new TextDecoder()
+          let result = ''
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            result += decoder.decode(value)
+          }
+          // Try to parse last JSON message for error
+          const lines = result.split('\n').filter(l => l.trim())
+          for (const line of lines.reverse()) {
+            try {
+              const msg = JSON.parse(line)
+              if (msg.type === 'error') {
+                errorMessage = msg.message
+                break
+              }
+            } catch {}
+          }
+        }
+        throw new Error(errorMessage)
+      }
+
+      // Read streaming response
+      const reader = res.body?.getReader()
+      if (reader) {
+        const decoder = new TextDecoder()
+        let result = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          result += decoder.decode(value)
+        }
+        console.log('JSON Import result:', result)
+      }
+
+      alert('JSON import byl úspěšně dokončen. Stránka se nyní obnoví.')
+      router.refresh()
+      window.location.reload()
+    } catch (err: unknown) {
+      console.error(err)
+      const message = err instanceof Error ? err.message : 'Neznámá chyba'
+      alert(`Chyba při JSON importu: ${message}`)
+    } finally {
+      setImportingJson(false)
+      if (jsonInputRef.current) jsonInputRef.current.value = ''
+    }
+  }
+
   // Uložení změn
   const handleSave = async () => {
     setSaving(true)
@@ -1255,10 +1337,37 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
     ))
   }
 
-  const displayedServices = localServices.filter(s => showHiddenServices || s.isActive !== false)
+  // Služby zobrazené v hlavní tabulce (bez NO_BILLING - ty se zobrazí v sekci Fond oprav)
+  const displayedServices = localServices.filter(s => {
+    // Služby NO_BILLING se zobrazují ve speciální sekci Fond oprav
+    if (s.method === 'NO_BILLING') return false
+    // Filtr na skryté služby
+    if (!showHiddenServices && s.isActive === false) return false
+    // Filtr na nulové náklady
+    if (hideZeroCosts) {
+      const serviceCost = filteredCosts.filter(c => c.serviceId === s.id).reduce((sum, c) => sum + c.amount, 0)
+      if (serviceCost === 0) return false
+    }
+    return true
+  })
+  
+  // Služby typu NO_BILLING (Fond oprav)
+  const noBillingServices = localServices.filter(s => s.method === 'NO_BILLING')
   const editingAreaService = editingAreaServiceId ? localServices.find(s => s.id === editingAreaServiceId) : null
 
   const rowMetrics = displayedServices.map(service => {
+    const preview = calculatePreview(service)
+    let advance = advancesData[selectedUnitId]?.[service.id]?.total || 0
+    const overrideAdvance = unitOverrides[selectedUnitId]?.[service.id]?.advance
+    if (overrideAdvance && !isNaN(parseFloat(overrideAdvance))) {
+      advance = parseFloat(overrideAdvance)
+    }
+    const balance = advance - preview.unitCost
+    return { preview, advance, balance }
+  })
+
+  // Metriky pro služby NO_BILLING (Fond oprav)
+  const noBillingMetrics = noBillingServices.map(service => {
     const preview = calculatePreview(service)
     let advance = advancesData[selectedUnitId]?.[service.id]?.total || 0
     const overrideAdvance = unitOverrides[selectedUnitId]?.[service.id]?.advance
@@ -1420,19 +1529,35 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                 <span>Nastavit jako výchozí pro tento dům</span>
               </label>
       <div className="flex justify-between items-center">
-        <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:text-gray-900 dark:hover:text-white transition-colors">
-          <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${showHiddenServices ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}>
-            {showHiddenServices && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
-          </div>
-          <input 
-            type="checkbox" 
-            checked={showHiddenServices}
-            onChange={(e) => setShowHiddenServices(e.target.checked)}
-            className="hidden"
-            aria-label="Zobrazit skryté služby"
-          />
-          <span className="font-medium">Zobrazit skryté služby</span>
-        </label>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:text-gray-900 dark:hover:text-white transition-colors">
+            <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${showHiddenServices ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}>
+              {showHiddenServices && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
+            </div>
+            <input 
+              type="checkbox" 
+              checked={showHiddenServices}
+              onChange={(e) => setShowHiddenServices(e.target.checked)}
+              className="hidden"
+              aria-label="Zobrazit skryté služby"
+            />
+            <span className="font-medium">Zobrazit skryté služby</span>
+          </label>
+          
+          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none hover:text-gray-900 dark:hover:text-white transition-colors">
+            <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${hideZeroCosts ? 'bg-amber-500 border-amber-500' : 'bg-white border-gray-300'}`}>
+              {hideZeroCosts && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
+            </div>
+            <input 
+              type="checkbox" 
+              checked={hideZeroCosts}
+              onChange={(e) => setHideZeroCosts(e.target.checked)}
+              className="hidden"
+              aria-label="Skrýt nulové náklady"
+            />
+            <span className="font-medium">Skrýt nulové náklady</span>
+          </label>
+        </div>
 
         <div className="flex gap-2">
           <input
@@ -1443,10 +1568,34 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
             accept=".xlsx, .xls"
             aria-label="Nahrát Excel"
           />
+          <input
+            type="file"
+            ref={jsonInputRef}
+            onChange={handleJsonUpload}
+            className="hidden"
+            accept=".json"
+            aria-label="Nahrát JSON"
+          />
           
           <button
+            onClick={() => jsonInputRef.current?.click()}
+            disabled={saving || importing || importingJson}
+            className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 font-bold shadow-sm transition-all flex items-center gap-2"
+            title="Rychlý import z JSON souboru"
+          >
+            {importingJson ? (
+               <>
+                 <svg className="animate-spin h-4 w-4 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                 <span>JSON...</span>
+               </>
+            ) : (
+               <span>📋 JSON</span>
+            )}
+          </button>
+
+          <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={saving || importing}
+            disabled={saving || importing || importingJson}
             className="px-6 py-2.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 font-bold shadow-sm transition-all flex items-center gap-2 relative group"
           >
             {importing ? (
@@ -1470,7 +1619,7 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
 
           <button
             onClick={handleSave}
-            disabled={saving || importing}
+            disabled={saving || importing || importingJson}
             className="px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 font-bold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex items-center gap-2"
           >
             {saving ? (
@@ -1804,22 +1953,22 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                 <table className="w-full text-xs border-collapse" ref={provided.innerRef} {...provided.droppableProps}>
                   <thead>
                     <tr className="bg-gray-50 dark:bg-slate-900/50 text-gray-600 dark:text-gray-300 uppercase tracking-wider font-bold border-b-2 border-gray-200 dark:border-slate-700">
-                      <th className="px-3 py-3 w-10 text-center" rowSpan={2} title="Přesunutí"></th>
-                      <th className="px-2 py-3 w-8 text-center" rowSpan={2}>#</th>
-                      <th className="px-4 py-3 text-left min-w-[150px]" rowSpan={2}>📋 Služba</th>
-                      <th className="px-3 py-3 text-left min-w-[140px]" rowSpan={2}>⚙️ Způsob</th>
-                      <th className="px-2 py-3 text-center border-l-2 border-gray-300 dark:border-slate-700 bg-blue-50/50 dark:bg-blue-900/10" colSpan={4}>🏢 Dům</th>
-                      <th className="px-2 py-3 text-center border-l-2 border-gray-300 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10" colSpan={4}>👤 Jednotka</th>
+                      <th className="px-3 py-3 w-10 text-center bg-gray-50 dark:bg-slate-900" rowSpan={2} title="Přesunutí"></th>
+                      <th className="px-2 py-3 w-8 text-center bg-gray-50 dark:bg-slate-900" rowSpan={2}>#</th>
+                      <th className="px-4 py-3 text-left min-w-[150px] bg-gray-50 dark:bg-slate-900" rowSpan={2}>📋 Služba</th>
+                      <th className="px-3 py-3 text-left min-w-[140px] bg-gray-50 dark:bg-slate-900" rowSpan={2}>⚙️ Způsob</th>
+                      <th className="px-2 py-3 text-center border-l-2 border-gray-300 dark:border-slate-700 bg-blue-50 dark:bg-blue-900/30" colSpan={4}>🏢 Dům</th>
+                      <th className="px-2 py-3 text-center border-l-2 border-gray-300 dark:border-slate-700 bg-amber-50 dark:bg-amber-900/30" colSpan={4}>👤 Jednotka</th>
                     </tr>
                     <tr className="bg-gray-50 dark:bg-slate-900/50 text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-slate-700">
-                      <th className="px-2 py-2 text-right border-l-2 border-gray-300 dark:border-slate-700 bg-blue-50/50 dark:bg-blue-900/10">Podíl %</th>
-                      <th className="px-2 py-2 text-right bg-blue-50/50 dark:bg-blue-900/10">Náklad</th>
-                      <th className="px-2 py-2 text-right bg-blue-50/50 dark:bg-blue-900/10">Jedn.</th>
-                      <th className="px-2 py-2 text-right bg-blue-50/50 dark:bg-blue-900/10">Cena/j.</th>
-                      <th className="px-2 py-2 text-right border-l-2 border-gray-300 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10">Jedn.</th>
-                      <th className="px-2 py-2 text-right bg-amber-50/50 dark:bg-amber-900/10">Náklad</th>
-                      <th className="px-2 py-2 text-right bg-amber-50/50 dark:bg-amber-900/10">Záloha</th>
-                      <th className="px-2 py-2 text-right bg-amber-50/50 dark:bg-amber-900/10">Výsledek</th>
+                      <th className="px-2 py-2 text-right border-l-2 border-gray-300 dark:border-slate-700 bg-blue-50 dark:bg-blue-900/30">Podíl %</th>
+                      <th className="px-2 py-2 text-right bg-blue-50 dark:bg-blue-900/30">Náklad</th>
+                      <th className="px-2 py-2 text-right bg-blue-50 dark:bg-blue-900/30">Jedn.</th>
+                      <th className="px-2 py-2 text-right bg-blue-50 dark:bg-blue-900/30">Cena/j.</th>
+                      <th className="px-2 py-2 text-right border-l-2 border-gray-300 dark:border-slate-700 bg-amber-50 dark:bg-amber-900/30">Jedn.</th>
+                      <th className="px-2 py-2 text-right bg-amber-50 dark:bg-amber-900/30">Náklad</th>
+                      <th className="px-2 py-2 text-right bg-amber-50 dark:bg-amber-900/30">Záloha</th>
+                      <th className="px-2 py-2 text-right bg-amber-50 dark:bg-amber-900/30">Výsledek</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-slate-700/50">
@@ -1941,23 +2090,23 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                                   )}
                                 </div>
                               </td>
-                              <td className="px-2 py-2.5 text-right text-gray-600 dark:text-gray-300 text-xs border-l-2 border-gray-300 dark:border-slate-700 bg-blue-50/30 dark:bg-blue-900/5">
+                              <td className="px-2 py-2.5 text-right text-gray-900 dark:text-gray-100 text-xs border-l-2 border-gray-300 dark:border-slate-700 bg-blue-50/30 dark:bg-blue-900/5">
                                 <div className="flex items-center justify-end gap-0.5 group">
                                   <input 
                                     type="text"
-                                    className="w-10 text-right border-b border-transparent group-hover:border-gray-400 focus:border-blue-500 focus:outline-none bg-transparent text-xs font-semibold transition-colors"
+                                    className="w-10 text-right border-b border-transparent group-hover:border-gray-400 focus:border-blue-500 focus:outline-none bg-transparent text-xs font-semibold text-gray-900 dark:text-gray-100 placeholder:text-gray-900 dark:placeholder:text-gray-100 transition-colors"
                                     placeholder="100"
                                     value={globalOverrides[service.id]?.share || ''}
                                     onChange={(e) => handleOverrideChange(service.id, 'share', e.target.value)}
                                   />
-                                  <span className="text-gray-500">%</span>
+                                  <span className="text-gray-900 dark:text-gray-100">%</span>
                                 </div>
                               </td>
-                              <td className="px-2 py-2.5 text-right text-gray-700 dark:text-gray-200 bg-blue-50/30 dark:bg-blue-900/5 font-bold text-xs">
+                              <td className="px-2 py-2.5 text-right text-gray-900 dark:text-gray-100 bg-blue-50/30 dark:bg-blue-900/5 font-bold text-xs">
                                 <div className="flex items-center justify-end gap-0.5 group">
                                   <input 
                                     type="text"
-                                    className="w-16 text-right border-b border-transparent group-hover:border-gray-400 focus:border-blue-500 focus:outline-none bg-transparent text-xs font-semibold"
+                                    className="w-16 text-right border-b border-transparent group-hover:border-gray-400 focus:border-blue-500 focus:outline-none bg-transparent text-xs font-semibold text-gray-900 dark:text-gray-100 placeholder:text-gray-900 dark:placeholder:text-gray-100"
                                     placeholder={totalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                     value={globalOverrides[service.id]?.manualCost || ''}
                                     onChange={(e) => handleOverrideChange(service.id, 'manualCost', e.target.value)}
@@ -1966,25 +2115,25 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                                   <span className="text-gray-500">Kč</span>
                                 </div>
                               </td>
-                              <td className="px-2 py-2.5 text-right text-gray-600 dark:text-gray-300 bg-blue-50/30 dark:bg-blue-900/5 text-xs">
+                              <td className="px-2 py-2.5 text-right text-gray-900 dark:text-gray-100 bg-blue-50/30 dark:bg-blue-900/5 text-xs">
                                 {isMeterCost ? (
                                   <span className="text-gray-400 dark:text-gray-500">–</span>
                                 ) : (
                                   <input 
                                     type="text"
-                                    className="w-14 text-right border-b border-transparent hover:border-gray-400 focus:border-blue-500 focus:outline-none bg-transparent text-xs font-semibold"
+                                    className="w-14 text-right border-b border-transparent hover:border-gray-400 focus:border-blue-500 focus:outline-none bg-transparent text-xs font-semibold text-gray-900 dark:text-gray-100 placeholder:text-gray-900 dark:placeholder:text-gray-100"
                                     placeholder={preview.buildingAmount.toLocaleString('cs-CZ', { maximumFractionDigits: 2 })}
                                     value={globalOverrides[service.id]?.buildingUnits || ''}
                                     onChange={(e) => handleOverrideChange(service.id, 'buildingUnits', e.target.value)}
                                   />
                                 )}
                               </td>
-                              <td className="px-2 py-2.5 text-right text-gray-600 dark:text-gray-300 bg-blue-50/30 dark:bg-blue-900/5 text-xs relative group">
+                              <td className="px-2 py-2.5 text-right text-gray-900 dark:text-gray-100 bg-blue-50/30 dark:bg-blue-900/5 text-xs relative group">
                                 {isMeterCost ? (
                                   <span className="text-gray-400 dark:text-gray-500">–</span>
                                 ) : (
                                   <>
-                                    {preview.unitPrice > 0 ? preview.unitPrice.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                                    {preview.unitPrice > 0 ? preview.unitPrice.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : <span className="text-gray-400">–</span>}
                                     <button
                                       onClick={() => openFormulaEditor(service, 'PRICE')}
                                       className="absolute top-1/2 -translate-y-1/2 right-0.5 opacity-0 group-hover:opacity-100 p-0.5 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded transition-all"
@@ -1996,13 +2145,13 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                                   </>
                                 )}
                               </td>
-                              <td className="px-2 py-2.5 text-right text-gray-600 dark:text-gray-300 text-xs border-l-2 border-gray-300 dark:border-slate-700 bg-amber-50/30 dark:bg-amber-900/5">
+                              <td className="px-2 py-2.5 text-right text-gray-900 dark:text-gray-100 text-xs border-l-2 border-gray-300 dark:border-slate-700 bg-amber-50/30 dark:bg-amber-900/5">
                                 {isMeterCost ? (
                                   <span className="text-gray-400 dark:text-gray-500">–</span>
                                 ) : (
                                   <input 
                                     type="text"
-                                    className="w-14 text-right border-b border-transparent hover:border-gray-400 focus:border-blue-500 focus:outline-none bg-transparent text-xs font-semibold"
+                                    className="w-14 text-right border-b border-transparent hover:border-gray-400 focus:border-blue-500 focus:outline-none bg-transparent text-xs font-semibold text-gray-900 dark:text-gray-100 placeholder:text-gray-900 dark:placeholder:text-gray-100"
                                     placeholder={preview.unitAmount.toLocaleString('cs-CZ', { maximumFractionDigits: 2 })}
                                     value={unitOverrides[selectedUnitId]?.[service.id]?.userUnits || ''}
                                     onChange={(e) => handleOverrideChange(service.id, 'userUnits', e.target.value)}
@@ -2068,44 +2217,98 @@ export default function BillingSettingsEditor({ buildingId, services, units, cos
                     })}
                     {provided.placeholder}
                     
-                    {/* Řádek celkem */}
+                    {/* Řádek celkem - pouze služby k vyúčtování (displayedServices už neobsahuje NO_BILLING) */}
                     <tr className="bg-gray-50 dark:bg-slate-800 font-bold border-t border-gray-200 dark:border-slate-600 text-gray-900 dark:text-white">
                       <td colSpan={8} className="p-4 text-left uppercase text-xs tracking-wider text-gray-500 dark:text-gray-400">
                         <div className="flex items-center justify-between">
                           <span>Celkem náklady na odběrné místo</span>
                           <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                            {costs.reduce((sum, c) => sum + c.amount, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                            {filteredCosts
+                              .filter(c => {
+                                const srv = displayedServices.find(s => s.id === c.serviceId)
+                                return srv && srv.isActive !== false
+                              })
+                              .reduce((sum, c) => sum + c.amount, 0)
+                              .toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
                           </span>
                         </div>
                       </td>
                       <td className="p-4 text-center text-gray-400 dark:text-gray-500">–</td>
                       <td className="p-4 text-right bg-amber-100/40 dark:bg-amber-900/20">
                         {rowMetrics
-                          .reduce((sum, metrics, idx) => (
-                            displayedServices[idx].isActive !== false ? sum + metrics.preview.unitCost : sum
-                          ), 0)
+                          .reduce((sum, metrics, idx) => {
+                            const srv = displayedServices[idx]
+                            return srv.isActive !== false ? sum + metrics.preview.unitCost : sum
+                          }, 0)
                           .toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                       </td>
                       <td className="p-4 text-right bg-amber-100/30 dark:bg-amber-900/10">
                         {rowMetrics
-                          .reduce((sum, metrics, idx) => (
-                            displayedServices[idx].isActive !== false ? sum + metrics.advance : sum
-                          ), 0)
+                          .reduce((sum, metrics, idx) => {
+                            const srv = displayedServices[idx]
+                            return srv.isActive !== false ? sum + metrics.advance : sum
+                          }, 0)
                           .toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                       </td>
                       <td className={`p-4 text-right bg-amber-100/50 dark:bg-amber-900/20 ${
                         rowMetrics
-                          .reduce((sum, metrics, idx) => (
-                            displayedServices[idx].isActive !== false ? sum + metrics.balance : sum
-                          ), 0) >= 0
+                          .reduce((sum, metrics, idx) => {
+                            const srv = displayedServices[idx]
+                            return srv.isActive !== false ? sum + metrics.balance : sum
+                          }, 0) >= 0
                           ? 'text-emerald-600 dark:text-emerald-400'
                           : 'text-rose-600 dark:text-rose-400'
                       }`}>
                         {rowMetrics
-                          .reduce((sum, metrics, idx) => (
-                            displayedServices[idx].isActive !== false ? sum + metrics.balance : sum
-                          ), 0)
+                          .reduce((sum, metrics, idx) => {
+                            const srv = displayedServices[idx]
+                            return srv.isActive !== false ? sum + metrics.balance : sum
+                          }, 0)
                           .toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                      </td>
+                    </tr>
+                    
+                    {/* Řádek Fond oprav - zobrazit vždy s výběrem služby */}
+                    <tr className="bg-indigo-50/50 dark:bg-indigo-900/10 border-t border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-100">
+                      <td colSpan={8} className="p-4 text-left text-xs tracking-wider">
+                        <div className="flex items-center gap-4">
+                          <span className="font-semibold flex items-center gap-2">
+                            <span className="text-lg">🏦</span>
+                            <span>Fond oprav / Pevné platby</span>
+                            <span className="text-[10px] font-normal text-indigo-500 dark:text-indigo-400">(nevyúčtovává se)</span>
+                          </span>
+                          <select
+                            title="Vybrat službu jako Fond oprav"
+                            aria-label="Vybrat službu jako Fond oprav"
+                            className="ml-4 px-3 py-1.5 text-sm bg-white dark:bg-slate-700 border border-indigo-300 dark:border-indigo-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 dark:text-white"
+                            value={localServices.find(s => s.method === 'NO_BILLING')?.id || ''}
+                            onChange={(e) => {
+                              const selectedServiceId = e.target.value
+                              setLocalServices(prev => prev.map(s => ({
+                                ...s,
+                                method: s.id === selectedServiceId ? 'NO_BILLING' : (s.method === 'NO_BILLING' ? 'OWNERSHIP_SHARE' : s.method),
+                                methodology: s.id === selectedServiceId ? 'NO_BILLING' : (s.methodology === 'NO_BILLING' ? 'OWNERSHIP_SHARE' : s.methodology)
+                              })))
+                            }}
+                          >
+                            <option value="">— Vybrat službu —</option>
+                            {localServices.map(s => (
+                              <option key={s.id} value={s.id}>
+                                {s.name} {s.method === 'NO_BILLING' ? '✓' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </td>
+                      <td className="p-4 text-center text-gray-400 dark:text-gray-500">–</td>
+                      <td className="p-4 text-right font-semibold">
+                        {noBillingMetrics.reduce((sum, m) => sum + m.preview.unitCost, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                      </td>
+                      <td className="p-4 text-right font-semibold">
+                        {noBillingMetrics.reduce((sum, m) => sum + m.advance, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                      </td>
+                      <td className="p-4 text-right font-semibold text-indigo-600 dark:text-indigo-400">
+                        {noBillingMetrics.reduce((sum, m) => sum + m.balance, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                       </td>
                     </tr>
                   </tbody>

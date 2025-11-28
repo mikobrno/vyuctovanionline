@@ -198,18 +198,21 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
       let pricePerUnit = 0;
       let basisText = "";
 
-      // --- NOVÁ LOGIKA: PRIORITA EXTERNÍHO NÁKLADU ---
-      // 1. Najít relevantní odečty pro tuto službu a jednotku
+      // --- LOGIKA: EXTERNÍ NÁKLAD (pouze pokud je služba nastavena na použití nákladu) ---
+      // Použijeme precalculatedCost pouze pokud dataSourceColumn === 'precalculatedCost'
+      const usePrecalculatedCost = service.dataSourceColumn === 'precalculatedCost';
+      
+      // Najít relevantní odečty pro tuto službu a jednotku
       const unitReadings = unit.meters
         .filter(m => m.serviceId === service.id || (service.name.includes('Teplo') && m.type === 'HEATING')) 
         .flatMap(m => m.readings);
 
-      // Pokud existuje odečet s předvypočítaným nákladem (z Excelu), použijeme ho přímo
+      // Pokud je nastaveno použití externího nákladu a existuje odečet s předvypočítaným nákladem
       const externalReading = unitReadings.find(r => r.precalculatedCost !== null && r.precalculatedCost > 0);
 
-      if (externalReading && externalReading.precalculatedCost !== null) {
+      if (usePrecalculatedCost && externalReading && externalReading.precalculatedCost !== null) {
         calculatedCost = externalReading.precalculatedCost;
-        basisText = "Převzato z externího rozúčtování";
+        basisText = "Převzato z externího rozúčtování (Náklad)";
         
         if (externalReading.consumption !== null) {
           unitConsumption = externalReading.consumption;
@@ -415,7 +418,7 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const unitMeters = unit.meters.filter((m: any) => targetMeterTypes.includes(m.type));
           
-          if (service.dataSourceType === 'FIXED_AMOUNT') {
+          if (service.dataSourceColumn === 'precalculatedCost') {
              // Varianta "Náklad" - sčítáme precalculatedCost z měřidel
              let totalCost = 0;
              for (const m of unitMeters) {
@@ -427,7 +430,7 @@ export async function calculateBillingForBuilding(buildingId: string, year: numb
              calculatedCost = totalCost;
              basisText = `Součet nákladů z měřidel (${targetMeterTypes.join(', ')})`;
           } else {
-             // Varianta "Náměr" - sčítáme spotřebu a násobíme cenou
+             // Varianta "Spotřeba" - sčítáme spotřebu a násobíme cenou
              for (const m of unitMeters) {
                const r = m.readings[0];
                if (r) unitConsumption += safeNumber(r.consumption ?? r.value);

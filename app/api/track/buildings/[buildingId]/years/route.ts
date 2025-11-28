@@ -20,8 +20,10 @@ const createChannelMap = () =>
 
 export async function GET(
   _request: Request,
-  { params }: { params: { buildingId: string } }
+  props: { params: Promise<{ buildingId: string }> }
 ) {
+  const params = await props.params;
+  const { buildingId } = params;
   const session = await getServerSession(authOptions)
 
   if (!session) {

@@ -256,14 +256,20 @@ export async function POST(req: NextRequest) {
     await writer.write(encoder.encode(JSON.stringify(data) + '\n'))
   }
 
-  // Spustit zpracování na pozadí
+  let formData: FormData
+  try {
+    formData = await req.formData()
+  } catch (e) {
+    console.error(e)
+    return new Response(JSON.stringify({ type: 'error', message: 'Neplatná data formuláře' }), { status: 400 })
+  }
+
   (async () => {
-    try {
-      const formData = await req.formData()
-      const file = formData.get('file')
-      const buildingName = (formData.get('buildingName') as string) || ''
-      const buildingId = (formData.get('buildingId') as string) || ''
-      const year = (formData.get('year') as string) || ''
+  try {
+    const file = formData.get('file')
+    const buildingName = (formData.get('buildingName') as string) || ''
+    const buildingId = (formData.get('buildingId') as string) || ''
+    const year = (formData.get('year') as string) || ''
 
       console.log(`[Import] Start importu. BuildingId: '${buildingId}', BuildingName: '${buildingName}', Year: '${year}'`)
 
@@ -1015,20 +1021,29 @@ export async function POST(req: NextRequest) {
               if (!service) throw new Error(`Nepodařilo se vytvořit službu '${serviceName}'`)
               summary.services.created++
             } else {
-              // VŽDY aktualizuj metodiku a název podle Excelu
-              const oldName = service.name
-              await log(`[Faktury] AKTUALIZUJI službu "${oldName}" → "${serviceName}": ${service.methodology} → ${calculationMethod}`)
+              // EXISTUJÍCÍ SLUŽBA - ZACHOVAT uživatelské nastavení!
+              // Aktualizujeme pouze název (pokud se změnil) a metodiku pouze pokud je NO_BILLING
+              const shouldUpdateMethodology = service.methodology === 'NO_BILLING'
+              const updateData: Record<string, unknown> = {
+                name: serviceName,
+                advancePaymentColumn: advanceColRaw || service.advancePaymentColumn || null
+              }
+              
+              // Pouze pokud služba nemá nastavenou metodiku (NO_BILLING), nastavíme ji z importu
+              if (shouldUpdateMethodology) {
+                updateData.methodology = calculationMethod as CalculationMethod
+                updateData.dataSourceType = (src.dataSourceType as DataSourceType) ?? undefined
+                updateData.dataSourceName = src.dataSourceName ?? undefined
+                updateData.unitAttributeName = src.unitAttributeName ?? undefined
+                updateData.measurementUnit = src.measurementUnit ?? undefined
+                await log(`[Faktury] AKTUALIZUJI metodiku služby "${serviceName}": ${service.methodology} → ${calculationMethod}`)
+              } else {
+                await log(`[Faktury] Služba "${serviceName}" ponechána s metodikou ${service.methodology} (zachováno uživatelské nastavení)`)
+              }
+              
               service = await prisma.service.update({
                 where: { id: service.id },
-                data: { 
-                  name: serviceName,
-                  methodology: calculationMethod as CalculationMethod,
-                  dataSourceType: (src.dataSourceType as DataSourceType) ?? undefined, 
-                  dataSourceName: src.dataSourceName ?? undefined,
-                  unitAttributeName: src.unitAttributeName ?? undefined,
-                  measurementUnit: src.measurementUnit ?? undefined,
-                  advancePaymentColumn: advanceColRaw || null
-                }
+                data: updateData
               })
               // Aktualizuj cache s novým názvem
               serviceMap.set(serviceKey(serviceName), service)
@@ -1413,22 +1428,34 @@ export async function POST(req: NextRequest) {
 
       if (advancesSheetName) {
         await log(`[Předpis] Začínám zpracování listu "${advancesSheetName}"...`)
+
         try {
           const advancesSheet = workbook.Sheets[advancesSheetName]
           const rawData = utils.sheet_to_json<unknown[]>(advancesSheet, { header: 1, defval: null })
-          const monthHeaderRow = rawData[1] as unknown[] | undefined
+          
+          // Zkusíme najít řádek s hlavičkou (očekáváme "Celkem" nebo měsíce)
+          let monthHeaderRow = rawData[1] as unknown[] | undefined
+          
+          // Pokud řádek 1 neobsahuje "Celkem", zkusíme řádek 0
+          if (!monthHeaderRow || !monthHeaderRow.some(c => String(c).toLowerCase().includes('celkem') || String(c).toLowerCase().includes('součet'))) {
+             const row0 = rawData[0] as unknown[] | undefined
+             if (row0 && row0.some(c => String(c).toLowerCase().includes('celkem') || String(c).toLowerCase().includes('součet'))) {
+                monthHeaderRow = row0
+             }
+          }
 
           const normalizeAdvanceColumnIndex = (colIndex: number) => {
             if (!monthHeaderRow || colIndex < 0) return colIndex
             const headerCell = String(monthHeaderRow[colIndex] ?? '').trim().toLowerCase()
             if (!headerCell) return colIndex
-            const isTotalColumn = headerCell.includes('celkem') || headerCell.includes('součet')
+            const isTotalColumn = headerCell.includes('celkem') || headerCell.includes('součet') || headerCell.includes('suma')
             if (!isTotalColumn) return colIndex
 
             let looksLikeMonthBlock = true
             for (let offset = 1; offset <= 12; offset++) {
-              const headerVal = String(monthHeaderRow[colIndex - offset] ?? '').trim()
-              if (headerVal !== String(13 - offset)) {
+              const headerVal = String(monthHeaderRow[colIndex - offset] ?? '').trim().replace(/\.$/, '')
+              const valNum = parseInt(headerVal, 10)
+              if (isNaN(valNum) || valNum !== 13 - offset) {
                 looksLikeMonthBlock = false
                 break
               }
@@ -1456,6 +1483,7 @@ export async function POST(req: NextRequest) {
              // Řádek 31 (index 30): Názvy služeb
              // Řádek 30 (index 29): Odkaz na sloupec v "Předpis po měsíci" (např. "JC", "AB")
              
+
              if (inputData.length > 30) {
                 const nameRow = inputData[30] as string[] // Row 31
                 const refRow = inputData[29] as string[]  // Row 30
@@ -1471,6 +1499,7 @@ export async function POST(req: NextRequest) {
                    const serviceName = String(nameRow[c] || '').trim()
                    const colRef = String(refRow[c] || '').trim()
                    
+
                    if (serviceName && colRef) {
                       // Najít službu
                       let service = services.find(s => normalize(s.name) === normalize(serviceName))
@@ -1496,10 +1525,9 @@ export async function POST(req: NextRequest) {
                          }
                       }
                    }
-                }
              }
           }
-
+          }
           // --- NOVÁ LOGIKA 2: Mapování z definice služeb (sloupec M ve Fakturách) ---
           // Toto má přednost nebo doplňuje mapování z Vstupních dat
           const servicesWithAdvanceCol = await prisma.service.findMany({
@@ -1519,7 +1547,7 @@ export async function POST(req: NextRequest) {
                       if (/^\d+$/.test(s.advancePaymentColumn)) {
                         colIndex = parseInt(s.advancePaymentColumn, 10)
                       } else {
-                        // Jinak dekódujeme písmeno (např. "M" -> 12)
+                                               // Jinak dekódujeme písmeno (např. "M" -> 12)
                         colIndex = utils.decode_col(s.advancePaymentColumn)
                       }
                       colIndex = normalizeAdvanceColumnIndex(colIndex)
@@ -1783,8 +1811,8 @@ export async function POST(req: NextRequest) {
                summary.advances.total += advancesToCreate.length
             }
           }
-          } // End of else (fallback)
-        } catch (e) {
+          }
+          } catch (e) {
           summary.errors.push(`Předpisy: ${e instanceof Error ? e.message : String(e)}`)
         }
       }
@@ -1939,11 +1967,13 @@ export async function POST(req: NextRequest) {
       */
 
       // 8. NÁKLADY NA DŮM
+      try {
       const costSheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('náklady na dům'))
       if (costSheetName) {
         const sheet = workbook.Sheets[costSheetName]
         const rawRows = utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' })
         const headerIdx = rawRows.findIndex(r => r.some(c => String(c).toLowerCase().includes('položka')))
+
         if (headerIdx !== -1) {
           const periodYear = parseInt(billingPeriod, 10)
           if (Number.isFinite(periodYear)) {
@@ -1996,6 +2026,7 @@ export async function POST(req: NextRequest) {
            if (unitColIndex !== -1) {
               const paramCols = headerRow.map((col, idx) => ({ name: String(col).trim(), index: idx })).filter(c => c.index !== unitColIndex && c.name)
               
+
               await log(`[Parametry] Nalezeno ${paramCols.length} parametrů: ${paramCols.map(c => c.name).join(', ')}`)
 
               for (const row of dataRows) {
@@ -2040,6 +2071,9 @@ export async function POST(req: NextRequest) {
               }
            }
         }
+      }
+      } catch (e) {
+        summary.errors.push(`Náklady na dům: ${e instanceof Error ? e.message : String(e)}`)
       }
 
       // 10. AKTUALIZACE POŘADÍ SLUŽEB (dle listu "Vyúčtování byt - 1.část")
@@ -2093,7 +2127,10 @@ export async function POST(req: NextRequest) {
                   const updateData: any = { order: orderCounter++ }
 
                   // AKTUALIZACE METODIKY (pokud je ve sloupci C - index 2)
-                  if (row.length > 2) {
+                  // ALE POUZE pokud služba nemá uživatelsky nastavené dataSourceColumn nebo dataSourceName
+                  const hasUserConfig = service.dataSourceColumn || service.dataSourceName
+                  
+                  if (row.length > 2 && !hasUserConfig) {
                      const methodRaw = String(row[2] || '').trim()
                      if (methodRaw) {
                         const method = matchMethodFromValue(methodRaw)
@@ -2102,8 +2139,10 @@ export async function POST(req: NextRequest) {
                            await log(`[Metodika] Služba '${service.name}' -> ${method} (z Excelu: '${methodRaw}')`)
 
                            // Aktualizace DataSourceType podle metodiky
+                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
                            let src: any = { dataSourceType: null, unitAttributeName: null, measurementUnit: null, dataSourceName: null }
                            
+
                            if (method === 'NO_BILLING') {
                               src = { dataSourceType: 'NONE', unitAttributeName: null, measurementUnit: null, dataSourceName: null }
                            } else if (method === 'METER_READING') {
@@ -2139,6 +2178,8 @@ export async function POST(req: NextRequest) {
                            }
                         }
                      }
+                  } else if (hasUserConfig) {
+                     await log(`[Metodika] Služba '${service.name}' má uživatelské nastavení - ponecháno`)
                   }
 
                   await prisma.service.update({
@@ -2187,13 +2228,13 @@ export async function POST(req: NextRequest) {
       await send({ type: 'result', data: { success: true, message: 'Import dokončen', summary, logs } })
       await writer.close()
 
-    } catch (error) {
-      console.error('[Complete import]', error)
-      let message = error instanceof Error ? error.message : String(error)
-      if (message.includes('Unique constraint failed')) message = 'Duplicitní data v databázi.'
-      await send({ type: 'error', message })
-      await writer.close()
-    }
+  } catch (error) {
+    console.error('[Complete import]', error)
+    let message = error instanceof Error ? error.message : String(error)
+    if (message.includes('Unique constraint failed')) message = 'Duplicitní data v databázi.'
+    await send({ type: 'error', message })
+    await writer.close()
+  }
   })()
 
   return new Response(stream.readable, {
