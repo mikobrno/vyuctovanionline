@@ -152,6 +152,7 @@ model Unit {
   communications        Communication[]
   auditNotes            CommunicationAuditNote[]
   deliveryRecords       UnitDeliveryRecord[]
+  meterSettings         UnitServiceMeterSetting[]
 
   @@unique([buildingId, unitNumber])
   @@map("units")
@@ -176,6 +177,22 @@ enum UnitType {
   GARAGE
   CELLAR
   NON_RESIDENTIAL
+}
+
+// Nastavení měřidla pro jednotku a službu (např. jednotka má/nemá vodoměr na SV)
+model UnitServiceMeterSetting {
+  id          String   @id @default(cuid())
+  unitId      String
+  serviceId   String
+  hasMeter    Boolean  @default(true)  // true = má vodoměr, false = směrné číslo
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  unit        Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  service     Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([unitId, serviceId])
+  @@map("unit_service_meter_settings")
 }
 
 // Vlastník
@@ -239,6 +256,14 @@ model Service {
   customFormula       String?             // vlastní vzorec pro výpočet
   advancePaymentColumn String?            // odkaz na sloupec v předpisu záloh
   excelColumn         String?             // EXPLICITNÍ ADRESOVÁNÍ: Sloupec v Excelu (např. "BN")
+  
+  // DUÁLNÍ NÁKLADY - pro služby se směrným číslem (Studená voda)
+  // Základní nastavení (zda používat duální náklady a směrné číslo)
+  guidanceNumber      Float?              @default(35) // Směrné číslo m³/osoba/rok
+  useDualCost         Boolean             @default(false) // Použít duální náklady
+  costWithMeter       Float?              // Náklad A - pro jednotky S vodoměrem
+  costWithoutMeter    Float?              // Náklad B - pro jednotky BEZ vodoměru (směrné číslo)
+  
   order               Int                 @default(0)
   isActive            Boolean             @default(true)
   userMergeWithNext   Boolean             @default(false)
@@ -254,9 +279,27 @@ model Service {
   advancePayments     AdvancePayment[]
   advanceMonthlies    AdvanceMonthly[]
   billingServiceCosts BillingServiceCost[]
+  meterSettings       UnitServiceMeterSetting[]
+  yearlyCosts         ServiceYearlyCost[]
 
   @@unique([buildingId, code])
   @@map("services")
+}
+
+// Roční náklady pro duální rozúčtování (per služba, per rok)
+model ServiceYearlyCost {
+  id               String   @id @default(cuid())
+  serviceId        String
+  year             Int
+  costWithMeter    Float?   // Náklad A - pro jednotky S vodoměrem
+  costWithoutMeter Float?   // Náklad B - pro jednotky BEZ vodoměru (směrné číslo)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  service          Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, year])
+  @@map("service_yearly_costs")
 }
 
 model ServiceGroup {
@@ -342,6 +385,7 @@ model Meter {
   unitId          String
   serialNumber    String     // výrobní číslo měřidla
   type            MeterType
+  variant         String?    // varianta/stoupačka: TUV1, TUV2, SV1, SV2, atd.
   initialReading  Float      @default(0)
   isActive        Boolean    @default(true)
   installedAt     DateTime?  // datum instalace

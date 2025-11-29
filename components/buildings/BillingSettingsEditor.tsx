@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, Fragment, useCallback } from 'rea
 import { useRouter } from 'next/navigation'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import type { Service as PrismaService, Unit as PrismaUnit, Cost as PrismaCost } from '@prisma/client'
+import DualCostSettingsModal from './DualCostSettingsModal'
 
 type BillingService = PrismaService & {
   method?: PrismaService['methodology']
@@ -13,8 +14,8 @@ type BillingService = PrismaService & {
 
 type BillingUnit = PrismaUnit & {
   owners?: { lastName?: string }[]
-  meters?: Array<{ type?: string | null; isActive?: boolean; readings?: Array<{ consumption?: number | null; value?: number | null; precalculatedCost?: number | null }> }>
-  personMonths?: Array<{ personCount: number }>
+  meters?: Array<{ type?: string | null; variant?: string | null; isActive?: boolean; readings?: Array<{ consumption?: number | null; value?: number | null; precalculatedCost?: number | null; period?: number | null }> }>
+  personMonths?: Array<{ personCount: number; year?: number }>
   parameters?: Array<{ name: string; value: number }>
 }
 
@@ -91,8 +92,54 @@ const toNullableNumber = (value: unknown): number | null => {
 const resolveAreaSource = (service?: { areaSource?: AreaSourceOption | null }) : AreaSourceOption =>
   service?.areaSource === 'CHARGEABLE_AREA' ? 'CHARGEABLE_AREA' : 'TOTAL_AREA'
 
+// Automatické přiřazení metody rozúčtování podle názvu služby
+const getDefaultMethodForService = (serviceName: string): string => {
+  const name = serviceName.toLowerCase()
+  
+  // Počet osob
+  if (name.includes('elektr') || name.includes('úklid') || name.includes('uklid') || 
+      name.includes('výtah') || name.includes('vytah') || name.includes('odpad')) {
+    return 'PERSON_MONTHS'
+  }
+  
+  // Komín / parametr
+  if (name.includes('komín') || name.includes('komin')) {
+    return 'UNIT_PARAMETER'
+  }
+  
+  // Měřidlo
+  if (name.includes('voda') || name.includes('tuv') || name.includes('teplo') || 
+      name.includes('ohřev') || name.includes('ohrev') || name.includes('plyn')) {
+    return 'METER_READING'
+  }
+  
+  // Na byt
+  if (name.includes('upc') || name.includes('internet') || name.includes('správa') || 
+      name.includes('sprava') || name.includes('pojišt') || name.includes('pojist')) {
+    return 'FIXED_PER_UNIT'
+  }
+  
+  // Fond oprav - vlastnický podíl
+  if (name.includes('fond') || name.includes('oprav')) {
+    return 'OWNERSHIP_SHARE'
+  }
+  
+  return 'OWNERSHIP_SHARE' // výchozí
+}
+
 const mergeServiceSnapshot = (service: BillingService, snapshot: ServiceSnapshot): BillingService => {
-  const resolvedMethod = (snapshot.methodology ?? snapshot.method ?? service.method ?? service.methodology) as BillingService['method']
+  let resolvedMethod = (snapshot.methodology ?? snapshot.method ?? service.method ?? service.methodology) as BillingService['method']
+  let resolvedUnitAttributeName = snapshot.unitAttributeName ?? service.unitAttributeName
+
+  if (!resolvedMethod) {
+    const autoMethod = getDefaultMethodForService(snapshot.name || service.name)
+    resolvedMethod = autoMethod as BillingService['method']
+
+    if (autoMethod === 'UNIT_PARAMETER' && !resolvedUnitAttributeName) {
+      resolvedUnitAttributeName = 'komin'
+    }
+  }
+  
   const nextMethod = resolvedMethod ?? service.methodology
   return {
     ...service,
@@ -102,7 +149,7 @@ const mergeServiceSnapshot = (service: BillingService, snapshot: ServiceSnapshot
     dataSourceType: (snapshot.dataSourceType as BillingService['dataSourceType']) ?? service.dataSourceType,
     dataSourceName: snapshot.dataSourceName ?? service.dataSourceName,
     dataSourceColumn: snapshot.dataSourceColumn ?? service.dataSourceColumn,
-    unitAttributeName: snapshot.unitAttributeName ?? service.unitAttributeName,
+    unitAttributeName: resolvedUnitAttributeName,
     measurementUnit: snapshot.measurementUnit ?? service.measurementUnit,
     unitPrice: toNullableNumber(snapshot.unitPrice) ?? service.unitPrice,
     fixedAmountPerUnit: toNullableNumber(snapshot.fixedAmountPerUnit) ?? service.fixedAmountPerUnit,
@@ -143,6 +190,54 @@ type BillingResultSummary = {
   result: number
 }
 
+// Helper pro parsování dataSourceName formátu "HOT_WATER:TUV1,TUV2+COLD_WATER:SV1"
+function parseDataSourceConfig(dataSourceName: string | null | undefined): Map<string, string[] | null> {
+  const result = new Map<string, string[] | null>();
+  if (!dataSourceName) return result;
+  
+  const parts = dataSourceName.split('+');
+  for (const part of parts) {
+    if (part.includes(':')) {
+      const [meterType, variantsStr] = part.split(':');
+      const variants = variantsStr.split(',').map(v => v.trim()).filter(v => v);
+      result.set(meterType.trim(), variants.length > 0 ? variants : null);
+    } else {
+      result.set(part.trim(), null);
+    }
+  }
+  return result;
+}
+
+// Helper pro filtrování měřidel podle dataSourceName konfigurace
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filterMetersByConfig(meters: any[], dataSourceConfig: Map<string, string[] | null>): any[] {
+  if (dataSourceConfig.size === 0) return [];
+  
+  // Zjistíme, zda měřidla vůbec mají vyplněné varianty
+  const hasAnyVariants = meters.some(m => m.variant !== null && m.variant !== undefined);
+  
+  return meters.filter(m => {
+    if (!m.isActive) return false;
+    const variants = dataSourceConfig.get(m.type);
+    if (variants === undefined) return false;
+    if (variants === null) return true;
+    if (!hasAnyVariants) return true;
+    if (m.variant === null || m.variant === undefined) return true;
+    return variants.includes(m.variant);
+  });
+}
+
+// Helper pro získání odečtu pro daný rok
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getReadingForYear(readings: any[] | undefined, year: number): any | undefined {
+  if (!readings || readings.length === 0) return undefined;
+  // Zkusit najít přesný rok
+  const exactMatch = readings.find(r => r.period === year);
+  if (exactMatch) return exactMatch;
+  // Fallback na první (nejnovější) odečet, pokud období není definováno
+  return readings[0];
+}
+
 export default function BillingSettingsEditor({ buildingId, building, services, units, costs }: BillingSettingsEditorProps) {
   const router = useRouter()
   const [localServices, setLocalServices] = useState<BillingService[]>(services)
@@ -176,6 +271,8 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
   const [editingMeterServiceId, setEditingMeterServiceId] = useState<string | null>(null)
   const [tempMeterTypes, setTempMeterTypes] = useState<string[]>([])
   const [tempMeterSourceColumn, setTempMeterSourceColumn] = useState<string>('consumption')
+  // Sub-varianty měřidel (TUV1-4, SV1-4)
+  const [tempMeterSubTypes, setTempMeterSubTypes] = useState<Record<string, string[]>>({})
 
   // State pro konfiguraci plochy
   const [editingAreaServiceId, setEditingAreaServiceId] = useState<string | null>(null)
@@ -193,6 +290,15 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
   const [globalOverrides, setGlobalOverrides] = useState<GlobalOverrideState>({})
   // Unit overrides: [unitId]: { [serviceId]: { userUnits?: string, advance?: string } }
   const [unitOverrides, setUnitOverrides] = useState<UnitOverrideState>({})
+
+  // State pro dual cost modal (Náklad A/B pro služby s vodoměry vs směrné číslo)
+  const [dualCostModalOpen, setDualCostModalOpen] = useState(false)
+  const [selectedServiceForDualCost, setSelectedServiceForDualCost] = useState<string | null>(null)
+
+  // State pro vyhledávací dropdown služeb (Fond oprav)
+  const [fondOpravDropdownOpen, setFondOpravDropdownOpen] = useState(false)
+  const [fondOpravSearch, setFondOpravSearch] = useState('')
+  const fondOpravDropdownRef = useRef<HTMLDivElement>(null)
 
   const fetchConfigVersions = useCallback(async () => {
     try {
@@ -275,11 +381,28 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
 
   useEffect(() => {
     // Transform methodology -> method for component compatibility
-    const transformedServices = services.map(s => ({
-      ...s,
-      method: s.methodology || s.method || 'OWNERSHIP_SHARE',
-      userMergeWithNext: Boolean(s.userMergeWithNext)
-    }))
+    // Pokud je methodology OWNERSHIP_SHARE (výchozí), zkusíme přiřadit podle názvu služby
+    const transformedServices = services.map(s => {
+      let method: string | undefined = s.methodology || s.method
+      let unitAttributeName = s.unitAttributeName
+
+      if (!method) {
+        const autoMethod = getDefaultMethodForService(s.name)
+        method = autoMethod
+        if (autoMethod === 'UNIT_PARAMETER' && !unitAttributeName) {
+          unitAttributeName = 'komin'
+        }
+      }
+
+      const resolvedMethod = method as BillingService['method']
+      return {
+        ...s,
+        method: resolvedMethod,
+        methodology: resolvedMethod,
+        unitAttributeName,
+        userMergeWithNext: Boolean(s.userMergeWithNext)
+      }
+    })
     setLocalServices(transformedServices)
     // Initialize global overrides from service configuration (divisor, manualCost, manualShare)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -295,6 +418,18 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
     })
     setGlobalOverrides(prev => ({ ...prev, ...initialOverrides }))
   }, [services])
+
+  // Zavření dropdownu při kliknutí mimo
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (fondOpravDropdownRef.current && !fondOpravDropdownRef.current.contains(event.target as Node)) {
+        setFondOpravDropdownOpen(false)
+        setFondOpravSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Načtení verzí
   useEffect(() => {
@@ -358,6 +493,28 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
   }, [units, selectedUnitId])
 
   const selectedUnit = useMemo(() => units.find(u => u.id === selectedUnitId) || units[0], [units, selectedUnitId])
+  
+  // Dostupné varianty měřidel v databázi seskupené podle typu
+  const availableMeterVariants = useMemo(() => {
+    const variants: Record<string, Set<string>> = {
+      HOT_WATER: new Set<string>(),
+      COLD_WATER: new Set<string>()
+    };
+    
+    for (const unit of units) {
+      for (const meter of unit.meters || []) {
+        if (meter.type && meter.variant && variants[meter.type]) {
+          variants[meter.type].add(meter.variant);
+        }
+      }
+    }
+    
+    return {
+      HOT_WATER: Array.from(variants.HOT_WATER).sort(),
+      COLD_WATER: Array.from(variants.COLD_WATER).sort()
+    };
+  }, [units])
+  
   const selectedMonthlyBreakdown = useMemo(() => monthlyBreakdown[selectedUnitId], [monthlyBreakdown, selectedUnitId])
 
   const monthlyRows = useMemo(() => (
@@ -602,8 +759,8 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
       finalFormula = `(${tempFormula}) * G${currentRow}`
     }
 
-    // Update local state
-    setLocalServices(prev => prev.map(s => s.id === editingFormulaServiceId ? { ...s, customFormula: finalFormula, method: 'CUSTOM' } : s))
+    // Update local state and ensure methodology follows method change
+    updateService(editingFormulaServiceId, { customFormula: finalFormula, method: 'CUSTOM' })
     setEditingFormulaServiceId(null)
   }
 
@@ -612,9 +769,33 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
   const openMeterConfig = (service: any) => {
     setEditingMeterServiceId(service.id)
     // Parse existing config or default
+    // Format: "HOT_WATER:TUV1+TUV2" or "COLD_WATER:SV1" or legacy "HOT_WATER+HEATING"
     let types: string[] = []
+    const subTypes: Record<string, string[]> = {}
+    
     if (service.dataSourceName) {
-      types = service.dataSourceName.split('+')
+      const parts = service.dataSourceName.split('+')
+      parts.forEach((part: string) => {
+        if (part.includes(':')) {
+          // New format: "HOT_WATER:TUV1+TUV2" stored as single segment
+          const [mainType, subList] = part.split(':')
+          types.push(mainType)
+          subTypes[mainType] = subList.split(',')
+        } else if (part.startsWith('TUV') && part.length <= 4) {
+          // Legacy or direct TUV1, TUV2, etc.
+          if (!types.includes('HOT_WATER')) types.push('HOT_WATER')
+          if (!subTypes['HOT_WATER']) subTypes['HOT_WATER'] = []
+          subTypes['HOT_WATER'].push(part)
+        } else if (part.startsWith('SV') && part.length <= 3) {
+          // Legacy or direct SV1, SV2, etc.
+          if (!types.includes('COLD_WATER')) types.push('COLD_WATER')
+          if (!subTypes['COLD_WATER']) subTypes['COLD_WATER'] = []
+          subTypes['COLD_WATER'].push(part)
+        } else {
+          // Standard type like HEATING, ELECTRICITY, HOT_WATER, COLD_WATER
+          types.push(part)
+        }
+      })
     } else {
       // Default fallback based on code
       const meterTypeMap: Record<string, string> = {
@@ -638,20 +819,48 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
       if (defaultType) types = [defaultType]
     }
     setTempMeterTypes(types)
+    setTempMeterSubTypes(subTypes)
     setTempMeterSourceColumn(service.dataSourceColumn || 'consumption')
   }
 
   const toggleMeterType = (type: string) => {
-    setTempMeterTypes(prev => 
-      prev.includes(type) 
-        ? prev.filter(t => t !== type)
-        : [...prev, type]
-    )
+    setTempMeterTypes(prev => {
+      if (prev.includes(type)) {
+        // Odstranit typ a jeho sub-varianty
+        setTempMeterSubTypes(s => {
+          const copy = { ...s }
+          delete copy[type]
+          return copy
+        })
+        return prev.filter(t => t !== type)
+      } else {
+        return [...prev, type]
+      }
+    })
+  }
+
+  const toggleMeterSubType = (mainType: string, subType: string) => {
+    setTempMeterSubTypes(prev => {
+      const current = prev[mainType] || []
+      const updated = current.includes(subType)
+        ? current.filter(t => t !== subType)
+        : [...current, subType]
+      return { ...prev, [mainType]: updated }
+    })
   }
 
   const saveMeterConfig = async () => {
     if (!editingMeterServiceId) return
-    const newDataSourceName = tempMeterTypes.join('+')
+    // Build dataSourceName with sub-variants
+    // Format: HOT_WATER:TUV1,TUV2+COLD_WATER:SV1 or just HEATING+ELECTRICITY
+    const parts = tempMeterTypes.map(type => {
+      const subs = tempMeterSubTypes[type]
+      if (subs && subs.length > 0) {
+        return `${type}:${subs.join(',')}`
+      }
+      return type
+    })
+    const newDataSourceName = parts.join('+')
     const serviceToUpdate = localServices.find(s => s.id === editingMeterServiceId)
     setLocalServices(prev => prev.map(s => s.id === editingMeterServiceId ? { 
       ...s, 
@@ -775,11 +984,12 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
     const consumptionByService: Record<string, number> = {}
     localServices.forEach(service => {
       if (service.method === 'METER_READING') {
-        let typesToSum: string[] = []
+        let dataSourceConfig: Map<string, string[] | null>
         
         if (service.dataSourceName) {
-          typesToSum = service.dataSourceName.split('+')
+          dataSourceConfig = parseDataSourceConfig(service.dataSourceName)
         } else {
+          // Fallback - hádání podle kódu/názvu služby
           const meterTypeMap: Record<string, string> = {
             'TEPLO': 'HEATING',
             'TUV': 'HOT_WATER',
@@ -798,17 +1008,16 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
              else if (code.includes('ELE') || name.includes('ele')) t = 'ELECTRICITY'
              else t = 'HEATING'
           }
-          typesToSum = [t]
+          dataSourceConfig = new Map([[t, null]])
         }
         
         const useCost = service.dataSourceColumn === 'precalculatedCost'
 
         const totalConsumption = units.reduce((sum, u) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const unitMeters = u.meters?.filter((m: any) => typesToSum.includes(m.type) && m.isActive) || []
+          const unitMeters = filterMetersByConfig(u.meters || [], dataSourceConfig)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const unitSum = unitMeters.reduce((s: number, m: any) => {
-             const reading = m.readings?.[0]
+             const reading = getReadingForYear(m.readings, year)
              if (!reading) return s
              if (useCost) {
                 return s + (reading.precalculatedCost || 0)
@@ -822,20 +1031,76 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
     })
 
     return { totalArea, chargeableArea, totalPersonMonths, unitCount, consumptionByService }
-  }, [units, localServices])
+  }, [units, localServices, year])
 
   // Výpočet základních hodnot pro službu (D, E, G)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const calculateBaseValues = (service: any, unit: any) => {
-    if (!unit) return { totalCost: 0, buildingAmount: 0, unitAmount: 0 }
+    if (!unit) return { totalCost: 0, buildingAmount: 0, unitAmount: 0, isDualCost: false, unitHasMeter: false }
 
     const gOverride = globalOverrides[service.id]
     const isMeterCost = service.method === 'METER_READING' && service.dataSourceColumn === 'precalculatedCost'
     let totalCost = 0
+    
+    // Kontrola duálního rozúčtování
+    const isDualCost = service.useDualCost && (service.costWithMeter || service.costWithoutMeter)
+    
+    // Zjistíme zda jednotka má vodoměr (COLD_WATER) - pokud má aktivní měřidlo, má vodoměr
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const coldWaterMeters = unit.meters?.filter((m: any) => 
+      m.type === 'COLD_WATER' && m.isActive
+    ) || []
+    const unitHasMeter = coldWaterMeters.length > 0
+
+    // Pro duální náklady - speciální výpočet
+    if (isDualCost && !unitHasMeter) {
+      // SMĚRNÉ ČÍSLO - jednotka bez vodoměru
+      // Vzorec: náklad = (osobo_měsíce_jednotky / celkem_osobo_měsíce_bez_vodoměru) × náklad_B
+      
+      const costB = service.costWithoutMeter || 0
+      const guidanceNumber = service.guidanceNumber || 35 // m³/osoba/rok
+      
+      // Osobo-měsíce této jednotky
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const unitPersonMonths = unit.personMonths?.reduce((s: number, pm: any) => s + pm.personCount, 0) || 0
+      
+      // Spotřeba jednotky dle směrného čísla: osobo_měsíce / 12 × 35
+      const unitConsumption = (unitPersonMonths / 12) * guidanceNumber
+      
+      // Celková spotřeba všech jednotek BEZ vodoměru (dle směrného čísla)
+      let totalConsumptionWithoutMeter = 0
+      for (const u of units) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const uMeters = u.meters?.filter((m: any) => m.type === 'COLD_WATER' && m.isActive) || []
+        if (uMeters.length === 0) {
+          // Jednotka bez vodoměru
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const uPersonMonths = u.personMonths?.reduce((s: number, pm: any) => s + pm.personCount, 0) || 0
+          totalConsumptionWithoutMeter += (uPersonMonths / 12) * guidanceNumber
+        }
+      }
+      
+      // Náklad jednotky = podíl × náklad B
+      const unitCostDirect = totalConsumptionWithoutMeter > 0 
+        ? (unitConsumption / totalConsumptionWithoutMeter) * costB
+        : 0
+      
+      return { 
+        totalCost: costB, 
+        buildingAmount: totalConsumptionWithoutMeter, 
+        unitAmount: unitConsumption,
+        isDualCost: true,
+        unitHasMeter: false,
+        unitCostDirect: Math.round(unitCostDirect * 100) / 100
+      }
+    }
 
     // 1. Určení základního nákladu (z DB nebo manuální přepis)
     if (gOverride?.manualCost && !isNaN(parseFloat(gOverride.manualCost))) {
       totalCost = parseFloat(gOverride.manualCost)
+    } else if (isDualCost && unitHasMeter) {
+      // Jednotka S vodoměrem - použijeme náklad A a výpočet podle měřidla
+      totalCost = service.costWithMeter || 0
     } else {
       totalCost = filteredCosts
         .filter(c => c.serviceId === service.id)
@@ -851,8 +1116,14 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
 
     let buildingAmount = 0
     let unitAmount = 0
+    
+    // Pro duální náklady s vodoměrem přepíšeme metodu na METER_READING
+    let effectiveMethod = service.method
+    if (isDualCost && unitHasMeter) {
+      effectiveMethod = 'METER_READING'
+    }
 
-    switch (service.method) {
+    switch (effectiveMethod) {
       case 'OWNERSHIP_SHARE':
         buildingAmount = 100
         unitAmount = ((unit.shareNumerator || 0) / (unit.shareDenominator || 1)) * 100
@@ -876,47 +1147,65 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
         unitAmount = 1
         break
       case 'METER_READING':
-        let typesToSum: string[] = []
-        if (service.dataSourceName) {
-          typesToSum = service.dataSourceName.split('+')
-        } else {
-          const meterTypeMap: Record<string, string> = {
-            'TEPLO': 'HEATING',
-            'TUV': 'HOT_WATER',
-            'SV': 'COLD_WATER',
-            'ELEKTRINA': 'ELECTRICITY',
-            'VODA': 'COLD_WATER',
-            'VODNE': 'COLD_WATER',
+        {
+          let meterDataSourceConfig: Map<string, string[] | null>
+          if (service.dataSourceName) {
+            meterDataSourceConfig = parseDataSourceConfig(service.dataSourceName)
+          } else {
+            const meterTypeMap: Record<string, string> = {
+              'TEPLO': 'HEATING',
+              'TUV': 'HOT_WATER',
+              'SV': 'COLD_WATER',
+              'ELEKTRINA': 'ELECTRICITY',
+              'VODA': 'COLD_WATER',
+              'VODNE': 'COLD_WATER',
+            }
+            let t = meterTypeMap[service.code]
+            if (!t) {
+               const code = service.code.toUpperCase()
+               const name = service.name.toLowerCase()
+               if (code.includes('VOD') || name.includes('vod') || name.includes('studen')) t = 'COLD_WATER'
+               else if (code.includes('TUV') || name.includes('tuv') || name.includes('teplá') || name.includes('tepla')) t = 'HOT_WATER'
+               else if (code.includes('TEP') || name.includes('tep') || name.includes('topen')) t = 'HEATING'
+               else if (code.includes('ELE') || name.includes('ele')) t = 'ELECTRICITY'
+               else t = 'HEATING'
+            }
+            meterDataSourceConfig = new Map([[t, null]])
           }
-          let t = meterTypeMap[service.code]
-          if (!t) {
-             const code = service.code.toUpperCase()
-             const name = service.name.toLowerCase()
-             if (code.includes('VOD') || name.includes('vod') || name.includes('studen')) t = 'COLD_WATER'
-             else if (code.includes('TUV') || name.includes('tuv') || name.includes('teplá') || name.includes('tepla')) t = 'HOT_WATER'
-             else if (code.includes('TEP') || name.includes('tep') || name.includes('topen')) t = 'HEATING'
-             else if (code.includes('ELE') || name.includes('ele')) t = 'ELECTRICITY'
-             else t = 'HEATING'
-          }
-          typesToSum = [t]
-        }
-        
-        const useCost = service.dataSourceColumn === 'precalculatedCost'
-        
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const unitMeters = unit.meters?.filter((m: any) => typesToSum.includes(m.type) && m.isActive) || []
+          
+          const useCost = service.dataSourceColumn === 'precalculatedCost'
+          
+          const unitMeters = filterMetersByConfig(unit.meters || [], meterDataSourceConfig)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const unitSum = unitMeters.reduce((s: number, m: any) => {
-           const reading = m.readings?.[0]
-           if (!reading) return s
-           if (useCost) {
-              return s + (reading.precalculatedCost || 0)
-           }
-           return s + (reading.consumption || 0)
-        }, 0)
+             const reading = getReadingForYear(m.readings, year)
+             if (!reading) return s
+             if (useCost) {
+                return s + (reading.precalculatedCost || 0)
+             }
+             return s + (reading.consumption || 0)
+          }, 0)
         
-        buildingAmount = buildingStats.consumptionByService[service.id] || 0
+          // Pro duální náklady počítáme buildingAmount jen z jednotek S vodoměrem
+          if (isDualCost) {
+            let totalWithMeter = 0
+          for (const u of units) {
+            const uMeters = filterMetersByConfig(u.meters || [], meterDataSourceConfig)
+            if (uMeters.length > 0) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              totalWithMeter += uMeters.reduce((s: number, m: any) => {
+                const reading = getReadingForYear(m.readings, year)
+                if (!reading) return s
+                return s + (useCost ? (reading.precalculatedCost || 0) : (reading.consumption || 0))
+              }, 0)
+            }
+          }
+          buildingAmount = totalWithMeter
+        } else {
+          buildingAmount = buildingStats.consumptionByService[service.id] || 0
+        }
         unitAmount = unitSum
+        }
         break
       case 'FIXED_PER_UNIT':
         buildingAmount = 0
@@ -957,15 +1246,29 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
       unitAmount = parseFloat(uOverride.userUnits)
     }
 
-    return { totalCost, buildingAmount, unitAmount }
+    return { totalCost, buildingAmount, unitAmount, isDualCost: false, unitHasMeter: true }
   }
 
   // Výpočet náhledu pro řádek
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const calculatePreview = (service: any) => {
     if (!selectedUnit) return { unitCost: 0, unitShare: 0, unitAmount: 0, unitPrice: 0, buildingAmount: 0, formula: '' }
-
+    
     const baseValues = calculateBaseValues(service, selectedUnit)
+    
+    // Pro duální náklady bez vodoměru použijeme přímý výpočet
+    if (baseValues.isDualCost && !baseValues.unitHasMeter && 'unitCostDirect' in baseValues) {
+      const unitCost = (baseValues as any).unitCostDirect
+      return {
+        unitCost,
+        unitShare: baseValues.buildingAmount > 0 ? (baseValues.unitAmount / baseValues.buildingAmount) * 100 : 0,
+        unitAmount: baseValues.unitAmount,
+        unitPrice: baseValues.buildingAmount > 0 ? baseValues.totalCost / baseValues.buildingAmount : 0,
+        buildingAmount: baseValues.buildingAmount,
+        formula: `Směrné číslo: ${baseValues.unitAmount.toFixed(2)} m³ / ${baseValues.buildingAmount.toFixed(2)} m³ × ${baseValues.totalCost.toLocaleString('cs-CZ')} Kč = ${unitCost.toLocaleString('cs-CZ')} Kč`
+      }
+    }
+
     const totalCost = baseValues.totalCost
     const buildingAmount = baseValues.buildingAmount
     const unitAmount = baseValues.unitAmount
@@ -1187,67 +1490,88 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
       const servicesToSave = localServices.map((s, index) => ({
         ...s,
         order: index, // Save the current position as order
+        isActive: s.isActive, // Explicitně zahrnout isActive
         divisor: globalOverrides[s.id]?.buildingUnits || null, // Save building units override as divisor
         manualCost: globalOverrides[s.id]?.manualCost || null,
         manualShare: globalOverrides[s.id]?.share || null,
         dataSourceName: s.dataSourceName,
         dataSourceColumn: s.dataSourceColumn,
         customFormula: s.customFormula,
-        userMergeWithNext: s.userMergeWithNext || false
+        userMergeWithNext: s.userMergeWithNext || false,
+        areaSource: s.areaSource || 'TOTAL_AREA',
       }))
 
       // 1. Uložit do databáze (tabulka Service)
-      const res = await fetch(`/api/buildings/${buildingId}/services/reorder`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ services: servicesToSave }),
-      })
-      if (!res.ok) throw new Error('Failed to save')
+      let res: Response
+      try {
+        res = await fetch(`/api/buildings/${buildingId}/services/reorder`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ services: servicesToSave }),
+        })
+      } catch (fetchError) {
+        console.error('Network error during save:', fetchError)
+        alert('Chyba připojení k serveru. Zkontrolujte, zda je server spuštěný.')
+        return
+      }
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => 'Unknown error')
+        console.error('Save failed:', res.status, errorText)
+        alert(`Chyba při ukládání služeb: ${res.status} - ${errorText}`)
+        return
+      }
 
       // 2. Najít výchozí verzi (s hvězdičkou) a aktualizovat ji
       const defaultVersion = versions.find(v => v.isDefault)
       if (defaultVersion) {
-        const versionRes = await fetch(`/api/buildings/${buildingId}/config-versions/${defaultVersion.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            services: localServices.map((s, index) => ({
-              serviceId: s.id,
-              code: s.code,
-              methodology: s.method,
-              method: s.method,
-              order: index,
-              dataSourceType: s.dataSourceType,
-              dataSourceName: s.dataSourceName,
-              dataSourceColumn: s.dataSourceColumn,
-              unitAttributeName: s.unitAttributeName,
-              measurementUnit: s.measurementUnit,
-              unitPrice: s.unitPrice,
-              fixedAmountPerUnit: s.fixedAmountPerUnit,
-              divisor: globalOverrides[s.id]?.buildingUnits || s.divisor,
-              manualCost: globalOverrides[s.id]?.manualCost || s.manualCost,
-              manualShare: globalOverrides[s.id]?.share || s.manualShare,
-              customFormula: s.customFormula,
-              userMergeWithNext: s.userMergeWithNext || false,
-              showOnStatement: s.showOnStatement,
-              isActive: s.isActive,
-              advancePaymentColumn: s.advancePaymentColumn,
-              excelColumn: s.excelColumn,
-              groupShareLabel: s.groupShareLabel,
-              areaSource: s.areaSource,
-            })),
-            manualOverrides: { global: globalOverrides, unit: unitOverrides },
-          }),
-        })
-        if (!versionRes.ok) {
-          console.warn('Failed to update default version, but DB save succeeded')
+        try {
+          const versionRes = await fetch(`/api/buildings/${buildingId}/config-versions/${defaultVersion.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              services: localServices.map((s, index) => ({
+                serviceId: s.id,
+                code: s.code,
+                methodology: s.method,
+                method: s.method,
+                order: index,
+                dataSourceType: s.dataSourceType,
+                dataSourceName: s.dataSourceName,
+                dataSourceColumn: s.dataSourceColumn,
+                unitAttributeName: s.unitAttributeName,
+                measurementUnit: s.measurementUnit,
+                unitPrice: s.unitPrice,
+                fixedAmountPerUnit: s.fixedAmountPerUnit,
+                divisor: globalOverrides[s.id]?.buildingUnits || s.divisor,
+                manualCost: globalOverrides[s.id]?.manualCost || s.manualCost,
+                manualShare: globalOverrides[s.id]?.share || s.manualShare,
+                customFormula: s.customFormula,
+                userMergeWithNext: s.userMergeWithNext || false,
+                showOnStatement: s.showOnStatement,
+                isActive: s.isActive,
+                advancePaymentColumn: s.advancePaymentColumn,
+                excelColumn: s.excelColumn,
+                groupShareLabel: s.groupShareLabel,
+                areaSource: s.areaSource,
+              })),
+              manualOverrides: { global: globalOverrides, unit: unitOverrides },
+            }),
+          })
+          if (!versionRes.ok) {
+            console.warn('Failed to update default version, but DB save succeeded')
+          }
+          // Po uložení aktualizujeme appliedDefaultVersionId, aby useEffect nezpůsobil opětovné načtení verze
+          setAppliedDefaultVersionId(defaultVersion.id)
+        } catch (versionError) {
+          console.warn('Error updating config version:', versionError)
         }
       }
-
+      
       router.refresh()
     } catch (err) {
-      console.error(err)
-      alert('Chyba při ukládání')
+      console.error('Unexpected error during save:', err)
+      alert('Neočekávaná chyba při ukládání')
     } finally {
       setSaving(false)
     }
@@ -1380,19 +1704,29 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updateService = (serviceId: string, updates: any) => {
-    setLocalServices(prev => prev.map(s => 
-      s.id === serviceId ? { ...s, ...updates } : s
-    ))
+    setLocalServices(prev => prev.map(s => {
+      if (s.id !== serviceId) return s
+      // Pokud se mění method, synchronizuj i methodology
+      const newUpdates = { ...updates }
+      if ('method' in newUpdates) {
+        newUpdates.methodology = newUpdates.method
+      }
+      return { ...s, ...newUpdates }
+    }))
   }
 
   // Služby zobrazené v hlavní tabulce (bez NO_BILLING - ty se zobrazí v sekci Fond oprav)
   const displayedServices = localServices.filter(s => {
     // Služby NO_BILLING se zobrazují ve speciální sekci Fond oprav
     if (s.method === 'NO_BILLING') return false
-    // Filtr na skryté služby
+    // Filtr na skryté služby (neaktivní)
     if (!showHiddenServices && s.isActive === false) return false
-    // Filtr na nulové náklady
-    if (hideZeroCosts) {
+    // Filtr na nulové náklady - ALE pokud je služba neaktivní a zobrazujeme skryté, ukážeme ji
+    if (hideZeroCosts && s.isActive !== false) {
+      // Pro duální náklady použijeme součet costWithMeter + costWithoutMeter
+      const hasDualCost = s.useDualCost && ((s.costWithMeter || 0) + (s.costWithoutMeter || 0) > 0)
+      if (hasDualCost) return true // Duální náklady - nezobrazovat jako nulové
+      
       const serviceCost = filteredCosts.filter(c => c.serviceId === s.id).reduce((sum, c) => sum + c.amount, 0)
       if (serviceCost === 0) return false
     }
@@ -1800,7 +2134,7 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
             </div>
 
             {/* Content */}
-            <div className="px-8 py-7 space-y-7">
+            <div className="px-8 py-7 space-y-7 max-h-[70vh] overflow-y-auto">
               {/* Meter Types Selection */}
               <div>
                 <label className="flex text-sm font-bold text-gray-900 dark:text-white mb-4 items-center gap-2">
@@ -1809,28 +2143,58 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
                 </label>
                 <div className="space-y-2.5">
                   {[
-                    { id: 'COLD_WATER', label: 'Studená voda (SV)', icon: '💧', color: 'blue' },
-                    { id: 'HOT_WATER', label: 'Teplá voda (TUV)', icon: '🌡️', color: 'red' },
-                    { id: 'HEATING', label: 'Teplo', icon: '🔥', color: 'orange' },
-                    { id: 'ELECTRICITY', label: 'Elektřina', icon: '⚡', color: 'yellow' }
+                    { id: 'COLD_WATER', label: 'Studená voda (SV)', icon: '💧', color: 'blue', subTypes: ['SV1', 'SV2', 'SV3', 'SV4'] },
+                    { id: 'HOT_WATER', label: 'Teplá voda (TUV)', icon: '🌡️', color: 'red', subTypes: ['TUV1', 'TUV2', 'TUV3', 'TUV4'] },
+                    { id: 'HEATING', label: 'Teplo', icon: '🔥', color: 'orange', subTypes: [] as string[] },
+                    { id: 'ELECTRICITY', label: 'Elektřina', icon: '⚡', color: 'yellow', subTypes: [] as string[] }
                   ].map(type => (
-                    <label key={type.id} className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all transform hover:scale-[1.02] ${tempMeterTypes.includes(type.id) ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-400 dark:border-blue-700' : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600 bg-white dark:bg-slate-800/50'}`}>
-                      <div className="w-6 h-6 flex items-center justify-center">
-                        <input
-                          type="checkbox"
-                          checked={tempMeterTypes.includes(type.id)}
-                          onChange={() => toggleMeterType(type.id)}
-                          className="w-5 h-5 text-blue-600 rounded-lg focus:ring-2 focus:ring-blue-500 border-gray-300 dark:border-slate-600 cursor-pointer"
-                        />
-                      </div>
-                      <span className="text-2xl">{type.icon}</span>
-                      <span className={`font-semibold flex-1 transition-colors ${tempMeterTypes.includes(type.id) ? 'text-blue-900 dark:text-blue-100' : 'text-gray-700 dark:text-gray-200'}`}>{type.label}</span>
-                      {tempMeterTypes.includes(type.id) && (
-                        <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
+                    <div key={type.id}>
+                      <label className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all transform hover:scale-[1.02] ${tempMeterTypes.includes(type.id) ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-400 dark:border-blue-700' : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600 bg-white dark:bg-slate-800/50'}`}>
+                        <div className="w-6 h-6 flex items-center justify-center">
+                          <input
+                            type="checkbox"
+                            checked={tempMeterTypes.includes(type.id)}
+                            onChange={() => toggleMeterType(type.id)}
+                            className="w-5 h-5 text-blue-600 rounded-lg focus:ring-2 focus:ring-blue-500 border-gray-300 dark:border-slate-600 cursor-pointer"
+                          />
+                        </div>
+                        <span className="text-2xl">{type.icon}</span>
+                        <span className={`font-semibold flex-1 transition-colors ${tempMeterTypes.includes(type.id) ? 'text-blue-900 dark:text-blue-100' : 'text-gray-700 dark:text-gray-200'}`}>{type.label}</span>
+                        {tempMeterTypes.includes(type.id) && (
+                          <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </label>
+                      {/* Sub-typy pro SV a TUV */}
+                      {tempMeterTypes.includes(type.id) && type.subTypes.length > 0 && (
+                        <div className="ml-10 mt-2 mb-2 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg border border-gray-200 dark:border-slate-600">
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mb-2 font-medium">
+                            Vyberte stoupačky (pokud nevyberete žádnou, použijí se všechny):
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {type.subTypes.map(sub => {
+                              const isSelected = (tempMeterSubTypes[type.id] || []).includes(sub)
+                              return (
+                                <button
+                                  key={sub}
+                                  type="button"
+                                  onClick={() => toggleMeterSubType(type.id, sub)}
+                                  className={`px-3 py-1.5 text-sm font-medium rounded-lg border-2 transition-all ${
+                                    isSelected
+                                      ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
+                                      : 'bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-400 dark:hover:border-slate-500'
+                                  }`}
+                                >
+                                  {sub}
+                                  {isSelected && <span className="ml-1">✓</span>}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
                       )}
-                    </label>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -2023,7 +2387,11 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
                     {displayedServices.map((service, index) => {
                       const metrics = rowMetrics[index]
                       const preview = metrics.preview
-                      const totalCost = filteredCosts.filter(c => c.serviceId === service.id).reduce((sum, c) => sum + c.amount, 0)
+                      // Pro duální náklady zobrazujeme součet costWithMeter + costWithoutMeter
+                      const isDualCostService = service.useDualCost && (service.costWithMeter || service.costWithoutMeter)
+                      const totalCost = isDualCostService 
+                        ? (service.costWithMeter || 0) + (service.costWithoutMeter || 0)
+                        : filteredCosts.filter(c => c.serviceId === service.id).reduce((sum, c) => sum + c.amount, 0)
                       const isMeterCost = service.method === 'METER_READING' && service.dataSourceColumn === 'precalculatedCost'
                       const advance = metrics.advance
                       const balance = metrics.balance
@@ -2090,22 +2458,28 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
                               </td>
                               <td className="px-3 py-2.5">
                                 <div className="relative flex items-center gap-1">
-                                  <select
-                                    value={service.method}
-                                    onChange={(e) => updateService(service.id, { method: e.target.value })}
-                                    className="w-full bg-transparent border-none text-xs focus:ring-0 p-0 cursor-pointer text-gray-600 dark:text-gray-300 font-medium hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                                    aria-label="Způsob rozúčtování"
-                                  >
-                                    <option value="OWNERSHIP_SHARE">Podíl</option>
-                                    <option value="AREA">Plocha</option>
-                                    <option value="PERSON_MONTHS">Osoby</option>
-                                    <option value="METER_READING">Měř.</option>
-                                    <option value="EQUAL_SPLIT">Rovně</option>
-                                    <option value="FIXED_PER_UNIT">Fixní</option>
-                                    <option value="UNIT_PARAMETER">Param.</option>
-                                    <option value="CUSTOM">Vzorec</option>
-                                    <option value="NO_BILLING">Žádný</option>
-                                  </select>
+                                  {service.useDualCost ? (
+                                    <span className="text-xs font-medium text-purple-600 dark:text-purple-400 flex items-center gap-1" title="Duální rozúčtování aktivní">
+                                      💧📊 Duální
+                                    </span>
+                                  ) : (
+                                    <select
+                                      value={service.method}
+                                      onChange={(e) => updateService(service.id, { method: e.target.value })}
+                                      className="w-full bg-transparent border-none text-xs focus:ring-0 p-0 cursor-pointer text-gray-600 dark:text-gray-300 font-medium hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                      aria-label="Způsob rozúčtování"
+                                    >
+                                      <option value="OWNERSHIP_SHARE">vlastnický podíl</option>
+                                      <option value="AREA">m2 celkové plochy</option>
+                                      <option value="PERSON_MONTHS">počet osob</option>
+                                      <option value="METER_READING">měřidlo</option>
+                                      <option value="EQUAL_SPLIT">rovným dílem</option>
+                                      <option value="FIXED_PER_UNIT">na byt</option>
+                                      <option value="UNIT_PARAMETER">komín</option>
+                                      <option value="CUSTOM">vlastní vzorec</option>
+                                      <option value="NO_BILLING">nevyúčtovává se</option>
+                                    </select>
+                                  )}
                                   {service.method === 'METER_READING' && (
                                      <button
                                        onClick={() => openMeterConfig(service)}
@@ -2161,6 +2535,20 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
                                     aria-label={`Náklad pro službu ${service.name}`}
                                   />
                                   <span className="text-gray-500">Kč</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedServiceForDualCost(service.id)
+                                      setDualCostModalOpen(true)
+                                    }}
+                                    className="ml-1 p-0.5 rounded text-blue-500 hover:text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                    title="Nastavení rozděleného nákladu (A/B)"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                  </button>
                                 </div>
                               </td>
                               <td className="px-2 py-2.5 text-right text-gray-900 dark:text-gray-100 bg-blue-50/30 dark:bg-blue-900/5 text-xs">
@@ -2325,27 +2713,75 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
                             <span>Fond oprav / Pevné platby</span>
                             <span className="text-[10px] font-normal text-indigo-500 dark:text-indigo-400">(nevyúčtovává se)</span>
                           </span>
-                          <select
-                            title="Vybrat službu jako Fond oprav"
-                            aria-label="Vybrat službu jako Fond oprav"
-                            className="ml-4 px-3 py-1.5 text-sm bg-white dark:bg-slate-700 border border-indigo-300 dark:border-indigo-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 dark:text-white"
-                            value={localServices.find(s => s.method === 'NO_BILLING')?.id || ''}
-                            onChange={(e) => {
-                              const selectedServiceId = e.target.value
-                              setLocalServices(prev => prev.map(s => ({
-                                ...s,
-                                method: s.id === selectedServiceId ? 'NO_BILLING' : (s.method === 'NO_BILLING' ? 'OWNERSHIP_SHARE' : s.method),
-                                methodology: s.id === selectedServiceId ? 'NO_BILLING' : (s.methodology === 'NO_BILLING' ? 'OWNERSHIP_SHARE' : s.methodology)
-                              })))
-                            }}
-                          >
-                            <option value="">— Vybrat službu —</option>
-                            {localServices.map(s => (
-                              <option key={s.id} value={s.id}>
-                                {s.name} {s.method === 'NO_BILLING' ? '✓' : ''}
-                              </option>
-                            ))}
-                          </select>
+                          {/* Searchable dropdown pro výběr služby */}
+                          <div className="relative ml-4" ref={fondOpravDropdownRef}>
+                            <button
+                              type="button"
+                              onClick={() => setFondOpravDropdownOpen(!fondOpravDropdownOpen)}
+                              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white dark:bg-slate-700 border border-indigo-300 dark:border-indigo-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 dark:text-white min-w-[200px]"
+                            >
+                              <span className="flex-1 text-left truncate">
+                                {localServices.find(s => s.method === 'NO_BILLING')?.name || '— Vybrat službu —'}
+                              </span>
+                              <svg className={`w-4 h-4 transition-transform ${fondOpravDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                            {fondOpravDropdownOpen && (
+                              <div className="absolute z-50 mt-1 w-72 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg">
+                                <div className="p-2 border-b border-gray-100 dark:border-slate-700">
+                                  <input
+                                    type="text"
+                                    placeholder="Hledat službu..."
+                                    value={fondOpravSearch}
+                                    onChange={(e) => setFondOpravSearch(e.target.value)}
+                                    className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    autoFocus
+                                  />
+                                </div>
+                                <div className="max-h-60 overflow-y-auto">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setLocalServices(prev => prev.map(s => ({
+                                        ...s,
+                                        method: s.method === 'NO_BILLING' ? 'OWNERSHIP_SHARE' : s.method,
+                                        methodology: s.methodology === 'NO_BILLING' ? 'OWNERSHIP_SHARE' : s.methodology
+                                      })))
+                                      setFondOpravDropdownOpen(false)
+                                      setFondOpravSearch('')
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
+                                  >
+                                    — Zrušit výběr —
+                                  </button>
+                                  {localServices
+                                    .filter(s => !fondOpravSearch || s.name.toLowerCase().includes(fondOpravSearch.toLowerCase()))
+                                    .map(s => (
+                                      <button
+                                        key={s.id}
+                                        type="button"
+                                        onClick={() => {
+                                          setLocalServices(prev => prev.map(srv => ({
+                                            ...srv,
+                                            method: srv.id === s.id ? 'NO_BILLING' : (srv.method === 'NO_BILLING' ? 'OWNERSHIP_SHARE' : srv.method),
+                                            methodology: srv.id === s.id ? 'NO_BILLING' : (srv.methodology === 'NO_BILLING' ? 'OWNERSHIP_SHARE' : srv.methodology)
+                                          })))
+                                          setFondOpravDropdownOpen(false)
+                                          setFondOpravSearch('')
+                                        }}
+                                        className={`w-full px-3 py-2 text-left text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center justify-between ${
+                                          s.method === 'NO_BILLING' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300' : 'text-gray-900 dark:text-white'
+                                        }`}
+                                      >
+                                        <span>{s.name}</span>
+                                        {s.method === 'NO_BILLING' && <span className="text-indigo-600 dark:text-indigo-400">✓</span>}
+                                      </button>
+                                    ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="p-4 text-center text-gray-400 dark:text-gray-500">–</td>
@@ -2664,6 +3100,26 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
           </div>
         </div>
       </div>
+
+      {/* Modal pro nastavení rozděleného nákladu A/B */}
+      {selectedServiceForDualCost && (
+        <DualCostSettingsModal
+          serviceId={selectedServiceForDualCost}
+          serviceName={localServices.find(s => s.id === selectedServiceForDualCost)?.name || ''}
+          year={year}
+          isOpen={dualCostModalOpen}
+          onClose={() => {
+            setDualCostModalOpen(false)
+            setSelectedServiceForDualCost(null)
+          }}
+          onSave={() => {
+            setDualCostModalOpen(false)
+            setSelectedServiceForDualCost(null)
+            // Obnovit data ze serveru pro aktualizaci nákladů
+            router.refresh()
+          }}
+        />
+      )}
     </div>
   )
 }

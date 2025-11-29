@@ -35,7 +35,14 @@ export default async function BuildingDetailPage({
             include: {
               readings: {
                 orderBy: { readingDate: 'desc' },
-                take: 1
+                select: {
+                  consumption: true,
+                  value: true,
+                  precalculatedCost: true,
+                  period: true,
+                  startValue: true,
+                  endValue: true
+                }
               }
             }
           },
@@ -43,7 +50,12 @@ export default async function BuildingDetailPage({
             orderBy: [
               { year: 'desc' },
               { month: 'desc' }
-            ]
+            ],
+            select: {
+              personCount: true,
+              year: true,
+              month: true
+            }
           },
           advancePaymentRecords: {
             include: {

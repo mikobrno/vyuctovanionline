@@ -542,6 +542,18 @@ export async function POST(req: NextRequest) {
             data: { validFrom, validTo }
           })
         }
+        
+        // Uložení parametru komínů
+        if (ev.kominy !== undefined && ev.kominy !== null && ev.kominy !== '') {
+          const kominyValue = typeof ev.kominy === 'number' ? ev.kominy : parseFloat(String(ev.kominy).replace(',', '.'))
+          if (!isNaN(kominyValue)) {
+            await prisma.unitParameter.upsert({
+              where: { unitId_name: { unitId: unit.id, name: 'komin' } },
+              update: { value: kominyValue },
+              create: { unitId: unit.id, name: 'komin', value: kominyValue }
+            })
+          }
+        }
       }
 
       // 3. SLUŽBY A NÁKLADY (z faktury)
@@ -578,6 +590,13 @@ export async function POST(req: NextRequest) {
           // Vytvořit novou službu
           const code = serviceName.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '').substring(0, 20) || 'SERVICE'
           
+          // Automatické nastavení unitAttributeName pro komíny
+          const serviceNameLower = serviceName.toLowerCase()
+          let unitAttributeName: string | null = null
+          if (serviceNameLower.includes('komín') || serviceNameLower.includes('komin')) {
+            unitAttributeName = 'komin'
+          }
+          
           let created = false
           for (let attempt = 0; attempt < 10 && !created; attempt++) {
             const candidate = attempt === 0 ? code : `${code}_${attempt}`
@@ -588,6 +607,7 @@ export async function POST(req: NextRequest) {
                   name: serviceName,
                   code: candidate,
                   methodology,
+                  unitAttributeName,
                   isActive: true,
                   showOnStatement: true,
                   order: summary.services.total
@@ -704,39 +724,61 @@ export async function POST(req: NextRequest) {
 
           for (let idx = 0; idx < meters.length; idx++) {
             const m = meters[idx]
-            // SerialNumber musí být unikátní pro každý typ měřidla!
-            // Pokud je m.meridlo "0" nebo prázdné, použijeme kombinaci jednotka-typ-index
-            const baseSerial = m.meridlo && m.meridlo !== '0' ? m.meridlo : `${unit.id}-${key}-${idx}`
-            const serialNumber = baseSerial
+            const variant = m.typ || null // TUV1, TUV2, SV1, SV2, atd.
             
-            // Najít nebo vytvořit měřidlo (hledáme podle serialNumber A typu!)
+            // SerialNumber musí být unikátní - VŽDY přidáme variantu pokud existuje
+            // Protože stejné fyzické měřidlo může mít více stoupaček (TUV1, TUV2)
+            const baseSerial = m.meridlo && m.meridlo !== '0' ? m.meridlo : `${unit.id}-${key}`
+            const serialNumber = variant ? `${baseSerial}-${variant}` : `${baseSerial}-${idx}`
+            
+            // Najít nebo vytvořit měřidlo - hledáme podle unikátního serialNumber
             let meter = await prisma.meter.findFirst({
-              where: { unitId: unit.id, serialNumber, type: meterType }
+              where: { unitId: unit.id, serialNumber }
             })
 
             if (!meter) {
-              // Zkusíme najít podle typu (bez ohledu na serialNumber) - pro případ že existuje měřidlo s jiným serialNumber
+              // Zkusíme najít podle typu a varianty (fallback)
               meter = await prisma.meter.findFirst({
-                where: { unitId: unit.id, type: meterType }
+                where: { unitId: unit.id, type: meterType, variant }
               })
               
               if (!meter) {
-                meter = await prisma.meter.create({
-                  data: {
-                    unitId: unit.id,
-                    serialNumber,
-                    type: meterType,
-                    initialReading: m.pocatecni_hodnota || 0,
-                    isActive: true
-                  }
-                })
+                // Vytvoříme nové měřidlo
+                try {
+                  meter = await prisma.meter.create({
+                    data: {
+                      unitId: unit.id,
+                      serialNumber,
+                      type: meterType,
+                      variant,
+                      initialReading: m.pocatecni_hodnota || 0,
+                      isActive: true
+                    }
+                  })
+                } catch (e: unknown) {
+                  // Pokud serialNumber už existuje, najdeme ho
+                  meter = await prisma.meter.findFirst({
+                    where: { unitId: unit.id, serialNumber }
+                  })
+                }
+              } else {
+                // Aktualizovat serialNumber pokud je měřidlo nalezeno podle typu a varianty
+                try {
+                  await prisma.meter.update({
+                    where: { id: meter.id },
+                    data: { serialNumber }
+                  })
+                } catch (e) {
+                  // Ignore if serialNumber already exists
+                }
               }
             }
+            
+            if (!meter) continue // Skip pokud se nepodařilo najít/vytvořit
 
             // Odečet
             if (m.rocni_naklad !== undefined || m.koncova_hodnota !== undefined) {
-              await prisma.meterReading.create({
-                data: {
+              const readingData = {
                   meterId: meter.id,
                   period: rok,
                   readingDate: new Date(rok, 11, 31),
@@ -746,9 +788,23 @@ export async function POST(req: NextRequest) {
                   consumption: (m.koncova_hodnota || 0) - (m.pocatecni_hodnota || 0),
                   precalculatedCost: m.rocni_naklad || null,
                   note: m.import_id || null
-                }
+              }
+
+              const existingReading = await prisma.meterReading.findFirst({
+                  where: { meterId: meter.id, period: rok }
               })
-              summary.readings.created++
+
+              if (existingReading) {
+                  await prisma.meterReading.update({
+                      where: { id: existingReading.id },
+                      data: readingData
+                  })
+              } else {
+                  await prisma.meterReading.create({
+                      data: readingData
+                  })
+                  summary.readings.created++
+              }
               summary.readings.total++
             }
           }

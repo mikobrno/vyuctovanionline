@@ -21,7 +21,7 @@ export async function PUT(
           where: { id: service.id },
           data: {
             order: service.order,
-            methodology: service.method, // Map 'method' from frontend to 'methodology' in DB
+            methodology: service.method ?? service.methodology, // Accept either field from payload
             isActive: service.isActive,
             divisor: service.divisor ? parseFloat(service.divisor) : null, // Save manual building units override
             manualCost: service.manualCost !== undefined && service.manualCost !== null && service.manualCost !== '' ? parseFloat(service.manualCost) : null,

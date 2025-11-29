@@ -264,27 +264,77 @@ const METHOD_RULES: Array<{ method: CalculationMethod; tests: RegExp[] }> = [
 ]
 
 const METHOD_OVERRIDES: Record<string, CalculationMethod> = {
-  'na byt': CalculationMethod.EQUAL_SPLIT,
-  'nabyt': CalculationMethod.EQUAL_SPLIT,
-  'kazdy byt': CalculationMethod.EQUAL_SPLIT,
+  // Vlastnický podíl
+  'vlastnicky podil': CalculationMethod.OWNERSHIP_SHARE,
+  'vlastnicky podilu': CalculationMethod.OWNERSHIP_SHARE,
+  'podil': CalculationMethod.OWNERSHIP_SHARE,
+  'podil bytove jednotky': CalculationMethod.OWNERSHIP_SHARE,
+  'podil garazove jednotky': CalculationMethod.OWNERSHIP_SHARE,
+  
+  // Plocha
+  'm2 celkove plochy': CalculationMethod.AREA,
+  'm2 celkova plocha': CalculationMethod.AREA,
+  'celkova plocha': CalculationMethod.AREA,
+  'plocha': CalculationMethod.AREA,
+  'm2 plochy jednotky': CalculationMethod.AREA,
+  'm2 plochy tuv': CalculationMethod.AREA,
+  'm2 pp': CalculationMethod.AREA,
+  'plocha m2': CalculationMethod.AREA,
+  'zapocitatelna plocha': CalculationMethod.AREA,
+  'podilem vytapene plochy': CalculationMethod.AREA,
+  'podilem ploch vsech jednotek - domky': CalculationMethod.AREA,
+  'podilem podlahovych ploch vsech jednotek': CalculationMethod.AREA,
+  'podilem ploch vsech jednotek': CalculationMethod.AREA,
+  'pomer podlahovych ploch': CalculationMethod.AREA,
+  'gj, plocha m2': CalculationMethod.AREA,
+  
+  // Osoby
+  'pocet osob': CalculationMethod.PERSON_MONTHS,
+  'pocet osob vytah': CalculationMethod.PERSON_MONTHS,
+  'vytah osob': CalculationMethod.PERSON_MONTHS,
+  
+  // Měřidla / Odečty
+  'meridlo': CalculationMethod.METER_READING,
+  'odecty tuv': CalculationMethod.METER_READING,
+  'odecet sv': CalculationMethod.METER_READING,
+  'odecet tuv': CalculationMethod.METER_READING,
+  'odecet meridel': CalculationMethod.METER_READING,
+  'odecet elektromer': CalculationMethod.METER_READING,
+  'externi': CalculationMethod.METER_READING,
+  'extern': CalculationMethod.METER_READING,
+  'namer m3': CalculationMethod.METER_READING,
+  'gj, namer m3': CalculationMethod.METER_READING,
+  
+  // Fixní na jednotku / byt
+  'na byt': CalculationMethod.FIXED_PER_UNIT,
+  'nabyt': CalculationMethod.FIXED_PER_UNIT,
+  'kazdy byt': CalculationMethod.FIXED_PER_UNIT,
+  'jednotka': CalculationMethod.FIXED_PER_UNIT,
+  'naklady jednotka': CalculationMethod.FIXED_PER_UNIT,
+  'objekt': CalculationMethod.FIXED_PER_UNIT,
+  
+  // Rovným dílem
   'rovnym dilem': CalculationMethod.EQUAL_SPLIT,
   'rovnym dilem 1/22': CalculationMethod.EQUAL_SPLIT,
   'rovnym dilem 1/23': CalculationMethod.EQUAL_SPLIT,
   'dilem': CalculationMethod.EQUAL_SPLIT,
-  'vlastnicky podil': CalculationMethod.OWNERSHIP_SHARE,
-  'vlastnicky podilu': CalculationMethod.OWNERSHIP_SHARE,
-  'podil': CalculationMethod.OWNERSHIP_SHARE,
+  
+  // Parametry / speciální
+  'komin': CalculationMethod.UNIT_PARAMETER,
+  'pocet kusu': CalculationMethod.UNIT_PARAMETER,
+  'pocet jizd autovytahem': CalculationMethod.UNIT_PARAMETER,
+  'pocet garazovych mist': CalculationMethod.UNIT_PARAMETER,
+  'pocet prostoru': CalculationMethod.UNIT_PARAMETER,
+  
+  // Speciální případy
+  'uzivatel': CalculationMethod.CUSTOM,
+  'vyuctovatel': CalculationMethod.CUSTOM,
+  'odmeny funkcionaru': CalculationMethod.CUSTOM,
+  
+  // Nevyúčtovává se
   'nevyuctovava se': CalculationMethod.NO_BILLING,
   'nevyuctovavat': CalculationMethod.NO_BILLING,
-  'odecet sv': CalculationMethod.METER_READING,
-  'odecet tuv': CalculationMethod.METER_READING,
-  'odecet meridel': CalculationMethod.METER_READING,
-  'externi': CalculationMethod.METER_READING,
-  'extern': CalculationMethod.METER_READING,
-  'm2 celkove plochy': CalculationMethod.AREA,
-  'm2 celkova plocha': CalculationMethod.AREA,
-  'celkova plocha': CalculationMethod.AREA,
-  'plocha': CalculationMethod.AREA
+  'prazdne': CalculationMethod.NO_BILLING,
 }
 
 function matchMethodFromValue(value?: string | null): CalculationMethod | null {
@@ -755,12 +805,19 @@ export async function POST(req: NextRequest) {
             const unitNumber = unitCellRaw
             const strippedUnitNumber = stripUnitPrefixes(unitNumber)
 
-                        const fullName = String(row[1] || '').trim()
+            const fullName = String(row[1] || '').trim()
             const address = String(row[2] || '').trim()
             const email = String(row[3] || '').trim()
             const phone = String(row[4] || '').trim()
+            const chimneysCountRaw = String(row[5] || '').trim() // Počet komínů - sloupec F
             const areaRaw = String(row[6] || '').trim()
             const variableSymbol = String(row[9] || '').trim()
+            
+            // Parsování počtu komínů
+            const chimneysCount = (() => {
+              const num = parseFloat(chimneysCountRaw.replace(',', '.'))
+              return Number.isFinite(num) ? num : null
+            })()
             
             // Sloupce pro podíly: L (11) = Jmenovatel, M (12) = Čitatel, N (13) = Procento
             const shareDenominatorRaw = String(row[11] || '').trim()
@@ -930,6 +987,15 @@ export async function POST(req: NextRequest) {
               })
             }
             ownerMap.set(unitNumber, { id: owner.id, firstName, lastName })
+            
+            // Uložení parametru komínů, pokud je hodnota nenulová
+            if (chimneysCount !== null) {
+              await prisma.unitParameter.upsert({
+                where: { unitId_name: { unitId: unit.id, name: 'komin' } },
+                update: { value: chimneysCount },
+                create: { unitId: unit.id, name: 'komin', value: chimneysCount }
+              })
+            }
           }
         } else {
           summary.warnings.push('Na listu "Evidence" nebyla nalezena hlavička s vlastníky.')
@@ -1124,6 +1190,7 @@ export async function POST(req: NextRequest) {
               if (calculationMethod === 'FIXED_PER_UNIT') return { dataSourceType: 'UNIT_COUNT', unitAttributeName: null, measurementUnit: 'ks', dataSourceName: null }
               if (calculationMethod === 'EQUAL_SPLIT') return { dataSourceType: 'UNIT_COUNT', unitAttributeName: null, measurementUnit: 'ks', dataSourceName: null }
               if (calculationMethod === 'OWNERSHIP_SHARE') return { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'VLASTNICKY_PODIL', measurementUnit: '%', dataSourceName: null }
+              if (calculationMethod === 'UNIT_PARAMETER') return { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'komin', measurementUnit: 'ks', dataSourceName: null }
 
               return { dataSourceType: null, unitAttributeName: null, measurementUnit: null, dataSourceName: null }
             })()
@@ -1245,6 +1312,7 @@ export async function POST(req: NextRequest) {
           const strippedUnitNumber = stripUnitPrefixes(rawUnitNumber)
           
           const ownerName = String(row[1] || '').trim()
+          const variant = String(row[2] || '').trim() || null
           const serialNumber = String(row[5] || '').trim()
           const startValue = parseNumberCell(String(row[6] || '')) ?? 0
           const endValue = parseNumberCell(String(row[7] || '')) ?? 0
@@ -1254,7 +1322,8 @@ export async function POST(req: NextRequest) {
           
           if (consumption === 0 && endValue > startValue) consumption = endValue - startValue
           if (!rawUnitNumber || rawUnitNumber === 'Bazén' || rawUnitNumber.toLowerCase().includes('celkem')) continue
-          if (consumption <= 0) continue
+          // Přeskočit pouze pokud není ani spotřeba ani náklad
+          if (consumption <= 0 && (cost === null || cost === undefined || cost <= 0)) continue
 
           const unit = unitMap.get(rawUnitNumber) || unitMap.get(strippedUnitNumber)
           
@@ -1325,6 +1394,7 @@ export async function POST(req: NextRequest) {
                    unitId: unit.id,
                    serialNumber: effectiveSerial,
                    type: meterType as MeterType,
+                   variant,
                    initialReading: startValue,
                    serviceId: service.id,
                    isActive: true,
@@ -1333,13 +1403,19 @@ export async function POST(req: NextRequest) {
              })
              meterMap.set(meterKey, meter)
           } else {
-             // Update meter type if needed?
-             if (meter.type !== meterType) {
-                await prisma.meter.update({ where: { id: meter.id }, data: { type: meterType as MeterType } })
+             // Update meter type and variant if needed
+             if (meter.type !== meterType || meter.variant !== variant) {
+                await prisma.meter.update({ 
+                    where: { id: meter.id }, 
+                    data: { 
+                        type: meterType as MeterType,
+                        variant
+                    } 
+                })
              }
           }
 
-          readingsToCreate.push({
+          const readingData = {
             meterId: meter.id, 
             period: parseInt(billingPeriod, 10), 
             readingDate: new Date(`${billingPeriod}-12-31`), 
@@ -1351,16 +1427,29 @@ export async function POST(req: NextRequest) {
             consumption, 
             precalculatedCost: cost ?? null,
             note: externalId || `Import z ${sheetName} - ${ownerName}` 
+          }
+
+          const existingReading = await prisma.meterReading.findFirst({
+              where: { meterId: meter.id, period: parseInt(billingPeriod, 10) }
           })
+
+          if (existingReading) {
+              await prisma.meterReading.update({
+                  where: { id: existingReading.id },
+                  data: readingData
+              })
+          } else {
+              await prisma.meterReading.create({
+                  data: readingData
+              })
+              summary.readings.created++
+          }
+          summary.readings.total++
         }
       }
 
-      if (readingsToCreate.length > 0) {
-         await prisma.meterReading.createMany({ data: readingsToCreate })
-         summary.readings.created += readingsToCreate.length
-         summary.readings.total += readingsToCreate.length
-         await log(`[Odečty] Vytvořeno ${readingsToCreate.length} odečtů.`)
-      }
+      // Removed createMany block as we now process readings individually
+      await log(`[Odečty] Zpracováno ${summary.readings.total} odečtů.`)
 
       // 5. IMPORT PLATEB
       await send({ type: 'progress', percentage: 80, step: 'Importuji platby...' })
@@ -2472,6 +2561,8 @@ export async function POST(req: NextRequest) {
                               src = { dataSourceType: 'UNIT_COUNT', unitAttributeName: null, measurementUnit: 'ks', dataSourceName: null }
                            } else if (method === 'OWNERSHIP_SHARE') {
                               src = { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'VLASTNICKY_PODIL', measurementUnit: '%', dataSourceName: null }
+                           } else if (method === 'UNIT_PARAMETER') {
+                              src = { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'komin', measurementUnit: 'ks', dataSourceName: null }
                            }
 
                            if (src.dataSourceType) {

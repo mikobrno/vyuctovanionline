@@ -39,6 +39,11 @@ export default async function BillingCalculatePage({
             include: {
               readings: {
                 where: { period: parseInt(year) },
+                orderBy: [
+                  { readingDate: 'asc' },
+                  { createdAt: 'asc' },
+                  { id: 'asc' }
+                ]
               },
             },
           },

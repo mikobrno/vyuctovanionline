@@ -477,9 +477,11 @@ export async function POST(request: NextRequest) {
     }
     
     // Hromadný insert všech předpisů najednou (mnohem rychlejší)
+    // skipDuplicates = true ignoruje záznamy, které už existují
     if (advancesToCreate.length > 0) {
       await prisma.advanceMonthly.createMany({
-        data: advancesToCreate
+        data: advancesToCreate,
+        skipDuplicates: true
       })
     }
     

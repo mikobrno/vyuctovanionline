@@ -2,6 +2,7 @@
 import { read, utils } from 'xlsx'
 import { prisma } from '../lib/prisma'
 import { CalculationMethod, DataSourceType, MeterType, Service } from '@prisma/client'
+import { mapMethodologyToSystem, getDataSourceForMethod } from '../lib/methodology-mapping'
 import fs from 'fs'
 import path from 'path'
 
@@ -579,23 +580,8 @@ async function runImport() {
             where: { buildingId: building.id, name: { equals: serviceName, mode: 'insensitive' } }
           })
 
-          const m = methodology.toLowerCase()
-          const calculationMethod = m.includes('měřidl') || m.includes('odečet') || m.includes('extern') ? 'METER_READING' :
-                                    (m.includes('plocha') || m.includes('výměr') || m.includes('vyměr')) ? 'AREA' :
-                                    (m.includes('osob') || m.includes('osobo')) ? 'PERSON_MONTHS' :
-                                    (m.includes('byt') || m.includes('jednotk')) ? 'FIXED_PER_UNIT' :
-                                    m.includes('rovn') ? 'EQUAL_SPLIT' :
-                                    (m.includes('podil') || m.includes('podíl')) ? 'OWNERSHIP_SHARE' : 'OWNERSHIP_SHARE'
-
-          const src = (() => {
-            if (calculationMethod === 'METER_READING') return { dataSourceType: 'METER_DATA', unitAttributeName: null, measurementUnit: null }
-            if (calculationMethod === 'AREA') return { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'CELKOVA_VYMERA', measurementUnit: 'm²' }
-            if (calculationMethod === 'PERSON_MONTHS') return { dataSourceType: 'PERSON_MONTHS', unitAttributeName: null, measurementUnit: 'osobo-měsíc' }
-            if (calculationMethod === 'FIXED_PER_UNIT') return { dataSourceType: 'UNIT_COUNT', unitAttributeName: null, measurementUnit: null }
-            if (calculationMethod === 'EQUAL_SPLIT') return { dataSourceType: 'UNIT_COUNT', unitAttributeName: null, measurementUnit: null }
-            if (calculationMethod === 'OWNERSHIP_SHARE') return { dataSourceType: 'UNIT_ATTRIBUTE', unitAttributeName: 'VLASTNICKY_PODIL', measurementUnit: null }
-            return { dataSourceType: null, unitAttributeName: null, measurementUnit: null }
-          })()
+          const calculationMethod = mapMethodologyToSystem(methodology)
+          const src = getDataSourceForMethod(calculationMethod)
 
         if (!service) {
             // Robustní generování unikátního kódu služby s retry při kolizi
@@ -786,6 +772,7 @@ async function runImport() {
       const finalCol = findColumn([/odecet/, /final/, /konec/])
       const consumptionCol = findColumn([/spotreba/, /odectena/, /consumption/])
       const costCol = findColumn([/naklad/, /naklad za rok/, /rocni/, /celkem/])
+      const variantCol = findColumn([/pouziti/, /variant/, /stoupacka/])
       const moduleCol = findColumn([/radio/, /modul/, /radiovy/])
       const idCol = findColumn([/^id$/, /identifikace/, /cislo modulu/])
 
@@ -800,6 +787,7 @@ async function runImport() {
         finalReading: buildDescriptor(finalIdx, headerRowCells),
         consumption: buildDescriptor(consumptionIdx, headerRowCells),
         yearlyCost: costCol >= 0 ? buildDescriptor(costCol, headerRowCells) : undefined,
+        variant: variantCol >= 0 ? buildDescriptor(variantCol, headerRowCells) : undefined,
         radioModule: moduleCol >= 0 ? buildDescriptor(moduleCol, headerRowCells) : undefined,
         externalId: idCol >= 0 ? buildDescriptor(idCol, headerRowCells) : undefined
       }
@@ -850,6 +838,12 @@ async function runImport() {
         let precalculatedCost: number | undefined = undefined
         if (colMeta.yearlyCost) {
           precalculatedCost = parseNumberCell(String(row[colMeta.yearlyCost.number - 1] || ''))
+        }
+
+        // Načtení varianty (pokud existuje sloupec)
+        let variant: string | undefined = undefined
+        if (colMeta.variant) {
+          variant = String(row[colMeta.variant.number - 1] || '').trim() || undefined
         }
 
         // Optional columns parsed above nejsou dále používány
@@ -942,7 +936,7 @@ async function runImport() {
         const effectiveSerial = serialNumber || `${unitNumber}-${meterType}`
         const meter = await prisma.meter.upsert({
           where: { unitId_serialNumber: { unitId: unit.id, serialNumber: effectiveSerial } },
-          update: { type: meterType as MeterType, isActive: true },
+          update: { type: meterType as MeterType, isActive: true, variant },
           create: {
             unitId: unit.id,
             serialNumber: effectiveSerial,
@@ -950,30 +944,39 @@ async function runImport() {
             initialReading: startValue,
             serviceId: service.id,
             isActive: true,
-            installedAt: new Date(`${billingPeriod}-01-01`)
+            installedAt: new Date(`${billingPeriod}-01-01`),
+            variant
           }
         })
 
         const existingReading = await prisma.meterReading.findFirst({
           where: { meterId: meter.id, period: parseInt(billingPeriod, 10) }
         })
+
+        const readingData = {
+          meterId: meter.id,
+          readingDate: new Date(`${billingPeriod}-12-31`),
+          value: endValue, // původní pole value reprezentuje koncový stav
+          startValue,
+          endValue,
+          consumption,
+          precalculatedCost,
+          period: parseInt(billingPeriod, 10),
+          note: `Import z ${sheetName} - ${ownerName}`
+        }
+
         if (!existingReading) {
           await prisma.meterReading.create({
-            data: {
-              meterId: meter.id,
-              readingDate: new Date(`${billingPeriod}-12-31`),
-              value: endValue, // původní pole value reprezentuje koncový stav
-              startValue,
-              endValue,
-              consumption,
-              precalculatedCost,
-              period: parseInt(billingPeriod, 10),
-              note: `Import z ${sheetName} - ${ownerName}`
-            }
+            data: readingData
           })
           summary.readings.created++
-          summary.readings.total++
+        } else {
+          await prisma.meterReading.update({
+            where: { id: existingReading.id },
+            data: readingData
+          })
         }
+        summary.readings.total++
       }
     }
 
