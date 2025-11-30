@@ -60,6 +60,29 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
     setSelectedUnits(new Set())
   }
 
+  // Smazání jednotky
+  const handleDeleteUnit = async (unitId: string, unitNumber: string) => {
+    if (!confirm(`Opravdu chcete smazat jednotku ${unitNumber}? Tato akce je nevratná a smaže i všechny související data (vlastnictví, měřiče, náklady).`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/units/${unitId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Chyba při mazání jednotky')
+      }
+
+      // Refresh stránky
+      window.location.reload()
+    } catch (error: any) {
+      alert(`Chyba: ${error.message}`)
+    }
+  }
+
   // Filtrování jednotek
   const filteredUnits = buildingUnits.filter((unit: any) => {
     const searchLower = searchTerm.toLowerCase()
@@ -335,6 +358,13 @@ export default function BuildingDetailTabs({ building, uniqueOwners, payments, t
                             >
                               Upravit
                             </Link>
+                            <button
+                              onClick={() => handleDeleteUnit(unit.id, unit.unitNumber)}
+                              className="text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400"
+                              title="Smazat jednotku"
+                            >
+                              Smazat
+                            </button>
                           </div>
                         </td>
                       </tr>

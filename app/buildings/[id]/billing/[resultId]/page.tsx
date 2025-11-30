@@ -125,7 +125,17 @@ export default async function BillingResultDetailPage({
   // 1. Příprava předpisů (Prescriptions)
   let prescriptions = (billingResult.monthlyPrescriptions as number[]) || [];
   
-  // Pokud nejsou předpisy v JSONu nebo jsou nulové, zkusíme je spočítat z DB
+  // Fallback: Pokud je prescriptions prázdné, zkusíme monthlyPayments
+  if (prescriptions.length === 0 || prescriptions.every(v => v === 0)) {
+     if (billingResult.monthlyPayments && Array.isArray(billingResult.monthlyPayments)) {
+        const payments = billingResult.monthlyPayments as number[];
+        if (payments.some(v => v > 0)) {
+           prescriptions = payments;
+        }
+     }
+  }
+
+  // Pokud stále nejsou předpisy, zkusíme je spočítat z DB
   if (prescriptions.length === 0 || prescriptions.every(v => v === 0)) {
       const calculatedPrescriptions = Array(12).fill(0);
       
@@ -161,8 +171,18 @@ export default async function BillingResultDetailPage({
 
   // 2. Příprava plateb (Payments)
   let paid = (billingResult.monthlyPayments as number[]) || [];
-  
-  // Pokud nejsou platby v JSONu nebo jsou nulové, zkusíme je spočítat z DB
+
+  // Fallback: Pokud je paid prázdné, zkusíme monthlyPrescriptions
+  if (paid.length === 0 || paid.every(v => v === 0)) {
+     if (billingResult.monthlyPrescriptions && Array.isArray(billingResult.monthlyPrescriptions)) {
+        const presc = billingResult.monthlyPrescriptions as number[];
+        if (presc.some(v => v > 0)) {
+           paid = presc;
+        }
+     }
+  }
+
+  // Pokud stále nejsou platby, zkusíme je spočítat z DB
   if (paid.length === 0 || paid.every(v => v === 0)) {
       const calculatedPaid = Array(12).fill(0);
       payments.forEach(p => {
@@ -257,12 +277,13 @@ export default async function BillingResultDetailPage({
     unit: {
       name: billingResult.unit.unitNumber,
       owner: activeOwner 
-        ? `${activeOwner.owner.lastName} ${activeOwner.owner.firstName}` 
+        ? `${activeOwner.owner.firstName} ${activeOwner.owner.lastName}`.trim()
         : 'Neznámý vlastník',
       share: `${billingResult.unit.shareNumerator}/${billingResult.unit.shareDenominator}`,
       address: activeOwner?.owner?.address || '',
       email: activeOwner?.owner?.email || '',
-      phone: activeOwner?.owner?.phone || ''
+      phone: activeOwner?.owner?.phone || '',
+      bankAccount: activeOwner?.owner?.bankAccount || ''
     },
     period: {
       year: year,
@@ -271,7 +292,7 @@ export default async function BillingResultDetailPage({
     },
     services: billingResult.serviceCosts.map(cost => ({
       name: cost.service.name,
-      unit: getMethodologyLabel(cost.service),
+      unit: cost.calculationBasis || getMethodologyLabel(cost.service),
       share: activeOwner?.sharePercent ?? 100,
       buildingCost: cost.buildingTotalCost,
       buildingUnits: cost.buildingConsumption || 0,

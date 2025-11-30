@@ -119,29 +119,44 @@ export async function DELETE(
     // Kontrola, zda jednotka existuje
     const unit = await prisma.unit.findUnique({
       where: { id },
-      include: {
-        _count: {
-          select: {
-            meters: true,
-            payments: true,
-          },
-        },
-      },
     })
 
     if (!unit) {
       return NextResponse.json({ error: 'Jednotka nebyla nalezena' }, { status: 404 })
     }
 
-    if (unit._count.meters > 0 || unit._count.payments > 0) {
-      return NextResponse.json(
-        { error: 'Nelze smazat jednotku, která má měřidla nebo platby' },
-        { status: 400 }
-      )
-    }
-
-    await prisma.unit.delete({
-      where: { id },
+    // Smazání jednotky a všech souvisejících dat (kaskádově)
+    // Nejprve smazat závislé záznamy
+    await prisma.$transaction(async (tx) => {
+      // Smazat vlastnictví
+      await tx.ownership.deleteMany({
+        where: { unitId: id },
+      })
+      
+      // Smazat měřidla
+      await tx.meter.deleteMany({
+        where: { unitId: id },
+      })
+      
+      // Smazat platby
+      await tx.payment.deleteMany({
+        where: { unitId: id },
+      })
+      
+      // Smazat náklady na služby pro jednotku
+      await tx.billingServiceCost.deleteMany({
+        where: { unitId: id },
+      })
+      
+      // Smazat výsledky vyúčtování jednotky
+      await tx.billingResult.deleteMany({
+        where: { unitId: id },
+      })
+      
+      // Nakonec smazat jednotku
+      await tx.unit.delete({
+        where: { id },
+      })
     })
 
     return NextResponse.json({ success: true })

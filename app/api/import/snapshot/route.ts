@@ -48,6 +48,27 @@ function normalizeServiceName(name: string): string {
 }
 
 /**
+ * Kontroluje zda název služby je nevalidní (falešná služba)
+ * Vrací true pokud by služba měla být přeskočena
+ */
+function isInvalidServiceName(name: string): boolean {
+  if (!name || !name.trim()) return true
+  const serviceName = name.trim()
+  
+  return (
+    /^[0-9\s]+\s*Kč/i.test(serviceName) ||      // "8 542 Kč" nebo "9 137 Kč"
+    /^[0-9\s]+\s*kc/i.test(serviceName) ||      // "8 542 kc" (ascii fallback)
+    /^#/.test(serviceName) ||                   // "#N/A", "#NAME?"
+    /^\d+\/\d+$/.test(serviceName) ||           // "1/2024"
+    /^Celkem/i.test(serviceName) ||             // "Celkem náklady..."
+    /^K úhradě/i.test(serviceName) ||           // "K úhradě za rok"
+    /^[\d\s]+$/.test(serviceName) ||            // jen čísla a mezery
+    /^Měsíce/i.test(serviceName) ||             // "Měsíce" (hlavička ADVANCE_MONTHLY)
+    /^[0-9\s,]+([.,]\d+)?$/.test(serviceName)   // jen čísla, mezery, čárky: "8 542" nebo "123.45"
+  )
+}
+
+/**
  * Extrahuje číslo domu z názvu bytu 
  * Vzory: "Byt-č.-20801" -> "2080", "Byt-č.-31801" -> "318"
  * Číslo bytu je typicky poslední 2 číslice, ale může být i 1 číslice
@@ -99,6 +120,7 @@ interface UnitData {
   variableSymbol?: string
   email?: string
   address?: string
+  bankAccount?: string  // číslo účtu pro přeplatek
   totalResult: number
   totalCost: number
   totalAdvance: number
@@ -220,32 +242,53 @@ export async function POST(req: NextRequest) {
 
       switch (dataType) {
         case 'INFO': {
-          // Val1: Adresa, Val2: VS, Val3: Email, Val4: Výsledek, Val5: Náklad, Val6: Záloha, Val7: FO
-          unitData.address = values[0] ? String(values[0]) : undefined
+          // NOVÝ FORMÁT: Val1: Jméno vlastníka, Val2: VS, Val3: Email, Val4: Výsledek, Val5: Bankovní účet
+          unitData.ownerName = values[0] ? String(values[0]) : undefined
           unitData.variableSymbol = values[1] ? String(values[1]) : undefined
           unitData.email = values[2] ? String(values[2]) : undefined
-          
-          // Uložíme první adresu pro detekci budovy
-          if (!firstAddress && unitData.address && !unitData.address.includes('#')) {
-            firstAddress = unitData.address
-          }
-          
           unitData.totalResult = parseMoney(values[3])
-          unitData.totalCost = parseMoney(values[4])
-          unitData.totalAdvance = parseMoney(values[5])
-          unitData.repairFund = parseMoney(values[6])
-          console.log(`[Snapshot] INFO: ${unitName} - Adresa: ${unitData.address?.substring(0, 40)}`)
+          unitData.bankAccount = values[4] ? String(values[4]) : undefined
+          
+          // Tyto hodnoty nejsou v novém formátu - dopočítáme z COST řádků později
+          // unitData.totalCost = parseMoney(values[4])
+          // unitData.totalAdvance = parseMoney(values[5])
+          // unitData.repairFund = parseMoney(values[6])
+          
+          console.log(`[Snapshot] INFO: ${unitName} - Vlastník: ${unitData.ownerName?.substring(0, 40)}`)
           break
         }
 
         case 'COST': {
           const serviceName = key || ''
+          
+          // Přeskočit falešné služby - zálohy jednotek, popisky, chyby
+          if (isInvalidServiceName(serviceName)) {
+            break // Přeskočit
+          }
+          
+          // Parsovat hodnoty
+          let unitCost = parseMoney(values[1])
+          const unitAdvance = parseMoney(values[2])
+          const unitBalance = parseMoney(values[3])
+          
+          // Workaround pro služby kde je chyba #NAME? v nákladu (např. Vodné studená voda)
+          // Dopočítáme: náklad = záloha - přeplatek
+          if (unitCost === 0 && unitAdvance > 0 && serviceName.toLowerCase().includes('studená')) {
+            unitCost = unitAdvance - unitBalance
+            console.log(`[Snapshot] Oprava nákladu pro ${serviceName}: ${unitAdvance} - ${unitBalance} = ${unitCost}`)
+          }
+          
+          // Přeskočit služby s nulovým nákladem i zálohou
+          if (unitCost === 0 && unitAdvance === 0) {
+            break
+          }
+          
           const serviceData: ServiceData = {
             name: serviceName,
             buildingTotalCost: parseMoney(values[0]),
-            unitCost: parseMoney(values[1]),
-            unitAdvance: parseMoney(values[2]),
-            unitBalance: parseMoney(values[3]),
+            unitCost: unitCost,
+            unitAdvance: unitAdvance,
+            unitBalance: unitBalance,
             buildingConsumption: values[4] ? parseMoney(values[4]) : undefined,
             unitConsumption: values[5] ? parseMoney(values[5]) : undefined,
             unitPricePerUnit: values[6] ? parseMoney(values[6]) : undefined,
@@ -260,6 +303,12 @@ export async function POST(req: NextRequest) {
 
         case 'METER': {
           const serviceName = key || ''
+          
+          // Přeskočit falešné služby - stejná logika jako v COST
+          if (isInvalidServiceName(serviceName)) {
+            break // Přeskočit
+          }
+          
           const normalizedService = normalizeServiceName(serviceName)
 
           const meterReading: MeterReading = {
@@ -563,22 +612,108 @@ export async function POST(req: NextRequest) {
       }
 
       // Vytvořit BillingResult
+      // Pokud totalCost je 0 nebo nevalidní, spočítáme ze služeb
+      let calculatedTotalCost = unitData.totalCost
+      if (!calculatedTotalCost || calculatedTotalCost === 0) {
+        calculatedTotalCost = 0
+        for (const [, serviceData] of unitData.services) {
+          calculatedTotalCost += serviceData.unitCost || 0
+        }
+      }
+      
+      // Pokud totalAdvance je 0 nebo nevalidní, spočítáme ze služeb
+      let calculatedTotalAdvance = unitData.totalAdvance
+      if (!calculatedTotalAdvance || calculatedTotalAdvance === 0) {
+        calculatedTotalAdvance = 0
+        for (const [, serviceData] of unitData.services) {
+          calculatedTotalAdvance += serviceData.unitAdvance || 0
+        }
+      }
+      
+      // Pokud result je 0, spočítáme jako zálohy - náklady
+      let calculatedResult = unitData.totalResult
+      if (calculatedResult === 0 && (calculatedTotalAdvance > 0 || calculatedTotalCost > 0)) {
+        calculatedResult = calculatedTotalAdvance - calculatedTotalCost
+      }
+      
       try {
+        // Vytvořit nebo najít vlastníka
+        let ownerId: string | null = null
+        if (unitData.ownerName) {
+          // Parsovat jméno vlastníka (může obsahovat tituly)
+          const ownerName = unitData.ownerName.trim()
+          const nameParts = ownerName.split(' ')
+          let firstName = ''
+          let lastName = ''
+          if (nameParts.length >= 2) {
+            lastName = nameParts[nameParts.length - 1]
+            firstName = nameParts.slice(0, nameParts.length - 1).join(' ')
+          } else {
+            firstName = ownerName
+            lastName = ''
+          }
+          
+          // Najít nebo vytvořit vlastníka podle emailu nebo jména
+          const existingOwner = unitData.email 
+            ? await prisma.owner.findFirst({ where: { email: unitData.email } })
+            : await prisma.owner.findFirst({ where: { firstName, lastName } })
+          
+          if (existingOwner) {
+            ownerId = existingOwner.id
+            // Aktualizovat bankovní účet pokud je nový
+            if (unitData.bankAccount && !existingOwner.bankAccount) {
+              await prisma.owner.update({
+                where: { id: existingOwner.id },
+                data: { bankAccount: unitData.bankAccount }
+              })
+            }
+          } else {
+            const newOwner = await prisma.owner.create({
+              data: {
+                firstName,
+                lastName,
+                email: unitData.email || null,
+                bankAccount: unitData.bankAccount || null,
+              }
+            })
+            ownerId = newOwner.id
+            console.log(`[Snapshot] Vytvořen vlastník: ${firstName} ${lastName}`)
+          }
+          
+          // Vytvořit Ownership propojení pokud neexistuje
+          if (ownerId) {
+            const existingOwnership = await prisma.ownership.findFirst({
+              where: { unitId: unit.id, ownerId }
+            })
+            if (!existingOwnership) {
+              await prisma.ownership.create({
+                data: {
+                  unitId: unit.id,
+                  ownerId,
+                  validFrom: new Date(`${year}-01-01`),
+                  sharePercent: 100,
+                }
+              })
+            }
+          }
+        }
+        
         const billingResult = await prisma.billingResult.create({
           data: {
             billingPeriodId: billingPeriod.id,
             unitId: unit.id,
-            totalCost: unitData.totalCost,
-            totalAdvancePrescribed: unitData.totalAdvance,
-            totalAdvancePaid: unitData.totalAdvance,
+            totalCost: calculatedTotalCost,
+            totalAdvancePrescribed: calculatedTotalAdvance,
+            totalAdvancePaid: calculatedTotalAdvance,
             repairFund: unitData.repairFund,
-            result: unitData.totalResult,
+            result: calculatedResult,
             monthlyPrescriptions: unitData.monthlyAdvances.some(a => a > 0) ? unitData.monthlyAdvances : undefined,
             monthlyPayments: unitData.monthlyPayments.some(p => p > 0) ? unitData.monthlyPayments : undefined,
             summaryJson: JSON.stringify({
-              ownerName: unitData.ownerName,
+              owner: unitData.ownerName,
               email: unitData.email,
-              variableSymbol: unitData.variableSymbol
+              vs: unitData.variableSymbol,
+              bankAccount: unitData.bankAccount
             })
           }
         })

@@ -25,7 +25,7 @@ async function main() {
   const data = await getBillingPdfData(resultId)
   
   // Mock logo path for debug
-  const logoPath = path.join(process.cwd(), 'public', 'adminreal-logo.png') // Ensure this exists or use placeholder
+  const logoPath = path.join(process.cwd(), 'public', 'adminreal.png') // Ensure this exists or use placeholder
 
   const buffer = await renderToBuffer(
     <BillingDocument data={data} logoPath={logoPath} />
@@ -37,15 +37,3 @@ async function main() {
 }
 
 main()
-    owner: { firstName: 'Igor', lastName: 'Pelka', address: 'Zborovská 937/1', email: 'pelka@example.com', phone: '721716526' },
-    previousResult: { result: 0 },
-  }
-
-  const buffer = await renderToBuffer(<BillingDocument data={data} />)
-  console.log('PDF size', buffer.length)
-}
-
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
-})

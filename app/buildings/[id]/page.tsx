@@ -36,12 +36,15 @@ export default async function BuildingDetailPage({
               readings: {
                 orderBy: { readingDate: 'desc' },
                 select: {
+                  id: true,
                   consumption: true,
                   value: true,
                   precalculatedCost: true,
                   period: true,
                   startValue: true,
-                  endValue: true
+                  endValue: true,
+                  readingDate: true,
+                  note: true
                 }
               }
             }

@@ -18,6 +18,7 @@ interface BillingStatementProps {
       address?: string;
       email?: string;
       phone?: string;
+      bankAccount?: string;  // bankovní účet vlastníka pro přeplatek
     };
     period: {
       year: number;
@@ -90,9 +91,9 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
                 <span className="font-medium">{data.unit.phone}</span>
               </>
             )}
-            <span>Bankovní spojení:</span>
-            <span className="font-medium">{data.building.accountNumber}</span>
-            <span>Variabilní symbol:</span>
+            <span>Bankovní spojení číslo:</span>
+            <span className="font-medium">{data.unit.bankAccount || '-'}</span>
+            <span>Variabilní symbol pro platbu nedoplatku:</span>
             <span className="font-medium">{data.building.variableSymbol}</span>
           </div>
         </div>

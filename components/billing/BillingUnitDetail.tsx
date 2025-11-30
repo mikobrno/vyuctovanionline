@@ -98,71 +98,156 @@ export default function BillingUnitDetail({
         </div>
 
         {/* Rozúčtování nákladů */}
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Rozúčtování nákladů</h3>
-          
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-slate-900/50 border-b-2 border-gray-200 dark:border-slate-700">
+            <table className="w-full text-sm border-collapse border border-gray-200 dark:border-slate-700">
+              <thead className="bg-gray-50 dark:bg-slate-900/50">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">Služba</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">Jednotka</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">Spotřeba</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">Náklad celkem</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">Váš náklad</th>
+                  <th rowSpan={2} className="px-2 py-2 text-left font-semibold border border-gray-200 dark:border-slate-700">Položka</th>
+                  <th rowSpan={2} className="px-2 py-2 text-center font-semibold border border-gray-200 dark:border-slate-700">Jednotka</th>
+                  <th rowSpan={2} className="px-2 py-2 text-center font-semibold border border-gray-200 dark:border-slate-700">Podíl</th>
+                  <th colSpan={3} className="px-2 py-2 text-center font-semibold border border-gray-200 dark:border-slate-700">Odběrné místo (dům)</th>
+                  <th colSpan={4} className="px-2 py-2 text-center font-semibold border border-gray-200 dark:border-slate-700">Uživatel</th>
+                </tr>
+                <tr>
+                  {/* Odběrné místo */}
+                  <th className="px-2 py-2 text-right font-semibold border border-gray-200 dark:border-slate-700">Náklad</th>
+                  <th className="px-2 py-2 text-right font-semibold border border-gray-200 dark:border-slate-700">Jednotek</th>
+                  <th className="px-2 py-2 text-right font-semibold border border-gray-200 dark:border-slate-700">Kč/jedn</th>
+                  {/* Uživatel */}
+                  <th className="px-2 py-2 text-right font-semibold border border-gray-200 dark:border-slate-700">Jednotek</th>
+                  <th className="px-2 py-2 text-right font-semibold border border-gray-200 dark:border-slate-700">Náklad</th>
+                  <th className="px-2 py-2 text-right font-semibold border border-gray-200 dark:border-slate-700">Záloha</th>
+                  <th className="px-2 py-2 text-right font-semibold border border-gray-200 dark:border-slate-700">Přeplatek</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                {billingResult.serviceCosts.map((serviceCost: any) => (
+                {billingResult.serviceCosts.filter((sc: any) => 
+                  !sc.service.name.toLowerCase().includes('fond oprav') && 
+                  !sc.service.name.toLowerCase().includes('celkem náklady')
+                ).map((serviceCost: any) => (
                   <tr key={serviceCost.id}>
-                    <td className="px-4 py-3 text-gray-900 dark:text-slate-300">{serviceCost.service.name}</td>
-                    <td className="px-4 py-3 text-gray-900 dark:text-slate-300">
-                      {serviceCost.service.measurementUnit || '-'}
+                    <td className="px-2 py-2 border border-gray-200 dark:border-slate-700">{serviceCost.service.name}</td>
+                    <td className="px-2 py-2 text-center border border-gray-200 dark:border-slate-700">{serviceCost.calculationBasis || '-'}</td>
+                    <td className="px-2 py-2 text-center border border-gray-200 dark:border-slate-700">{serviceCost.distributionBase || '-'}</td>
+                    
+                    {/* Odběrné místo */}
+                    <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">
+                      {serviceCost.buildingTotalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-900 dark:text-slate-300">
-                      {serviceCost.unitConsumption ? 
-                        serviceCost.unitConsumption.toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : 
-                        '-'
-                      }
+                    <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">
+                      {serviceCost.buildingConsumption ? serviceCost.buildingConsumption.toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '-'}
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-900 dark:text-slate-300">
-                      {serviceCost.buildingTotalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                    <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">
+                      {serviceCost.unitPricePerUnit ? serviceCost.unitPricePerUnit.toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '-'}
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">
-                      {serviceCost.unitCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+
+                    {/* Uživatel */}
+                    <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">
+                      {serviceCost.unitConsumption ? serviceCost.unitConsumption.toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '-'}
+                    </td>
+                    <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">
+                      {serviceCost.unitCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">
+                      {serviceCost.unitAdvance.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700 font-semibold">
+                      {serviceCost.unitBalance.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
                     </td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-50 dark:bg-slate-900/50 border-t-2 border-gray-200 dark:border-slate-700">
+              <tfoot className="bg-gray-50 dark:bg-slate-900/50 font-bold">
                 <tr>
-                  <td colSpan={4} className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">
-                    Celkem náklady:
+                  <td colSpan={3} className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">Celkem náklady na odběrná místa</td>
+                  <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">
+                    {billingResult.serviceCosts.filter((sc: any) => !sc.service.name.toLowerCase().includes('fond oprav'))
+                      .reduce((sum: number, sc: any) => sum + sc.buildingTotalCost, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
                   </td>
-                  <td className="px-4 py-3 text-right font-bold text-gray-900 dark:text-white">
-                    {billingResult.totalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                  <td colSpan={3} className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">Celkem vyúčtování:</td>
+                  <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">
+                    {billingResult.totalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">
+                    {billingResult.totalAdvancePrescribed.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">
+                    {billingResult.result.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          {/* Způsob výpočtu */}
-          <div className="mt-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
-            <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">Způsob výpočtu:</h4>
-            <div className="space-y-1 text-xs text-blue-800 dark:text-blue-200">
-              {billingResult.serviceCosts.map((serviceCost: any) => (
-                <div key={serviceCost.id}>
-                  <span className="font-medium">{serviceCost.service.name}:</span>{' '}
-                  {serviceCost.calculationBasis}
-                </div>
-              ))}
+          {/* Pevné platby a Měsíční přehled */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+            {/* Pevné platby */}
+            <div className="md:col-span-1">
+              <h4 className="font-semibold mb-2">Pevné platby</h4>
+              <table className="w-full text-sm border border-gray-200 dark:border-slate-700">
+                <thead className="bg-gray-50 dark:bg-slate-900/50">
+                  <tr>
+                    <th className="px-2 py-2 text-left border border-gray-200 dark:border-slate-700">Položka</th>
+                    <th className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">Celkem za rok</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {billingResult.serviceCosts.filter((sc: any) => sc.service.name.toLowerCase().includes('fond oprav')).map((sc: any) => (
+                    <tr key={sc.id}>
+                      <td className="px-2 py-2 border border-gray-200 dark:border-slate-700">{sc.service.name}</td>
+                      <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700 font-bold">
+                        {sc.unitCost.toLocaleString('cs-CZ', { minimumFractionDigits: 0 })} Kč
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Měsíční přehled */}
+            <div className="md:col-span-2">
+              <h4 className="font-semibold mb-2">Přehled úhrad a předpisů</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border border-gray-200 dark:border-slate-700">
+                  <thead>
+                    <tr>
+                      {Array.from({ length: 12 }).map((_, i) => (
+                        <th key={i} className="px-1 py-1 text-center border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                          {i + 1}/{billingPeriod.year}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Úhrady */}
+                    <tr>
+                      {(billingResult.monthlyPayments || billingResult.monthlyPrescriptions || Array(12).fill(0)).map((val: number, i: number) => (
+                        <td key={i} className="px-1 py-1 text-center border border-gray-200 dark:border-slate-700">
+                          {val.toLocaleString('cs-CZ', { minimumFractionDigits: 0 })}
+                        </td>
+                      ))}
+                    </tr>
+                    {/* Předpisy */}
+                    <tr className="bg-gray-50 dark:bg-slate-900/20">
+                      {(billingResult.monthlyPrescriptions || Array(12).fill(0)).map((val: number, i: number) => (
+                        <td key={i} className="px-1 py-1 text-center border border-gray-200 dark:border-slate-700">
+                          {val.toLocaleString('cs-CZ', { minimumFractionDigits: 0 })}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-2 flex justify-between text-sm font-bold">
+                <span>K úhradě za rok</span>
+                <span>0 Kč</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Přehled úhrad */}
-        <div className="mb-6">
+        {/* Přehled úhrad (Legacy) - skryto pokud máme měsíční tabulku */}
+        <div className="hidden">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Přehled úhrad záloh</h3>
           
           {payments.length > 0 ? (
