@@ -546,6 +546,7 @@ model BillingResult {
   result                Float          // přeplatek (kladné) / nedoplatek (záporné)
   monthlyPrescriptions  Json?          // Pole 12 čísel - předpisy po měsících
   monthlyPayments       Json?          // Pole 12 čísel - platby po měsících
+  summaryJson           String?        // JSON s dalšími údaji z Excelu (jméno, email, VS, atd.)
   isPaid                Boolean        @default(false) // stav úhrady
   pdfGenerated          Boolean        @default(false)
   pdfUrl                String?
@@ -581,6 +582,9 @@ model BillingServiceCost {
   unitAssignedUnits     Float?         // kolik jednotek připadá
   distributionBase      String?        // základ pro rozúčtování (např. "vlastnický podíl 100")
   calculationBasis      String?        // popis výpočtu (pro kontrolu)
+  monthlyAdvances       String?        // JSON pole s 12 měsíčními zálohami: [1000, 1000, ...]
+  meterReadings         String?        // JSON s detaily měřidel: [{serial, start, end, consumption}]
+  calculationType       String?        // typ řádku: "COST", "METER", "INFO", "FUND"
   createdAt             DateTime       @default(now())
 
   billingPeriod         BillingPeriod  @relation(fields: [billingPeriodId], references: [id], onDelete: Cascade)

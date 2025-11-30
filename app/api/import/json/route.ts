@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { CalculationMethod, MeterType } from '@prisma/client'
+import { CalculationMethod, MeterType, Prisma, Meter } from '@prisma/client'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
 // Normalizace textu pro porovnávání
@@ -407,14 +408,15 @@ export async function POST(req: NextRequest) {
 
       // Smazání starých dat pro tento rok
       await send({ type: 'progress', percentage: 15, step: 'Mažu stará data...' })
-      await prisma.$transaction([
-        prisma.cost.deleteMany({ where: { buildingId: building.id, period: rok } }),
-        prisma.payment.deleteMany({ where: { unit: { buildingId: building.id }, period: rok } }),
-        prisma.meterReading.deleteMany({ where: { meter: { unit: { buildingId: building.id } }, period: rok } }),
-        prisma.advanceMonthly.deleteMany({ where: { unit: { buildingId: building.id }, year: rok } }),
-        prisma.personMonth.deleteMany({ where: { unit: { buildingId: building.id }, year: rok } }),
-        prisma.billingResult.deleteMany({ where: { billingPeriodId: billingPeriod.id } })
-      ])
+      
+      // Mazání postupně místo v transakci pro prevenci timeoutů
+      await prisma.cost.deleteMany({ where: { buildingId: building.id, period: rok } })
+      await prisma.payment.deleteMany({ where: { unit: { buildingId: building.id }, period: rok } })
+      await prisma.meterReading.deleteMany({ where: { meter: { unit: { buildingId: building.id } }, period: rok } })
+      await prisma.advanceMonthly.deleteMany({ where: { unit: { buildingId: building.id }, year: rok } })
+      await prisma.personMonth.deleteMany({ where: { unit: { buildingId: building.id }, year: rok } })
+      await prisma.billingResult.deleteMany({ where: { billingPeriodId: billingPeriod.id } })
+      
       await log(`[Cleanup] Stará data pro rok ${rok} smazána.`)
 
       // 2. JEDNOTKY A VLASTNÍCI (z evidence)
@@ -563,6 +565,15 @@ export async function POST(req: NextRequest) {
       const dbServices = await prisma.service.findMany({ where: { buildingId: building.id } })
       dbServices.forEach(s => serviceMap.set(normalize(s.name), s.id))
 
+      const costsToCreate: {
+        buildingId: string
+        serviceId: string
+        amount: number
+        description: string
+        invoiceDate: Date
+        period: number
+      }[] = []
+
       for (const fakturaItem of jsonData.faktury || []) {
         if (!fakturaItem.name || fakturaItem.name.trim() === '') continue
 
@@ -647,20 +658,22 @@ export async function POST(req: NextRequest) {
             : faktura.cena
 
           if (amount && amount > 0) {
-            await prisma.cost.create({
-              data: {
-                buildingId: building.id,
-                serviceId,
-                amount,
-                description: `Import z JSON - ${serviceName}`,
-                invoiceDate: new Date(rok, 11, 31),
-                period: rok
-              }
+            costsToCreate.push({
+              buildingId: building.id,
+              serviceId,
+              amount,
+              description: `Import z JSON - ${serviceName}`,
+              invoiceDate: new Date(rok, 11, 31),
+              period: rok
             })
-            summary.costs.created++
-            summary.costs.total++
           }
         }
+      }
+
+      if (costsToCreate.length > 0) {
+        await prisma.cost.createMany({ data: costsToCreate })
+        summary.costs.created = costsToCreate.length
+        summary.costs.total = costsToCreate.length
       }
 
       // 4. PLATBY (z uhrady)
@@ -714,6 +727,27 @@ export async function POST(req: NextRequest) {
         elektro: 'ELECTRICITY'
       }
 
+      // Načtení existujících měřidel pro celou budovu pro optimalizaci
+      const existingMeters = await prisma.meter.findMany({
+        where: { unit: { buildingId: building.id } },
+        include: { unit: true }
+      })
+
+      const meterMapBySerial = new Map<string, Meter>() // unitId-serial -> meter
+      const meterMapByTypeVariant = new Map<string, Meter>() // unitId-type-variant -> meter
+
+      for (const m of existingMeters) {
+        meterMapBySerial.set(`${m.unitId}-${m.serialNumber}`, m)
+        if (m.variant) {
+          meterMapByTypeVariant.set(`${m.unitId}-${m.type}-${m.variant}`, m)
+        }
+      }
+
+      const metersToCreate: Prisma.MeterCreateManyInput[] = []
+      const metersToUpdate: { id: string; serialNumber: string }[] = []
+      const readingsToCreate: Prisma.MeterReadingCreateManyInput[] = []
+      const newMetersMap = new Set<string>() // unitId-serial pro prevenci duplicit v batchi
+
       for (const meridlaUnit of jsonData.meridla || []) {
         const unit = unitMap.get(meridlaUnit.oznaceni) || unitMap.get(stripUnitPrefix(meridlaUnit.oznaceni))
         if (!unit) continue
@@ -727,59 +761,86 @@ export async function POST(req: NextRequest) {
             const variant = m.typ || null // TUV1, TUV2, SV1, SV2, atd.
             
             // SerialNumber musí být unikátní - VŽDY přidáme variantu pokud existuje
-            // Protože stejné fyzické měřidlo může mít více stoupaček (TUV1, TUV2)
             const baseSerial = m.meridlo && m.meridlo !== '0' ? m.meridlo : `${unit.id}-${key}`
             const serialNumber = variant ? `${baseSerial}-${variant}` : `${baseSerial}-${idx}`
             
-            // Najít nebo vytvořit měřidlo - hledáme podle unikátního serialNumber
-            let meter = await prisma.meter.findFirst({
-              where: { unitId: unit.id, serialNumber }
-            })
+            const serialKey = `${unit.id}-${serialNumber}`
+            const typeVariantKey = variant ? `${unit.id}-${meterType}-${variant}` : null
 
-            if (!meter) {
-              // Zkusíme najít podle typu a varianty (fallback)
-              meter = await prisma.meter.findFirst({
-                where: { unitId: unit.id, type: meterType, variant }
-              })
-              
-              if (!meter) {
-                // Vytvoříme nové měřidlo
-                try {
-                  meter = await prisma.meter.create({
-                    data: {
-                      unitId: unit.id,
-                      serialNumber,
-                      type: meterType,
-                      variant,
-                      initialReading: m.pocatecni_hodnota || 0,
-                      isActive: true
-                    }
-                  })
-                } catch (e: unknown) {
-                  // Pokud serialNumber už existuje, najdeme ho
-                  meter = await prisma.meter.findFirst({
-                    where: { unitId: unit.id, serialNumber }
-                  })
-                }
-              } else {
-                // Aktualizovat serialNumber pokud je měřidlo nalezeno podle typu a varianty
-                try {
-                  await prisma.meter.update({
-                    where: { id: meter.id },
-                    data: { serialNumber }
-                  })
-                } catch (e) {
-                  // Ignore if serialNumber already exists
-                }
+            // 1. Check by serial
+            if (meterMapBySerial.has(serialKey)) {
+              // Existuje, nic neděláme (případně update, ale to teď neřešíme kromě serialu)
+            } 
+            // 2. Check by type/variant (fallback)
+            else if (typeVariantKey && meterMapByTypeVariant.has(typeVariantKey)) {
+              const existing = meterMapByTypeVariant.get(typeVariantKey)
+              // Update serial number if different
+              if (existing && existing.serialNumber !== serialNumber) {
+                 if (!metersToUpdate.find(x => x.id === existing.id)) {
+                    metersToUpdate.push({ id: existing.id, serialNumber })
+                 }
               }
             }
-            
-            if (!meter) continue // Skip pokud se nepodařilo najít/vytvořit
+            // 3. Create new
+            else {
+               if (!newMetersMap.has(serialKey)) {
+                 metersToCreate.push({
+                   unitId: unit.id,
+                   serialNumber,
+                   type: meterType,
+                   variant,
+                   initialReading: m.pocatecni_hodnota || 0,
+                   isActive: true
+                 })
+                 newMetersMap.add(serialKey)
+               }
+            }
+          }
+        }
+      }
 
-            // Odečet
-            if (m.rocni_naklad !== undefined || m.koncova_hodnota !== undefined) {
-              const readingData = {
-                  meterId: meter.id,
+      // Execute updates (sequential but fast enough for updates)
+      if (metersToUpdate.length > 0) {
+         await Promise.all(metersToUpdate.map(u => prisma.meter.update({
+            where: { id: u.id },
+            data: { serialNumber: u.serialNumber }
+         }).catch(e => console.error('Failed to update meter serial', e))))
+      }
+
+      // Execute creates
+      if (metersToCreate.length > 0) {
+        await prisma.meter.createMany({ data: metersToCreate, skipDuplicates: true })
+      }
+
+      // Reload meters to get IDs for readings
+      const allMeters = await prisma.meter.findMany({
+        where: { unit: { buildingId: building.id } }
+      })
+      
+      const finalMeterMap = new Map<string, string>() // unitId-serial -> id
+      for (const m of allMeters) {
+        finalMeterMap.set(`${m.unitId}-${m.serialNumber}`, m.id)
+      }
+
+      for (const meridlaUnit of jsonData.meridla || []) {
+        const unit = unitMap.get(meridlaUnit.oznaceni) || unitMap.get(stripUnitPrefix(meridlaUnit.oznaceni))
+        if (!unit) continue
+
+        for (const key of Object.keys(METER_TYPE_MAP)) {
+          const meters = meridlaUnit[key as keyof JsonMeridlaUnit] as JsonMeridlo[] | undefined
+          if (!meters || !Array.isArray(meters)) continue
+
+          for (let idx = 0; idx < meters.length; idx++) {
+            const m = meters[idx]
+            const variant = m.typ || null
+            const baseSerial = m.meridlo && m.meridlo !== '0' ? m.meridlo : `${unit.id}-${key}`
+            const serialNumber = variant ? `${baseSerial}-${variant}` : `${baseSerial}-${idx}`
+            
+            const meterId = finalMeterMap.get(`${unit.id}-${serialNumber}`)
+            
+            if (meterId && (m.rocni_naklad !== undefined || m.koncova_hodnota !== undefined)) {
+              readingsToCreate.push({
+                  meterId: meterId,
                   period: rok,
                   readingDate: new Date(rok, 11, 31),
                   value: m.koncova_hodnota || 0,
@@ -788,27 +849,16 @@ export async function POST(req: NextRequest) {
                   consumption: (m.koncova_hodnota || 0) - (m.pocatecni_hodnota || 0),
                   precalculatedCost: m.rocni_naklad || null,
                   note: m.import_id || null
-              }
-
-              const existingReading = await prisma.meterReading.findFirst({
-                  where: { meterId: meter.id, period: rok }
               })
-
-              if (existingReading) {
-                  await prisma.meterReading.update({
-                      where: { id: existingReading.id },
-                      data: readingData
-                  })
-              } else {
-                  await prisma.meterReading.create({
-                      data: readingData
-                  })
-                  summary.readings.created++
-              }
-              summary.readings.total++
             }
           }
         }
+      }
+
+      if (readingsToCreate.length > 0) {
+        await prisma.meterReading.createMany({ data: readingsToCreate })
+        summary.readings.created = readingsToCreate.length
+        summary.readings.total = readingsToCreate.length
       }
       await log(`[Readings] Vytvořeno ${summary.readings.created} odečtů.`)
 

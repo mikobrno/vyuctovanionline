@@ -153,7 +153,79 @@ export default function CompleteImport({
         return
       }
       
-      // Pro Excel soubory - původní logika
+      // Pro Excel soubory - nejprve zjistíme, jestli obsahuje EXPORT_FULL
+      setCurrentStep('Analyzuji Excel soubor...')
+      
+      // Rychlá kontrola listů v Excelu
+      const checkFormData = new FormData()
+      checkFormData.append('file', file)
+      
+      const checkResponse = await fetch('/api/import/excel', {
+        method: 'POST',
+        body: checkFormData,
+      })
+      
+      const checkData = await checkResponse.json()
+      
+      if (checkResponse.ok && checkData.sheets) {
+        // Najít list EXPORT_FULL
+        const hasExportFull = checkData.sheets.some((s: { name: string }) => 
+          s.name.toLowerCase().replace(/[\s_-]/g, '').includes('exportfull') ||
+          s.name.toLowerCase() === 'export_full' ||
+          s.name.toLowerCase() === 'export full'
+        )
+        
+        if (hasExportFull) {
+          // Použít snapshot import endpoint
+          setProgress(prev => [...prev, '📊 Nalezen list EXPORT_FULL - používám snapshot import...'])
+          setCurrentStep('Importuji snapshot vyúčtování...')
+          
+          const snapshotResponse = await fetch('/api/import/snapshot', {
+            method: 'POST',
+            body: formData,
+          })
+          
+          const snapshotData = await snapshotResponse.json()
+          
+          if (!snapshotResponse.ok) {
+            throw new Error(snapshotData.error || 'Import snapshot selhal')
+          }
+          
+          // Úspěšný snapshot import
+          setProgress(prev => [...prev, `🏢 Dům: ${snapshotData.building.name}`])
+          setProgress(prev => [...prev, `📅 Rok: ${snapshotData.year}`])
+          setProgress(prev => [...prev, `📋 Zpracováno jednotek: ${snapshotData.summary.unitsProcessed}`])
+          setProgress(prev => [...prev, `💾 Vytvořeno výsledků: ${snapshotData.summary.billingResultsCreated}`])
+          setProgress(prev => [...prev, `📊 Vytvořeno nákladů služeb: ${snapshotData.summary.serviceCostsCreated}`])
+          
+          if (snapshotData.warnings?.length > 0) {
+            for (const warning of snapshotData.warnings.slice(0, 10)) {
+              setProgress(prev => [...prev, `⚠️ ${warning}`])
+            }
+          }
+          
+          if (snapshotData.errors?.length > 0) {
+            for (const err of snapshotData.errors.slice(0, 5)) {
+              setProgress(prev => [...prev, `❌ ${err}`])
+            }
+          }
+          
+          setCurrentStep('✅ Snapshot import dokončen!')
+          setResult(snapshotData)
+          setPercentage(100)
+          router.refresh()
+          
+          if (snapshotData.building?.id) {
+            setTimeout(() => {
+              router.push(`/buildings/${snapshotData.building.id}`)
+            }, 1500)
+          }
+          return
+        }
+      }
+      
+      // Standardní Excel import (bez EXPORT_FULL)
+      setProgress(prev => [...prev, '📊 Standardní Excel import...'])
       setCurrentStep('Zpracovávám Excel soubor...')
       const endpoint = '/api/import/complete'
       const response = await fetch(endpoint, {
@@ -328,8 +400,9 @@ export default function CompleteImport({
           <div>
             <h3 className="text-sm font-bold text-blue-800 dark:text-blue-200 mb-1">Automatická detekce</h3>
             <p className="text-sm text-blue-700 dark:text-blue-300">
-              Stačí nahrát JSON soubor - systém automaticky rozpozná dům a rok z dat v souboru.
-              Pokud dům neexistuje, vytvoří se automaticky.
+              <strong>JSON:</strong> Systém automaticky rozpozná dům a rok z dat v souboru.<br/>
+              <strong>Excel:</strong> Pokud soubor obsahuje list <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">EXPORT_FULL</code>, 
+              použije se snapshot import pro kompletní data vyúčtování.
             </p>
           </div>
         </div>

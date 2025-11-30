@@ -25,6 +25,16 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "db"
+		},
+		{
+			"label": "Test Snapshot Import",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"tsx",
+				"scripts/test-snapshot-http.ts"
+			],
+			"isBackground": false
 		}
 	]
 }

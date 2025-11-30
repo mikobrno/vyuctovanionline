@@ -199,6 +199,53 @@ export default async function BillingResultDetailPage({
   });
 
   // Transformace dat pro komponentu BillingStatement
+  // Pokud jsou data z EXPORT_FULL (meterReadings v serviceCosts), použijeme je
+  // jinak fallback na stará data z meters
+  
+  // Extrahujeme měřidla z BillingServiceCost.meterReadings (JSON string)
+  const readingsFromSnapshot: Array<{
+    service: string;
+    meterId: string;
+    startValue: number;
+    endValue: number;
+    consumption: number;
+  }> = [];
+  
+  billingResult.serviceCosts.forEach(cost => {
+    if (cost.meterReadings) {
+      try {
+        const parsed = JSON.parse(cost.meterReadings as string) as Array<{
+          serial: string;
+          start: number;
+          end: number;
+          consumption: number;
+        }>;
+        parsed.forEach(m => {
+          readingsFromSnapshot.push({
+            service: cost.service.name,
+            meterId: m.serial,
+            startValue: m.start,
+            endValue: m.end,
+            consumption: m.consumption
+          });
+        });
+      } catch (e) {
+        console.error('Error parsing meterReadings:', e);
+      }
+    }
+  });
+  
+  // Použijeme data ze snapshot pokud existují, jinak fallback na meters z DB
+  const finalReadings = readingsFromSnapshot.length > 0 
+    ? readingsFromSnapshot 
+    : meters.flatMap(m => m.readings.map(r => ({
+        service: m.service?.name || m.type,
+        meterId: m.serialNumber,
+        startValue: r.startValue || 0,
+        endValue: r.endValue || r.value,
+        consumption: r.consumption || (r.value - (r.startValue || 0))
+      })));
+
   const statementData = {
     building: {
       name: building.name,
@@ -239,13 +286,7 @@ export default async function BillingResultDetailPage({
       advance: billingResult.totalAdvancePrescribed,
       result: billingResult.result
     },
-    readings: meters.flatMap(m => m.readings.map(r => ({
-      service: m.service?.name || m.type,
-      meterId: m.serialNumber,
-      startValue: r.startValue || 0,
-      endValue: r.endValue || r.value,
-      consumption: r.consumption || (r.value - (r.startValue || 0))
-    }))),
+    readings: finalReadings,
     payments: paymentsData,
     qrCodeUrl
   };
