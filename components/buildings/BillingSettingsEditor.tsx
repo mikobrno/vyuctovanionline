@@ -255,6 +255,7 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
   const [newVersionName, setNewVersionName] = useState('')
   const [savingVersion, setSavingVersion] = useState(false)
   const [newVersionAsDefault, setNewVersionAsDefault] = useState(false)
+  const [versionsLoading, setVersionsLoading] = useState(false)
 
   // State pro import
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -301,14 +302,22 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
   const fondOpravDropdownRef = useRef<HTMLDivElement>(null)
 
   const fetchConfigVersions = useCallback(async () => {
+    setVersionsLoading(true)
     try {
       const res = await fetch(`/api/buildings/${buildingId}/config-versions`)
-      if (!res.ok) throw new Error('Failed to load versions')
+      if (!res.ok) {
+        // Tiché selhání - verze nejsou kritické
+        console.warn('Config versions not available')
+        return
+      }
       const data: ConfigVersionSummary[] = await res.json()
       setVersions(data)
       setSelectedVersionId(prev => (prev && data.some(v => v.id === prev) ? prev : ''))
     } catch (error) {
-      console.error('Failed to load versions', error)
+      // Tiché selhání - verze nejsou kritické pro fungování editoru
+      console.warn('Failed to load versions (network issue)', error)
+    } finally {
+      setVersionsLoading(false)
     }
   }, [buildingId])
 
@@ -394,7 +403,7 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
         }
       }
 
-      const resolvedMethod = method as BillingService['method']
+      const resolvedMethod = (method || 'OWNERSHIP_SHARE') as BillingService['method']
       return {
         ...s,
         method: resolvedMethod,
@@ -403,7 +412,7 @@ export default function BillingSettingsEditor({ buildingId, building, services, 
         userMergeWithNext: Boolean(s.userMergeWithNext)
       }
     })
-    setLocalServices(transformedServices)
+    setLocalServices(transformedServices as BillingService[])
     // Initialize global overrides from service configuration (divisor, manualCost, manualShare)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const initialOverrides: Record<string, any> = {}

@@ -6,13 +6,15 @@ interface StatsCardsProps {
 
 export default async function StatsCards({ buildingId }: StatsCardsProps) {
   // Načteme základní statistiky
-  const [buildingsCount, unitsCount, ownersCount, billingPeriodsCount] = await Promise.all([
-    buildingId ? 1 : prisma.building.count(),
-    prisma.unit.count({
-      where: buildingId ? { buildingId } : undefined
-    }),
-    prisma.owner.count({
-      where: buildingId ? {
+  const buildingsCount = buildingId ? 1 : await prisma.building.count()
+  
+  const unitsCount = await prisma.unit.count(
+    buildingId ? { where: { buildingId } } : undefined
+  )
+  
+  const ownersCount = await prisma.owner.count(
+    buildingId ? {
+      where: {
         ownerships: {
           some: {
             unit: {
@@ -20,12 +22,13 @@ export default async function StatsCards({ buildingId }: StatsCardsProps) {
             }
           }
         }
-      } : undefined
-    }),
-    prisma.billingPeriod.count({
-      where: buildingId ? { buildingId } : undefined
-    }),
-  ])
+      }
+    } : undefined
+  )
+  
+  const billingPeriodsCount = await prisma.billingPeriod.count(
+    buildingId ? { where: { buildingId } } : undefined
+  )
 
   const stats = [
     {

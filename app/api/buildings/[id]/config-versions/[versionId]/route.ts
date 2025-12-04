@@ -152,8 +152,8 @@ export async function POST(
         where: resolveServiceWhere(id, snapshot),
         data: {
           order: typeof snapshot.order === 'number' ? snapshot.order : 0,
-          methodology: snapshot.methodology ?? snapshot.method ?? undefined,
-          dataSourceType: snapshot.dataSourceType ?? null,
+          methodology: (snapshot.methodology ?? snapshot.method) as import('@prisma/client').CalculationMethod | undefined,
+          dataSourceType: (snapshot.dataSourceType ?? null) as import('@prisma/client').DataSourceType | null,
           dataSourceName: snapshot.dataSourceName ?? null,
           dataSourceColumn: snapshot.dataSourceColumn ?? null,
           unitAttributeName: snapshot.unitAttributeName ?? null,

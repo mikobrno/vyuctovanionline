@@ -17,18 +17,26 @@ Font.register({
   fontWeight: 'bold',
 });
 
+// Pomocné typy
+interface MeterReading {
+  serial: string;
+  start: number;
+  end: number;
+  consumption: number;
+}
+
 const styles = StyleSheet.create({
   page: {
-    padding: 30,
+    padding: 25,
     fontFamily: 'Roboto',
-    fontSize: 8,
+    fontSize: 7,
     color: '#000000',
   },
   // Header
   headerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   headerLeft: {
     width: '60%',
@@ -38,38 +46,40 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   ownerName: {
-    fontSize: 14,
+    fontSize: 12,
     fontFamily: 'Roboto-Bold',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   addressRow: {
     flexDirection: 'row',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   label: {
-    width: 120,
+    width: 110,
     fontFamily: 'Roboto-Bold',
+    fontSize: 7,
   },
   value: {
     fontFamily: 'Roboto',
+    fontSize: 7,
   },
   logo: {
-    width: 150,
-    height: 50,
+    width: 120,
+    height: 40,
     objectFit: 'contain',
-    marginBottom: 5,
+    marginBottom: 3,
   },
   // Title
   titleContainer: {
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#000000',
-    paddingVertical: 5,
-    marginBottom: 10,
+    paddingVertical: 4,
+    marginBottom: 8,
     alignItems: 'center',
   },
   title: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: 'Roboto-Bold',
   },
   // Main Table
@@ -77,76 +87,125 @@ const styles = StyleSheet.create({
     width: '100%',
     borderWidth: 1,
     borderColor: '#000000',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   tableRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderColor: '#000000',
-    minHeight: 14,
+    minHeight: 12,
+    alignItems: 'center',
+  },
+  tableRowNoBorder: {
+    flexDirection: 'row',
+    minHeight: 12,
     alignItems: 'center',
   },
   tableHeader: {
     backgroundColor: '#e5e7eb',
     fontFamily: 'Roboto-Bold',
   },
-  colPolozka: { width: '25%', paddingLeft: 2 },
-  colJednotka: { width: '10%', textAlign: 'center' },
-  colPodil: { width: '5%', textAlign: 'center' },
-  // Odběrné místo group
-  colOdbNaklad: { width: '10%', textAlign: 'right', paddingRight: 2 },
-  colOdbJednotek: { width: '8%', textAlign: 'right', paddingRight: 2 },
-  colOdbCena: { width: '8%', textAlign: 'right', paddingRight: 2 },
-  // Uživatel group
-  colUzivJednotek: { width: '8%', textAlign: 'right', paddingRight: 2 },
-  colUzivNaklad: { width: '10%', textAlign: 'right', paddingRight: 2 },
-  colUzivZaloha: { width: '8%', textAlign: 'right', paddingRight: 2 },
-  colUzivPreplatek: { width: '8%', textAlign: 'right', paddingRight: 2 },
-
-  // Summary
-  summaryRow: {
+  // Sloupce hlavní tabulky - přizpůsobené pro EXPORT_FULL
+  colPolozka: { width: '25%', paddingLeft: 4 },
+  colDumJednotek: { width: '10%', textAlign: 'right', paddingRight: 4 }, // Nový
+  colDumNaklad: { width: '12%', textAlign: 'right', paddingRight: 4 },
+  colCenaJedn: { width: '10%', textAlign: 'right', paddingRight: 4 },    // Nový
+  colUzivJednotek: { width: '10%', textAlign: 'right', paddingRight: 4 }, // Spotřeba
+  colUzivNaklad: { width: '11%', textAlign: 'right', paddingRight: 4 },
+  colUzivZaloha: { width: '11%', textAlign: 'right', paddingRight: 4 },
+  colUzivPreplatek: { width: '11%', textAlign: 'right', paddingRight: 4 },
+  // Měřidla
+  meterTable: {
+    marginLeft: 20,
+    marginBottom: 3,
+    borderWidth: 0.5,
+    borderColor: '#999999',
+  },
+  meterRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 5,
-    marginBottom: 2,
+    borderBottomWidth: 0.5,
+    borderColor: '#999999',
+    minHeight: 10,
+    alignItems: 'center',
   },
-  summaryLabel: {
+  meterCell: {
+    width: 55,
+    fontSize: 6,
+    padding: 1,
+    textAlign: 'center',
+  },
+  meterHeader: {
+    backgroundColor: '#f0f0f0',
     fontFamily: 'Roboto-Bold',
-    marginRight: 10,
   },
-  summaryValue: {
-    fontFamily: 'Roboto-Bold',
-    width: 80,
-    textAlign: 'right',
-  },
-  
-  // Fixed Payments & Monthly
-  bottomSection: {
-    flexDirection: 'row',
-    marginTop: 20,
-    gap: 20,
-  },
-  fixedTable: {
-    width: '30%',
-    borderWidth: 1,
-    borderColor: '#000000',
-  },
-  monthlyTable: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#000000',
+  // Měsíční přehled
+  monthlySection: {
     marginTop: 10,
   },
-  
-  // Footer
-  footer: {
-    marginTop: 20,
-    borderTopWidth: 1,
+  monthlyTitle: {
+    fontSize: 9,
+    fontFamily: 'Roboto-Bold',
+    marginBottom: 3,
+  },
+  monthlyTable: {
+    borderWidth: 1,
     borderColor: '#000000',
-    paddingTop: 5,
+  },
+  monthlyRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderColor: '#000000',
+    minHeight: 14,
+    alignItems: 'center',
+  },
+  monthlyRowLast: {
+    borderBottomWidth: 0,
+  },
+  monthlyLabel: {
+    width: 55,
+    padding: 2,
+    fontFamily: 'Roboto-Bold',
+    backgroundColor: '#f0f0f0',
     fontSize: 7,
   },
+  monthlyCell: {
+    flex: 1,
+    padding: 2,
+    borderRightWidth: 1,
+    borderColor: '#000000',
+    textAlign: 'center',
+    fontSize: 6,
+  },
+  monthlyCellLast: {
+    borderRightWidth: 0,
+  },
+  monthlyCellHead: { flex: 1, fontSize: 7, textAlign: 'center', padding: 2 },
+  monthlyHeader: { backgroundColor: '#f3f4f6', fontFamily: 'Roboto-Bold', borderBottomWidth: 1, borderColor: '#000' },
+  // Výsledky
+  resultPositive: {
+    color: '#228B22',
+  },
+  resultNegative: {
+    color: '#DC143C',
+  },
+  noData: {
+    textAlign: 'center',
+    color: '#666666',
+    fontStyle: 'italic',
+    padding: 8,
+    fontSize: 7,
+  },
+  // Footer
+  footer: {
+    marginTop: 15,
+    borderTopWidth: 1,
+    borderColor: '#000000',
+    paddingTop: 4,
+    fontSize: 6,
+  },
 });
+
+const MONTHS = ['Led', 'Úno', 'Bře', 'Dub', 'Kvě', 'Čvn', 'Čvc', 'Srp', 'Zář', 'Říj', 'Lis', 'Pro'];
 
 const formatCurrency = (val: number | null | undefined) => {
   if (val === null || val === undefined) return '-';
@@ -158,35 +217,56 @@ const formatNumber = (val: number | null | undefined) => {
   return val.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, ' ');
 };
 
+const formatInteger = (val: number | null | undefined) => {
+  if (val === null || val === undefined) return '-';
+  return Math.round(val).toLocaleString('cs-CZ');
+};
+
+// Parsuje JSON pole měřidel
+const parseMeterReadings = (jsonStr: string | null | undefined): MeterReading[] => {
+  if (!jsonStr) return [];
+  try {
+    return JSON.parse(jsonStr) as MeterReading[];
+  } catch {
+    return [];
+  }
+};
+
 interface BillingDocumentProps {
   data: BillingPdfData;
   logoPath: string;
   qrCodeUrl?: string;
 }
 
-export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath }) => {
+export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath, qrCodeUrl }) => {
   const { result, unit, building } = data;
   
   // Parse summaryJson if available
   const summary = result.summaryJson ? JSON.parse(result.summaryJson) : {};
-  const ownerName = summary.owner || (data.owner ? data.owner.firstName + ' ' + data.owner.lastName : 'Neznámý vlastník');
+  const ownerName = summary.owner || summary.ownerName || (data.owner ? data.owner.firstName + ' ' + data.owner.lastName : 'Neznámý vlastník');
   const address = summary.address || unit.address || building?.address;
   const email = summary.email || (data.owner ? data.owner.email : '');
   
   // Filter services
-  const fixedServices = result.serviceCosts.filter(sc => sc.service.name.toLowerCase().includes('fond oprav'));
-  const mainServices = result.serviceCosts.filter(sc => !sc.service.name.toLowerCase().includes('fond oprav'));
+  const fundServices = result.serviceCosts.filter(sc => 
+    sc.service.name.toLowerCase().includes('fond oprav') ||
+    sc.service.name.toLowerCase().includes('fond')
+  );
+  const mainServices = result.serviceCosts.filter(sc => 
+    !sc.service.name.toLowerCase().includes('fond oprav') &&
+    !sc.service.name.toLowerCase().includes('fond')
+  );
   
   // Totals
   const totalBuildingCost = mainServices.reduce((sum, sc) => sum + sc.buildingTotalCost, 0);
   const totalUnitCost = result.totalCost;
-  const totalAdvance = result.totalAdvancePrescribed; // Or Paid?
+  const totalAdvance = result.totalAdvancePrescribed;
   const totalBalance = result.result;
 
-  // Monthly data
-  const monthlyPrescriptions = result.monthlyPrescriptions as number[] || Array(12).fill(0);
-  // Assuming payments are same as prescriptions for now based on image
-  const monthlyPayments = monthlyPrescriptions; 
+  // Monthly data - z databáze
+  const monthlyPrescriptions = (result.monthlyPrescriptions as number[]) || Array(12).fill(0);
+  const monthlyPayments = (result.monthlyPayments as number[]) || Array(12).fill(0);
+  const hasMonthlyData = monthlyPrescriptions.some(v => v > 0) || monthlyPayments.some(v => v > 0);
 
   return (
     <Document>
@@ -200,14 +280,21 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
               <Text style={styles.value}>{building?.address}, {building?.zip} {building?.city}</Text>
             </View>
             <View style={styles.addressRow}>
-              <Text style={styles.label}>bankovní spojení společenství:</Text>
-              <Text style={styles.value}>{building?.bankAccount || '2400891032/2010'}</Text>
+              <Text style={styles.label}>bankovní spojení:</Text>
+              <Text style={styles.value}>{building?.bankAccount || '-'}</Text>
             </View>
+            {email && (
+              <View style={styles.addressRow}>
+                <Text style={styles.label}>e-mail:</Text>
+                <Text style={styles.value}>{email}</Text>
+              </View>
+            )}
           </View>
           <View style={styles.headerRight}>
             {logoPath && <Image src={logoPath} style={styles.logo} />}
-            <Text style={{ fontSize: 10, fontFamily: 'Roboto-Bold' }}>č. prostoru: {unit.name}</Text>
-            <Text>zúčtovací období: 1.1.{result.billingPeriod.year} - 31.12.{result.billingPeriod.year}</Text>
+            <Text style={{ fontSize: 9, fontFamily: 'Roboto-Bold' }}>č. prostoru: {unit.name}</Text>
+            <Text style={{ fontSize: 7 }}>VS: {unit.variableSymbol || summary.variableSymbol || '-'}</Text>
+            <Text style={{ fontSize: 7 }}>období: 1.1.{result.billingPeriod.year} - 31.12.{result.billingPeriod.year}</Text>
           </View>
         </View>
 
@@ -218,142 +305,219 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
 
         {/* Main Table */}
         <View style={styles.table}>
-          {/* Header Row 1 */}
-          <View style={[styles.tableRow, styles.tableHeader, { height: 14 }]}>
-            <View style={styles.colPolozka}><Text>Položka</Text></View>
-            <View style={styles.colJednotka}><Text>Jednotka</Text></View>
-            <View style={styles.colPodil}><Text>Podíl</Text></View>
-            <View style={{ width: '26%', borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#000000', textAlign: 'center' }}>
-              <Text>Odběrné místo (dům)</Text>
-            </View>
-            <View style={{ width: '34%', textAlign: 'center' }}>
-              <Text>Uživatel</Text>
-            </View>
-          </View>
-          {/* Header Row 2 */}
-          <View style={[styles.tableRow, styles.tableHeader, { height: 14 }]}>
-            <View style={styles.colPolozka} />
-            <View style={styles.colJednotka} />
-            <View style={styles.colPodil} />
-            {/* Odběrné místo subcols */}
-            <View style={[styles.colOdbNaklad, { borderLeftWidth: 1, borderColor: '#000000' }]}><Text>Náklad</Text></View>
-            <View style={styles.colOdbJednotek}><Text>Jednotek</Text></View>
-            <View style={[styles.colOdbCena, { borderRightWidth: 1, borderColor: '#000000' }]}><Text>Kč/jedn</Text></View>
-            {/* Uživatel subcols */}
-            <View style={styles.colUzivJednotek}><Text>Jednotek</Text></View>
+          {/* Table Header */}
+          <View style={[styles.tableRow, styles.tableHeader]}>
+            <View style={styles.colPolozka}><Text>Služba</Text></View>
+            <View style={styles.colDumJednotek}><Text>Jedn. dům</Text></View>
+            <View style={styles.colDumNaklad}><Text>Náklad dům</Text></View>
+            <View style={styles.colCenaJedn}><Text>Kč/jedn.</Text></View>
+            <View style={styles.colUzivJednotek}><Text>Spotřeba</Text></View>
             <View style={styles.colUzivNaklad}><Text>Náklad</Text></View>
             <View style={styles.colUzivZaloha}><Text>Záloha</Text></View>
-            <View style={styles.colUzivPreplatek}><Text>Přeplatky|nedoplatky</Text></View>
+            <View style={styles.colUzivPreplatek}><Text>Rozdíl</Text></View>
           </View>
 
-          {/* Data Rows */}
-          {mainServices.map((sc, i) => (
-            <View key={i} style={styles.tableRow}>
-              <View style={styles.colPolozka}><Text>{sc.service.name}</Text></View>
-              <View style={styles.colJednotka}><Text>{sc.calculationBasis || '-'}</Text></View>
-              <View style={styles.colPodil}><Text>{sc.distributionBase || '-'}</Text></View>
-              
-              <View style={[styles.colOdbNaklad, { borderLeftWidth: 1, borderColor: '#000000' }]}>
-                <Text>{formatCurrency(sc.buildingTotalCost)}</Text>
+          {/* Data Rows - služby */}
+          {mainServices.map((sc, i) => {
+            const meters = parseMeterReadings(sc.meterReadings);
+            const hasMeters = meters.length > 0;
+            
+            return (
+              <React.Fragment key={i}>
+                <View style={styles.tableRow}>
+                  <View style={styles.colPolozka}><Text>{sc.service.name}</Text></View>
+                  
+                  {/* Nové sloupce z DB (String) nebo fallback na čísla */}
+                  <View style={styles.colDumJednotek}>
+                    <Text>{sc.buildingUnits || formatNumber(sc.buildingConsumption)}</Text>
+                  </View>
+                  
+                  <View style={styles.colDumNaklad}><Text>{formatCurrency(sc.buildingTotalCost)}</Text></View>
+                  
+                  <View style={styles.colCenaJedn}>
+                    <Text>{sc.unitPrice || formatNumber(sc.unitPricePerUnit)}</Text>
+                  </View>
+                  
+                  <View style={styles.colUzivJednotek}>
+                    <Text>{sc.unitUnits || formatNumber(sc.unitConsumption)}</Text>
+                  </View>
+                  
+                  <View style={styles.colUzivNaklad}><Text>{formatCurrency(sc.unitCost)}</Text></View>
+                  <View style={styles.colUzivZaloha}><Text>{formatCurrency(sc.unitAdvance)}</Text></View>
+                  <View style={styles.colUzivPreplatek}>
+                    <Text style={sc.unitBalance >= 0 ? styles.resultPositive : styles.resultNegative}>
+                      {formatCurrency(sc.unitBalance)}
+                    </Text>
+                  </View>
+                </View>
+                
+                {/* Tabulka měřidel pod službou */}
+                {hasMeters && (
+                  <View style={styles.meterTable}>
+                    <View style={[styles.meterRow, styles.meterHeader]}>
+                      <Text style={styles.meterCell}>Č. měřidla</Text>
+                      <Text style={styles.meterCell}>Poč. stav</Text>
+                      <Text style={styles.meterCell}>Kon. stav</Text>
+                      <Text style={styles.meterCell}>Spotřeba</Text>
+                    </View>
+                    {meters.map((m, mIdx) => (
+                      <React.Fragment key={mIdx}>
+                        <View style={[styles.meterRow, mIdx === meters.length - 1 && { borderBottomWidth: 0 }]}>
+                          <Text style={styles.meterCell}>{m.serial}</Text>
+                          <Text style={styles.meterCell}>{formatInteger(m.start)}</Text>
+                          <Text style={styles.meterCell}>{formatInteger(m.end)}</Text>
+                          <Text style={styles.meterCell}>{formatInteger(m.consumption)}</Text>
+                        </View>
+                      </React.Fragment>
+                    ))}
+                  </View>
+                )}
+              </React.Fragment>
+            );
+          })}
+          
+          {/* Fond oprav */}
+          {fundServices.map((sc, i) => (
+            <React.Fragment key={`fund-${i}`}>
+              <View style={styles.tableRow}>
+                <View style={styles.colPolozka}><Text>{sc.service.name}</Text></View>
+                <View style={styles.colDumJednotek}><Text>-</Text></View>
+                <View style={styles.colDumNaklad}><Text>{formatCurrency(sc.buildingTotalCost)}</Text></View>
+                <View style={styles.colCenaJedn}><Text>-</Text></View>
+                <View style={styles.colUzivJednotek}><Text>-</Text></View>
+                <View style={styles.colUzivNaklad}><Text>{formatCurrency(sc.unitCost)}</Text></View>
+                <View style={styles.colUzivZaloha}><Text>{formatCurrency(sc.unitAdvance)}</Text></View>
+                <View style={styles.colUzivPreplatek}>
+                  <Text style={sc.unitBalance >= 0 ? styles.resultPositive : styles.resultNegative}>
+                    {formatCurrency(sc.unitBalance)}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.colOdbJednotek}><Text>{formatNumber(sc.buildingConsumption)}</Text></View>
-              <View style={[styles.colOdbCena, { borderRightWidth: 1, borderColor: '#000000' }]}>
-                <Text>{formatCurrency(sc.unitPricePerUnit)}</Text>
-              </View>
-              
-              <View style={styles.colUzivJednotek}><Text>{formatNumber(sc.unitConsumption)}</Text></View>
-              <View style={styles.colUzivNaklad}><Text>{formatCurrency(sc.unitCost)}</Text></View>
-              <View style={styles.colUzivZaloha}><Text>{formatCurrency(sc.unitAdvance)}</Text></View>
-              <View style={styles.colUzivPreplatek}><Text>{formatCurrency(sc.unitBalance)}</Text></View>
-            </View>
+            </React.Fragment>
           ))}
           
           {/* Total Row */}
-          <View style={[styles.tableRow, { borderTopWidth: 1, fontFamily: 'Roboto-Bold' }]}>
-            <View style={{ width: '40%' }}><Text>Celkem náklady na odběrná místa</Text></View>
-            <View style={[styles.colOdbNaklad, { borderLeftWidth: 1, borderColor: '#000000' }]}>
+          <View style={[styles.tableRowNoBorder, styles.tableHeader]}>
+            <View style={{ width: '30%', paddingLeft: 2 }}><Text>Celkem náklady</Text></View>
+            <View style={styles.colDumNaklad}>
               <Text>{formatCurrency(totalBuildingCost)}</Text>
             </View>
-            <View style={{ width: '16%', borderRightWidth: 1, borderColor: '#000000' }}><Text>Celkem vyúčtování:</Text></View>
+            <View style={{ width: '14%', textAlign: 'right', paddingRight: 2, borderRightWidth: 1, borderColor: '#000000' }}>
+              <Text>Celkem:</Text>
+            </View>
+            <View style={{ width: '7%' }} />
             <View style={styles.colUzivNaklad}><Text>{formatCurrency(totalUnitCost)}</Text></View>
             <View style={styles.colUzivZaloha}><Text>{formatCurrency(totalAdvance)}</Text></View>
-            <View style={styles.colUzivPreplatek}><Text>{formatCurrency(totalBalance)}</Text></View>
+            <View style={styles.colUzivPreplatek}>
+              <Text style={[{ fontFamily: 'Roboto-Bold' }, totalBalance >= 0 ? styles.resultPositive : styles.resultNegative]}>
+                {formatCurrency(totalBalance)}
+              </Text>
+            </View>
           </View>
         </View>
 
-        {/* Summary Text */}
-        <View style={{ alignItems: 'flex-end', marginBottom: 10 }}>
-          <Text>Není evidován v účtovaném období přeplatek ani nedoplatek 0,00 Kč</Text>
-          <Text>Není evidován v minulém období přeplatek ani nedoplatek 0,00 Kč</Text>
-          <View style={{ flexDirection: 'row', marginTop: 5 }}>
-            <Text style={{ fontFamily: 'Roboto-Bold', fontSize: 12, marginRight: 10 }}>PŘEPLATEK CELKEM</Text>
-            <Text style={{ fontFamily: 'Roboto-Bold', fontSize: 12 }}>{formatCurrency(totalBalance)} Kč</Text>
+        {/* Summary */}
+        <View style={{ alignItems: 'flex-end', marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', marginTop: 3 }}>
+            <Text style={{ fontFamily: 'Roboto-Bold', fontSize: 11, marginRight: 10 }}>
+              {totalBalance >= 0 ? 'PŘEPLATEK CELKEM:' : 'NEDOPLATEK CELKEM:'}
+            </Text>
+            <Text style={[{ fontFamily: 'Roboto-Bold', fontSize: 11 }, totalBalance >= 0 ? styles.resultPositive : styles.resultNegative]}>
+              {formatCurrency(Math.abs(totalBalance))} Kč
+            </Text>
           </View>
-          <View style={{ backgroundColor: '#e5e7eb', padding: 2, marginTop: 2, width: '100%', alignItems: 'center' }}>
-             <Text style={{ fontFamily: 'Roboto-Bold' }}>Přeplatek Vám bude vyplacen na číslo účtu {summary.bankAccount || '707156033/5500'}</Text>
-          </View>
+          {summary.bankAccount && totalBalance > 0 && (
+            <View style={{ backgroundColor: '#e5e7eb', padding: 3, marginTop: 2 }}>
+              <Text style={{ fontFamily: 'Roboto-Bold', fontSize: 7 }}>
+                Přeplatek bude vyplacen na účet: {summary.bankAccount}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* Fixed Payments & Monthly */}
-        <View style={{ flexDirection: 'row', gap: 20 }}>
-          {/* Fixed Payments */}
-          <View style={{ width: '20%' }}>
-             <View style={[styles.table, { marginBottom: 0 }]}>
-                <View style={[styles.tableRow, styles.tableHeader]}>
-                   <View style={{ width: '60%', paddingLeft: 2 }}><Text>Pevné platby</Text></View>
-                   <View style={{ width: '40%', textAlign: 'right', paddingRight: 2 }}><Text>Celkem za rok</Text></View>
-                </View>
-                {fixedServices.map((sc, i) => (
-                  <View key={i} style={styles.tableRow}>
-                    <View style={{ width: '60%', paddingLeft: 2 }}><Text>{sc.service.name}</Text></View>
-                    <View style={{ width: '40%', textAlign: 'right', paddingRight: 2 }}><Text>{formatCurrency(sc.unitCost)} Kč</Text></View>
-                  </View>
+        {/* Měsíční přehled plateb */}
+        <View style={styles.monthlySection}>
+          <Text style={styles.monthlyTitle}>Přehled plateb za rok {result.billingPeriod.year}</Text>
+          
+          {hasMonthlyData ? (
+            <View style={styles.monthlyTable}>
+              {/* Hlavička měsíců */}
+              <View style={styles.monthlyRow}>
+                <Text style={styles.monthlyLabel}></Text>
+                {MONTHS.map((m, i) => (
+                  <React.Fragment key={i}>
+                    <Text style={[styles.monthlyCell, i === 11 && styles.monthlyCellLast]}>
+                      {m}
+                    </Text>
+                  </React.Fragment>
                 ))}
-             </View>
-          </View>
-
-          {/* Monthly Table */}
-          <View style={{ width: '80%' }}>
-             <View style={styles.table}>
-                <View style={[styles.tableRow, styles.tableHeader, { justifyContent: 'center' }]}>
-                   <Text>Přehled úhrad za rok {result.billingPeriod.year}</Text>
-                </View>
-                <View style={styles.tableRow}>
-                   {monthlyPayments.map((val, i) => (
-                      <View key={i} style={{ width: `${100/12}%`, borderRightWidth: i<11?1:0, borderColor: '#000000', alignItems: 'center' }}>
-                         <Text style={{ fontSize: 6, marginBottom: 2 }}>{i+1}/{result.billingPeriod.year}</Text>
-                         <Text>{formatNumber(val)} Kč</Text>
-                      </View>
-                   ))}
-                </View>
-                <View style={[styles.tableRow, styles.tableHeader, { justifyContent: 'center' }]}>
-                   <Text>Přehled předpisů za rok {result.billingPeriod.year}</Text>
-                </View>
-                <View style={styles.tableRow}>
-                   {monthlyPrescriptions.map((val, i) => (
-                      <View key={i} style={{ width: `${100/12}%`, borderRightWidth: i<11?1:0, borderColor: '#000000', alignItems: 'center' }}>
-                         <Text style={{ fontSize: 6, marginBottom: 2 }}>{i+1}/{result.billingPeriod.year}</Text>
-                         <Text>{formatNumber(val)} Kč</Text>
-                      </View>
-                   ))}
-                </View>
-                <View style={styles.tableRow}>
-                   <View style={{ width: '25%', paddingLeft: 2 }}><Text>K úhradě za rok</Text></View>
-                   <View style={{ width: '25%', paddingLeft: 2 }}><Text style={{ fontFamily: 'Roboto-Bold' }}>0 Kč</Text></View>
-                </View>
-             </View>
-          </View>
+              </View>
+              
+              {/* Předpisy */}
+              <View style={styles.monthlyRow}>
+                <Text style={styles.monthlyLabel}>Předpis</Text>
+                {monthlyPrescriptions.map((val, i) => (
+                  <React.Fragment key={i}>
+                    <Text style={[styles.monthlyCell, i === 11 && styles.monthlyCellLast]}>
+                      {val > 0 ? formatInteger(val) : '-'}
+                    </Text>
+                  </React.Fragment>
+                ))}
+              </View>
+              
+              {/* Úhrady */}
+              <View style={styles.monthlyRow}>
+                <Text style={styles.monthlyLabel}>Úhrada</Text>
+                {monthlyPayments.map((val, i) => (
+                  <React.Fragment key={i}>
+                    <Text style={[styles.monthlyCell, i === 11 && styles.monthlyCellLast]}>
+                      {val > 0 ? formatInteger(val) : '-'}
+                    </Text>
+                  </React.Fragment>
+                ))}
+              </View>
+              
+              {/* Rozdíl */}
+              <View style={[styles.monthlyRow, styles.monthlyRowLast]}>
+                <Text style={styles.monthlyLabel}>Rozdíl</Text>
+                {monthlyPrescriptions.map((presc, i) => {
+                  const diff = presc - monthlyPayments[i];
+                  const hasData = presc > 0 || monthlyPayments[i] > 0;
+                  return (
+                    <React.Fragment key={i}>
+                      <Text style={[
+                        styles.monthlyCell, 
+                        i === 11 && styles.monthlyCellLast,
+                        diff > 0 ? styles.resultNegative : (diff < 0 ? styles.resultPositive : {})
+                      ]}>
+                        {hasData ? formatInteger(diff) : '-'}
+                      </Text>
+                    </React.Fragment>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.noData}>Měsíční data nejsou k dispozici</Text>
+          )}
         </View>
+
+        {/* QR kód pro platbu nedoplatku */}
+        {qrCodeUrl && totalBalance < 0 && (
+          <View style={{ marginTop: 10, alignItems: 'center' }}>
+            <Image src={qrCodeUrl} style={{ width: 80, height: 80 }} />
+            <Text style={{ fontSize: 6, marginTop: 2 }}>QR platba nedoplatku</Text>
+          </View>
+        )}
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text>Jednotková cena za m3 vody činila v roce {result.billingPeriod.year} dle ceníku BVaK 105,53 Kč. Hodnota uvedená ve vyúčtování již zahrnuje rozdíl mezi náměrem hlavního a součtem náměrů poměrových vodoměrů.</Text>
-          <Text style={{ marginTop: 5 }}>Případné reklamace uplatněte výhradně písemnou (elektronickou) formou na adrese správce (viz záhlaví) nejpozději do 30 dní od doručení vyúčtování včetně případné změny Vašeho osobního účtu pro vyplacení přeplatku.</Text>
-          <Text style={{ marginTop: 5 }}>Přeplatek z vyúčtování bude vyplacen nejpozději ve lhůtě 2 měsíců ode dne doručení vyúčtování příjemci. V případě uplatněných reklamací se lhůta prodlouží. Nedoplatek prosím uhraďte na účet a pod variabilním symbolem (obojí viz. výše) nejdříve 30 dnů od doručení vyúčtování (neobdržíte-li v tomto termínu opravné vyúčtování). Nedoplatek z vyúčtování (nebude-li nahrazeno opravným) je splatný nejpozději do 4 měsíců ode dne doručení vyúčtování příjemci.</Text>
+          <Text>Případné reklamace uplatněte písemnou formou na adrese správce nejpozději do 30 dní od doručení vyúčtování.</Text>
+          <Text style={{ marginTop: 3 }}>Přeplatek bude vyplacen do 2 měsíců od doručení. Nedoplatek uhraďte na účet společenství pod VS uvedeným výše.</Text>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 }}>
-             <Text>Datum: {format(new Date(), 'dd.MM.yyyy')}</Text>
-             <Text>info@adminreal.cz | mobil: 607 959 876</Text>
-             <Text>www.adminreal.cz | www.onlinesprava.cz</Text>
+            <Text>Datum: {format(new Date(), 'dd.MM.yyyy')}</Text>
+            <Text>{building?.email || 'info@adminreal.cz'}</Text>
+            <Text>www.onlinesprava.cz</Text>
           </View>
         </View>
       </Page>

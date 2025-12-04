@@ -7,8 +7,9 @@ import { respondIfTrackSchemaMissing } from '@/lib/track/schemaGuard'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { unitId: string } }
+  props: { params: Promise<{ unitId: string }> }
 ) {
+  const params = await props.params;
   const session = await getServerSession(authOptions)
 
   if (!session) {

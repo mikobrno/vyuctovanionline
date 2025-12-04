@@ -37,8 +37,6 @@ export async function GET(
     )
   }
 
-  const { buildingId } = params
-
   const schemaResponse = await respondIfTrackSchemaMissing()
   if (schemaResponse) {
     return schemaResponse

@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { enqueueExportJob } from '@/lib/queues/exportQueue'
 import type { TrackExportSummary } from '@/types/track'
 import { respondIfTrackSchemaMissing } from '@/lib/track/schemaGuard'
+import type { Prisma } from '@prisma/client'
 
 const mapExportToSummary = (item: Awaited<ReturnType<typeof prisma.communicationExport.findFirst>>) => {
   if (!item) return null
@@ -92,7 +93,7 @@ export async function POST(request: Request) {
       data: {
         buildingId: buildingId ?? null,
         year: year ?? null,
-        filters: filters ?? null,
+        filters: (filters ?? undefined) as Prisma.InputJsonValue | undefined,
         status: 'PENDING',
         createdById: gate.session!.user.id,
       },

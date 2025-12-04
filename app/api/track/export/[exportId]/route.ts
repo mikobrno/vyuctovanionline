@@ -21,8 +21,9 @@ const mapExport = (item: Awaited<ReturnType<typeof prisma.communicationExport.fi
 
 export async function GET(
   _request: Request,
-  { params }: { params: { exportId: string } }
+  props: { params: Promise<{ exportId: string }> }
 ) {
+  const params = await props.params;
   const session = await getServerSession(authOptions)
 
   if (!session) {

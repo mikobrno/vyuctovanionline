@@ -5,14 +5,16 @@ import { prisma } from '@/lib/prisma'
 import {
   CommunicationDeliveryStatus,
   CommunicationEventType,
+  Prisma,
 } from '@prisma/client'
 
 const allowedManualTypes: CommunicationEventType[] = ['MANUAL_MARKED']
 
 export async function POST(
   request: Request,
-  { params }: { params: { communicationId: string } }
+  props: { params: Promise<{ communicationId: string }> }
 ) {
+  const params = await props.params;
   const session = await getServerSession(authOptions)
 
   if (!session) {
@@ -79,7 +81,7 @@ export async function POST(
           type,
           source: 'MANUAL',
           userId: session.user.id,
-          payload: metadata ?? null,
+          payload: metadata as Prisma.InputJsonValue | undefined,
         },
       })
     )

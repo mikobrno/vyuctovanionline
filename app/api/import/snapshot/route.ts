@@ -112,6 +112,10 @@ interface ServiceData {
   calculationType: string
   monthlyAdvances: number[]
   meterReadings: MeterReading[]
+  // Nová pole pro věrný tisk z Excelu (V19+)
+  buildingUnits?: string   // Jednotek (dům)
+  unitPrice?: string       // Kč/jedn
+  unitUnits?: string       // Jednotek (byt)
 }
 
 interface UnitData {
@@ -266,13 +270,16 @@ export async function POST(req: NextRequest) {
             break // Přeskočit
           }
           
-          // Parsovat hodnoty
+          // V19 FORMÁT SLOUPCŮ:
+          // Val1=Náklad Dům, Val2=Náklad Byt, Val3=Záloha, Val4=Přeplatek
+          // Val5=Spotřeba Dům, Val6=Jednotek Dům, Val7=Kč/jedn, Val8=Jednotek Byt
+          // Val9=Spotřeba Byt, Val10=Podíl/základ
+          
           let unitCost = parseMoney(values[1])
           const unitAdvance = parseMoney(values[2])
           const unitBalance = parseMoney(values[3])
           
           // Workaround pro služby kde je chyba #NAME? v nákladu (např. Vodné studená voda)
-          // Dopočítáme: náklad = záloha - přeplatek
           if (unitCost === 0 && unitAdvance > 0 && serviceName.toLowerCase().includes('studená')) {
             unitCost = unitAdvance - unitBalance
             console.log(`[Snapshot] Oprava nákladu pro ${serviceName}: ${unitAdvance} - ${unitBalance} = ${unitCost}`)
@@ -283,6 +290,14 @@ export async function POST(req: NextRequest) {
             break
           }
           
+          // Helper pro zachování hodnoty jako string (pro věrný tisk)
+          const keepStr = (val: unknown): string | undefined => {
+            if (!val) return undefined
+            const str = String(val).trim()
+            if (!str || str === '0' || str === '0,00' || str.startsWith('#') || str === '-') return undefined
+            return str
+          }
+          
           const serviceData: ServiceData = {
             name: serviceName,
             buildingTotalCost: parseMoney(values[0]),
@@ -290,12 +305,16 @@ export async function POST(req: NextRequest) {
             unitAdvance: unitAdvance,
             unitBalance: unitBalance,
             buildingConsumption: values[4] ? parseMoney(values[4]) : undefined,
-            unitConsumption: values[5] ? parseMoney(values[5]) : undefined,
-            unitPricePerUnit: values[6] ? parseMoney(values[6]) : undefined,
-            distributionBase: values[7] ? String(values[7]) : undefined,
+            unitConsumption: values[8] ? parseMoney(values[8]) : undefined,  // Val9 = spotřeba byt
+            unitPricePerUnit: values[6] ? parseMoney(values[6]) : undefined, // Val7 = Kč/jedn
+            distributionBase: values[9] ? String(values[9]) : undefined,     // Val10 = podíl/základ
             calculationType: 'COST',
             monthlyAdvances: new Array(12).fill(0),
-            meterReadings: []
+            meterReadings: [],
+            // Nová pole pro věrný tisk (zachováváme jako string)
+            buildingUnits: keepStr(values[5]),  // Val6 = Jednotek dům
+            unitPrice: keepStr(values[6]),      // Val7 = Kč/jedn
+            unitUnits: keepStr(values[7])       // Val8 = Jednotek byt
           }
           unitData.services.set(normalizeServiceName(serviceName), serviceData)
           break
@@ -338,11 +357,13 @@ export async function POST(req: NextRequest) {
           break
         }
 
-        case 'ADVANCE_MONTHLY': {
+        case 'ADVANCE_MONTHLY':
+        case 'ADVANCE_MONTHLY_SOURCE': {
           const monthlyAdvances: number[] = []
           for (let m = 0; m < 12; m++) {
             monthlyAdvances.push(parseMoney(values[m]))
           }
+          console.log(`[Snapshot] ADVANCE_MONTHLY pro ${unitName}: ${monthlyAdvances.join(', ')}`)
 
           if (key) {
             const normalizedService = normalizeServiceName(key)
@@ -356,10 +377,12 @@ export async function POST(req: NextRequest) {
           break
         }
 
-        case 'PAYMENT_MONTHLY': {
+        case 'PAYMENT_MONTHLY':
+        case 'PAYMENT_MONTHLY_SOURCE': {
           for (let m = 0; m < 12; m++) {
             unitData.monthlyPayments[m] = parseMoney(values[m])
           }
+          console.log(`[Snapshot] PAYMENT_MONTHLY pro ${unitName}: ${unitData.monthlyPayments.join(', ')}`)
           break
         }
 
@@ -754,6 +777,10 @@ export async function POST(req: NextRequest) {
               unitPricePerUnit: serviceData.unitPricePerUnit,
               distributionBase: serviceData.distributionBase,
               calculationType: serviceData.calculationType,
+              // Nová pole V19 pro věrný tisk
+              buildingUnits: serviceData.buildingUnits || null,
+              unitPrice: serviceData.unitPrice || null,
+              unitUnits: serviceData.unitUnits || null,
               monthlyAdvances: serviceData.monthlyAdvances.some(a => a > 0)
                 ? JSON.stringify(serviceData.monthlyAdvances)
                 : null,

@@ -49,7 +49,6 @@ export async function GET(
     )
   }
 
-  const { buildingId, year } = params
   const yearNumber = Number(year)
 
   if (!Number.isInteger(yearNumber)) {
@@ -131,7 +130,7 @@ export async function GET(
     const items: TrackUnitRow[] = units.map((unit) => {
       const channelTotals: TrackUnitRow['communications']['totals'] = {}
       let lastStatus: CommunicationDeliveryStatus | null = null
-      let lastUpdatedDate: Date | null = null
+      let lastUpdatedDate: Date | undefined = undefined
 
       unit.communications.forEach((communication) => {
         const bucket = channelTotals[communication.channel] ?? {
@@ -167,7 +166,7 @@ export async function GET(
         communications: {
           totals: channelTotals,
           lastStatus,
-          lastUpdatedAt: lastUpdatedDate?.toISOString() ?? null,
+          lastUpdatedAt: lastUpdatedDate ? (lastUpdatedDate as Date).toISOString() : null,
         },
         manualDelivery: latestDeliveryRecord
           ? {

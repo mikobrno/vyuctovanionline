@@ -30,6 +30,10 @@ interface ServiceData {
   calculationType: string
   monthlyAdvances: number[]
   meterReadings: MeterReading[]
+  // Nová pole pro věrný tisk z Excelu (V16+)
+  buildingUnits?: string   // Val6 - Jednotek (dům)
+  unitPrice?: string       // Val7 - Kč/jedn
+  unitUnits?: string       // Val8 - Jednotek (byt)
 }
 
 interface UnitData {
@@ -173,6 +177,9 @@ async function runSnapshotImport() {
       }
       case 'COST': {
         const serviceName = key || ''
+        // V16 formát: Val1=Náklad Dům, Val2=Náklad Byt, Val3=Záloha, Val4=Přeplatek
+        // Val5=Spotřeba Dům, Val6=Jednotek Dům, Val7=Kč/jedn, Val8=Jednotek Uživatel
+        // Val9=Spotřeba Uživatel, Val10=Podíl/základ
         const serviceData: ServiceData = {
           name: serviceName,
           buildingTotalCost: parseMoney(values[0]),
@@ -180,12 +187,16 @@ async function runSnapshotImport() {
           unitAdvance: parseMoney(values[2]),
           unitBalance: parseMoney(values[3]),
           buildingConsumption: values[4] ? parseMoney(values[4]) : undefined,
-          unitConsumption: values[5] ? parseMoney(values[5]) : undefined,
-          unitPricePerUnit: values[6] ? parseMoney(values[6]) : undefined,
-          distributionBase: values[7] ? String(values[7]) : undefined,
+          unitConsumption: values[8] ? parseMoney(values[8]) : undefined,  // Val9 = spotřeba uživatel
+          unitPricePerUnit: values[6] ? parseMoney(values[6]) : undefined, // Val7 = Kč/jedn
+          distributionBase: values[9] ? String(values[9]) : undefined,     // Val10 = podíl/základ
           calculationType: 'COST',
           monthlyAdvances: new Array(12).fill(0),
-          meterReadings: []
+          meterReadings: [],
+          // Nová pole pro věrný tisk (zachováváme jako string)
+          buildingUnits: values[5] ? String(values[5]).trim() : undefined, // Val6 = Jednotek dům
+          unitPrice: values[6] ? String(values[6]).trim() : undefined,     // Val7 = Kč/jedn
+          unitUnits: values[7] ? String(values[7]).trim() : undefined      // Val8 = Jednotek byt
         }
         unitData.services.set(normalizeServiceName(serviceName), serviceData)
         break
@@ -214,7 +225,8 @@ async function runSnapshotImport() {
         serviceData.calculationType = 'METER'
         break
       }
-      case 'ADVANCE_MONTHLY': {
+      case 'ADVANCE_MONTHLY': 
+      case 'ADVANCE_MONTHLY_SOURCE': {
         const monthlyAdvances: number[] = []
         for (let m = 0; m < 12; m++) monthlyAdvances.push(parseMoney(values[m]))
         if (key) {
@@ -223,6 +235,14 @@ async function runSnapshotImport() {
         } else {
           unitData.monthlyAdvances = monthlyAdvances
         }
+        break
+      }
+      case 'PAYMENT_MONTHLY':
+      case 'PAYMENT_MONTHLY_SOURCE': {
+        // Měsíční platby/úhrady
+        const monthlyPayments: number[] = []
+        for (let m = 0; m < 12; m++) monthlyPayments.push(parseMoney(values[m]))
+        unitData.monthlyPayments = monthlyPayments
         break
       }
       case 'FUND': {
@@ -503,7 +523,11 @@ async function runSnapshotImport() {
           monthlyAdvances: serviceData.monthlyAdvances.some(a => a > 0)
             ? JSON.stringify(serviceData.monthlyAdvances) : null,
           meterReadings: serviceData.meterReadings.length > 0
-            ? JSON.stringify(serviceData.meterReadings) : null
+            ? JSON.stringify(serviceData.meterReadings) : null,
+          // Nová pole pro věrný tisk
+          buildingUnits: serviceData.buildingUnits || null,
+          unitPrice: serviceData.unitPrice || null,
+          unitUnits: serviceData.unitUnits || null
         }
       })
       createdServiceCosts++

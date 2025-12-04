@@ -73,7 +73,7 @@ export default async function DashboardPage({
               </button>
             </form>
           </div>
-          <CompleteImport buildingId={buildingId} buildings={buildings} />
+          <CompleteImport buildingId={buildingId} />
         </div>
 
         {/* Rychlé akce */}
