@@ -270,14 +270,13 @@ export async function POST(req: NextRequest) {
             break // Přeskočit
           }
           
-          // V19 FORMÁT SLOUPCŮ:
-          // Val1=Náklad Dům, Val2=Náklad Byt, Val3=Záloha, Val4=Přeplatek
-          // Val5=Spotřeba Dům, Val6=Jednotek Dům, Val7=Kč/jedn, Val8=Jednotek Byt
-          // Val9=Spotřeba Byt, Val10=Podíl/základ
+          // EXPORT_FULL FORMÁT SLOUPCŮ:
+          // Val1=Podíl %, Val2=Počet jednotek, Val3=Náklad Byt, Val4=Záloha Byt
+          // Val6=Náklad Dům, Val7=Počet jednotek Dům, Val8=Cena/jedn, Val9=Metodika
           
-          let unitCost = parseMoney(values[1])
-          const unitAdvance = parseMoney(values[2])
-          const unitBalance = parseMoney(values[3])
+          let unitCost = parseMoney(values[2])        // Val3 = Náklad bytu
+          const unitAdvance = parseMoney(values[3])   // Val4 = Záloha bytu
+          const unitBalance = unitCost - unitAdvance  // Výsledek = Náklad - Záloha
           
           // Workaround pro služby kde je chyba #NAME? v nákladu (např. Vodné studená voda)
           if (unitCost === 0 && unitAdvance > 0 && serviceName.toLowerCase().includes('studená')) {
@@ -300,14 +299,14 @@ export async function POST(req: NextRequest) {
           
           const serviceData: ServiceData = {
             name: serviceName,
-            buildingTotalCost: parseMoney(values[0]),
+            buildingTotalCost: parseMoney(values[5]),  // Val6 = Náklad domu
             unitCost: unitCost,
             unitAdvance: unitAdvance,
             unitBalance: unitBalance,
-            buildingConsumption: values[4] ? parseMoney(values[4]) : undefined,
-            unitConsumption: values[8] ? parseMoney(values[8]) : undefined,  // Val9 = spotřeba byt
-            unitPricePerUnit: values[6] ? parseMoney(values[6]) : undefined, // Val7 = Kč/jedn
-            distributionBase: values[9] ? String(values[9]) : undefined,     // Val10 = podíl/základ
+            buildingConsumption: values[6] ? parseMoney(values[6]) : undefined,  // Val7 = Počet jednotek dům
+            unitConsumption: values[1] ? parseMoney(values[1]) : undefined,      // Val2 = Počet jednotek bytu
+            unitPricePerUnit: values[7] ? parseMoney(values[7]) : undefined,     // Val8 = Cena za jednotku
+            distributionBase: values[8] ? String(values[8]) : undefined,         // Val9 = Metodika
             calculationType: 'COST',
             monthlyAdvances: new Array(12).fill(0),
             meterReadings: [],
