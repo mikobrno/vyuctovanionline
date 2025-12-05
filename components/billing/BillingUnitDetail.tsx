@@ -16,6 +16,73 @@ export default function BillingUnitDetail({
   payments 
 }: BillingUnitDetailProps) {
   const owner = billingResult.unit.ownerships[0]?.owner
+  const parseSummary = () => {
+    if (!billingResult.summaryJson) return null
+    try {
+      return JSON.parse(billingResult.summaryJson) as {
+        bankAccount?: string
+        vs?: string
+        variableSymbol?: string
+        resultNote?: string
+        fixedPayments?: Array<{ name?: string; amount?: number | string }>
+      }
+    } catch (error) {
+      console.error('Unable to parse billingResult summary', error)
+      return null
+    }
+  }
+
+  const normalizeValue = (value?: string | null) => {
+    if (!value) return null
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+
+  const parseAmountValue = (value: unknown): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+    if (typeof value === 'string') {
+      const cleaned = value.replace(/[\s\u00A0]/g, '').replace(',', '.').replace(/[^0-9+\-.]/g, '')
+      if (!cleaned) {
+        return null
+      }
+      const parsed = Number(cleaned)
+      return Number.isFinite(parsed) ? parsed : null
+    }
+    return null
+  }
+
+  const parseFixedPayments = (raw: unknown): { name: string; amount: number }[] => {
+    if (!Array.isArray(raw)) {
+      return []
+    }
+    return (raw as any[])
+      .map(payment => {
+        const name = normalizeValue(payment?.name)
+        const amount = parseAmountValue(payment?.amount)
+        if (!name || amount === null) {
+          return null
+        }
+        return { name, amount }
+      })
+      .filter((payment): payment is { name: string; amount: number } => Boolean(payment))
+  }
+
+  const summary = parseSummary()
+  const summaryNote = normalizeValue(summary?.resultNote)
+  const summaryBankAccount = normalizeValue(summary?.bankAccount)
+  const summaryVariableSymbol = normalizeValue(summary?.vs || summary?.variableSymbol)
+  const summaryFixedPayments = parseFixedPayments(summary?.fixedPayments)
+  const effectiveBankAccount = summaryBankAccount || normalizeValue(billingPeriod.building.bankAccount)
+  const effectiveVariableSymbol = normalizeValue(billingResult.unit.variableSymbol) || summaryVariableSymbol || billingResult.unit.variableSymbol
+  const displayBankAccount = effectiveBankAccount || billingPeriod.building.bankAccount || '[číslo účtu]'
+  const displayVariableSymbol = effectiveVariableSymbol || '[variabilní symbol]'
+  const fallbackFixedPayments: { name: string; amount: number }[] = (billingResult.serviceCosts || [])
+    .filter((sc: any) => sc.service.name.toLowerCase().includes('fond oprav'))
+    .map((sc: any) => ({ name: sc.service.name, amount: sc.unitCost }))
+  const displayedFixedPayments: { name: string; amount: number }[] =
+    summaryFixedPayments.length > 0 ? summaryFixedPayments : fallbackFixedPayments
 
   const handlePrintPDF = () => {
     window.print()
@@ -192,14 +259,20 @@ export default function BillingUnitDetail({
                   </tr>
                 </thead>
                 <tbody>
-                  {billingResult.serviceCosts.filter((sc: any) => sc.service.name.toLowerCase().includes('fond oprav')).map((sc: any) => (
-                    <tr key={sc.id}>
-                      <td className="px-2 py-2 border border-gray-200 dark:border-slate-700">{sc.service.name}</td>
-                      <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700 font-bold">
-                        {sc.unitCost.toLocaleString('cs-CZ', { minimumFractionDigits: 0 })} Kč
-                      </td>
+                  {displayedFixedPayments.length > 0 ? (
+                    displayedFixedPayments.map((payment, idx) => (
+                      <tr key={`${payment.name}-${idx}`}>
+                        <td className="px-2 py-2 border border-gray-200 dark:border-slate-700">{payment.name}</td>
+                        <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700 font-bold">
+                          {payment.amount.toLocaleString('cs-CZ', { minimumFractionDigits: 0 })} Kč
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={2} className="px-2 py-2 text-center text-sm text-gray-500">Žádné pevné platby</td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -325,23 +398,27 @@ export default function BillingUnitDetail({
               </div>
             </div>
 
-            {billingResult.result < 0 && (
+            {summaryNote ? (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mt-4">
+                <p className="text-sm text-blue-900 dark:text-blue-100 whitespace-pre-line">
+                  {summaryNote}
+                </p>
+              </div>
+            ) : billingResult.result < 0 ? (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 mt-4">
                 <p className="text-sm text-red-800 dark:text-red-200">
                   <strong>K úhradě:</strong> Prosíme o úhradu nedoplatku ve výši{' '}
                   <strong>{Math.abs(billingResult.result).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč</strong>{' '}
-                  na účet {billingPeriod.building.bankAccount || '[číslo účtu]'}, variabilní symbol: {billingResult.unit.variableSymbol}
+                  na účet {displayBankAccount}, variabilní symbol: {displayVariableSymbol}
                 </p>
               </div>
-            )}
-
-            {billingResult.result > 0 && (
+            ) : billingResult.result > 0 ? (
               <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 mt-4">
                 <p className="text-sm text-green-800 dark:text-green-200">
                   <strong>Přeplatek bude:</strong> Vrácen na Váš účet nebo použit jako záloha pro příští období
                 </p>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 

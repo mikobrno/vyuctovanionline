@@ -126,6 +126,7 @@ interface UnitData {
   email?: string
   address?: string
   bankAccount?: string  // číslo účtu pro přeplatek
+  resultNote?: string
   totalResult: number
   totalCost: number
   totalAdvance: number
@@ -133,8 +134,13 @@ interface UnitData {
   services: Map<string, ServiceData>
   monthlyAdvances: number[]
   monthlyPayments: number[]
+  fixedPayments: FixedPayment[]
 }
 
+interface FixedPayment {
+  name: string
+  amount: number
+}
 /**
  * Zpracuje Excel soubor s listem EXPORT_FULL
  * Tento endpoint importuje kompletní "snapshot" vyúčtování z Excelu
@@ -240,19 +246,21 @@ export async function POST(req: NextRequest) {
           repairFund: 0,
           services: new Map(),
           monthlyAdvances: new Array(12).fill(0),
-          monthlyPayments: new Array(12).fill(0)
+          monthlyPayments: new Array(12).fill(0),
+          fixedPayments: []
         }
         unitDataMap.set(unitName, unitData)
       }
 
       switch (dataType) {
         case 'INFO': {
-          // NOVÝ FORMÁT: Val1: Jméno vlastníka, Val2: VS, Val3: Email, Val4: Výsledek, Val5: Bankovní účet
+          // NOVÝ FORMÁT: Val1: Jméno vlastníka, Val2: VS, Val3: Email, Val4: Výsledek, Val5: Bankovní účet, Val6: Poznámka k výsledku
           unitData.ownerName = values[0] ? String(values[0]) : undefined
           unitData.variableSymbol = values[1] ? String(values[1]) : undefined
           unitData.email = values[2] ? String(values[2]) : undefined
           unitData.totalResult = parseMoney(values[3])
           unitData.bankAccount = values[4] ? String(values[4]) : undefined
+          unitData.resultNote = values[5] ? String(values[5]).trim() : undefined
           
           // Tyto hodnoty nejsou v novém formátu - dopočítáme z COST řádků později
           // unitData.totalCost = parseMoney(values[4])
@@ -412,6 +420,19 @@ export async function POST(req: NextRequest) {
             meterReadings: []
           }
           unitData.services.set(normalizeServiceName(serviceName), serviceData)
+          break
+        }
+
+        case 'FIXED_PAYMENT': {
+          const paymentName = key || 'Pevná platba'
+          const amount = parseMoney(values[0])
+
+          if (paymentName && amount !== 0) {
+            unitData.fixedPayments.push({
+              name: paymentName,
+              amount
+            })
+          }
           break
         }
       }
@@ -747,7 +768,9 @@ export async function POST(req: NextRequest) {
               owner: unitData.ownerName,
               email: unitData.email,
               vs: unitData.variableSymbol,
-              bankAccount: unitData.bankAccount
+              bankAccount: unitData.bankAccount,
+              resultNote: unitData.resultNote,
+              fixedPayments: unitData.fixedPayments
             })
           }
         })

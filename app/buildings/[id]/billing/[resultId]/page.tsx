@@ -62,6 +62,78 @@ export default async function BillingResultDetailPage({
   const building = billingResult.billingPeriod.building
   const year = billingResult.billingPeriod.year
 
+  type BillingSummaryPayment = {
+    name?: string
+    amount?: number | string
+  }
+
+  type BillingSummary = {
+    bankAccount?: string
+    vs?: string
+    variableSymbol?: string
+    resultNote?: string
+    fixedPayments?: BillingSummaryPayment[]
+  }
+
+  const parseSummary = (): BillingSummary | null => {
+    if (!billingResult.summaryJson) {
+      return null
+    }
+    try {
+      return JSON.parse(billingResult.summaryJson) as BillingSummary
+    } catch (err) {
+      console.error('Cannot parse billing summary JSON', err)
+      return null
+    }
+  }
+
+  const normalizeString = (value?: string | null): string | null => {
+    if (typeof value !== 'string') return null
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+
+  const parseAmountValue = (value: unknown): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+    if (typeof value === 'string') {
+      const normalized = value.replace(/[\s\u00A0]/g, '').replace(',', '.').replace(/[^0-9+\-.]/g, '')
+      if (!normalized) {
+        return null
+      }
+      const parsed = Number(normalized)
+      return Number.isFinite(parsed) ? parsed : null
+    }
+    return null
+  }
+
+  const parseFixedPayments = (raw: BillingSummaryPayment[] | undefined): { name: string; amount: number }[] => {
+    if (!Array.isArray(raw)) {
+      return []
+    }
+
+    return raw
+      .map(payment => {
+        const name = normalizeString(payment?.name || null)
+        const amount = parseAmountValue(payment?.amount)
+        if (!name || amount === null) {
+          return null
+        }
+        return { name, amount }
+      })
+      .filter((item): item is { name: string; amount: number } => Boolean(item))
+  }
+
+  const summary = parseSummary()
+  const summaryBankAccount = normalizeString(summary?.bankAccount)
+  const summaryVariableSymbol = normalizeString(summary?.vs || summary?.variableSymbol)
+  const summaryResultNote = normalizeString(summary?.resultNote)
+  const summaryFixedPayments = parseFixedPayments(summary?.fixedPayments)
+
+  const effectiveVariableSymbol = normalizeString(billingResult.unit.variableSymbol) || summaryVariableSymbol
+  const effectiveBankAccount = summaryBankAccount || normalizeString(building.bankAccount)
+
   // Find the relevant owner for the billing year
   const yearStart = new Date(year, 0, 1);
   const yearEnd = new Date(year, 11, 31);
@@ -233,8 +305,8 @@ export default async function BillingResultDetailPage({
     balance: billingResult.result,
     year: year,
     unitNumber: billingResult.unit.unitNumber,
-    variableSymbol: billingResult.unit.variableSymbol,
-    bankAccount: building.bankAccount || null
+    variableSymbol: effectiveVariableSymbol,
+    bankAccount: effectiveBankAccount || null
   });
 
   // Transformace dat pro komponentu BillingStatement
@@ -289,8 +361,8 @@ export default async function BillingResultDetailPage({
     building: {
       name: building.name,
       address: `${building.address}, ${building.city}`,
-      accountNumber: building.bankAccount || '',
-      variableSymbol: billingResult.unit.variableSymbol || '',
+      accountNumber: effectiveBankAccount || '',
+      variableSymbol: effectiveVariableSymbol || '',
       managerName: building.managerName || undefined
     },
     unit: {
@@ -311,7 +383,7 @@ export default async function BillingResultDetailPage({
     },
     services: billingResult.serviceCosts.map(cost => {
       const distributionShare = parseDistributionShare(cost.distributionShare);
-      return ({
+      return {
         name: cost.service.name,
         unit: cost.distributionBase || cost.calculationBasis || getMethodologyLabel(cost.service),
         share: distributionShare ?? (activeOwner?.sharePercent ?? 100),
@@ -322,8 +394,10 @@ export default async function BillingResultDetailPage({
         userCost: cost.unitCost,
         advance: cost.unitAdvance || advanceByService.get(cost.serviceId) || 0,
         result: cost.unitBalance
-      });
+      }
     }),
+    fixedPayments: summaryFixedPayments,
+    note: summaryResultNote || undefined,
     totals: {
       cost: billingResult.totalCost,
       advance: billingResult.totalAdvancePrescribed,

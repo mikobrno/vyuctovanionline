@@ -55,6 +55,8 @@ interface BillingStatementProps {
       paid: number;
     }>;
     qrCodeUrl?: string;
+    note?: string | null;
+    fixedPayments?: Array<{ name: string; amount: number }>;
   };
 }
 
@@ -82,6 +84,9 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
 
     return trimmed.includes('%') ? trimmed : `${trimmed}%`;
   };
+
+  const instructionNote = data.note?.trim();
+  const fixedPayments = data.fixedPayments ?? [];
 
   const isBrnoReal = data.building.managerName?.toLowerCase().includes('brnoreal');
   const logoSrc = isBrnoReal ? '/brnoreal.png' : '/adminreal.png';
@@ -205,6 +210,29 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
         </table>
       </div>
 
+      {/* Fixed Payments */}
+      {fixedPayments.length > 0 && (
+        <div className="mb-8 max-w-sm">
+          <h3 className="font-bold text-gray-800 mb-2 border-b pb-1">Pevné platby</h3>
+          <table className="w-full text-xs border border-gray-300">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left py-1 px-2 border-b">Položka</th>
+                <th className="text-right py-1 px-2 border-b">Celkem za rok</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fixedPayments.map((payment, idx) => (
+                <tr key={`${payment.name}-${idx}`} className="border-b last:border-b-0">
+                  <td className="py-1 px-2">{payment.name}</td>
+                  <td className="py-1 px-2 text-right font-semibold">{formatCurrency(payment.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* Payment Schedule */}
       <div className="grid grid-cols-2 gap-8 mb-8">
         {/* Payments Table */}
@@ -305,7 +333,11 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
 
         <div className="grid grid-cols-[2fr_1fr] gap-8">
           <div className="text-sm text-gray-600 space-y-2">
-            {data.totals.result < 0 ? (
+            {instructionNote ? (
+               <p className="bg-gray-100 p-2 font-bold text-gray-800 border-l-4 border-blue-500 whitespace-pre-line">
+                 {instructionNote}
+               </p>
+            ) : data.totals.result < 0 ? (
                <p className="bg-gray-100 p-2 font-bold text-gray-800 border-l-4 border-red-500">
                  Nedoplatek uhraďte na účet číslo: {data.building.accountNumber} pod variabilním symbolem {data.building.variableSymbol}
                </p>

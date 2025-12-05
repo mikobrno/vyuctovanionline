@@ -138,6 +138,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f0f0',
     fontFamily: 'Roboto-Bold',
   },
+  // Pevné platby
+  fixedPaymentWrapper: {
+    borderWidth: 1,
+    borderColor: '#000000',
+    marginBottom: 8,
+  },
+  fixedPaymentHeader: {
+    backgroundColor: '#e5e7eb',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderBottomWidth: 1,
+    borderColor: '#000000',
+  },
+  fixedPaymentRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderColor: '#000000',
+    minHeight: 14,
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  fixedPaymentName: {
+    flex: 1,
+    fontSize: 7,
+  },
+  fixedPaymentAmount: {
+    width: 80,
+    textAlign: 'right',
+    fontSize: 7,
+    fontFamily: 'Roboto-Bold',
+  },
   // Měsíční přehled
   monthlySection: {
     marginTop: 10,
@@ -246,6 +277,46 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
   const ownerName = summary.owner || summary.ownerName || (data.owner ? data.owner.firstName + ' ' + data.owner.lastName : 'Neznámý vlastník');
   const address = summary.address || unit.address || building?.address;
   const email = summary.email || (data.owner ? data.owner.email : '');
+  const normalizeSummaryString = (val: unknown): string | undefined => {
+    if (typeof val !== 'string') return undefined;
+    const trimmed = val.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+  const parseSummaryAmount = (val: unknown): number | null => {
+    if (typeof val === 'number' && Number.isFinite(val)) {
+      return val;
+    }
+    if (typeof val === 'string') {
+      const cleaned = val.replace(/[\s\u00A0]/g, '').replace(',', '.').replace(/[^0-9+\-.]/g, '');
+      if (!cleaned) {
+        return null;
+      }
+      const parsed = Number(cleaned);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
+  const parseFixedPayments = (): { name: string; amount: number }[] => {
+    if (!Array.isArray(summary.fixedPayments)) {
+      return [];
+    }
+    return (summary.fixedPayments as Array<{ name?: string; amount?: number | string }>).
+      map(payment => {
+        const name = normalizeSummaryString(payment?.name);
+        const amount = parseSummaryAmount(payment?.amount ?? undefined);
+        if (!name || amount === null) {
+          return null;
+        }
+        return { name, amount };
+      }).
+      filter((payment): payment is { name: string; amount: number } => Boolean(payment));
+  };
+  const summaryBankAccount = normalizeSummaryString(summary.bankAccount);
+  const summaryVariableSymbol = normalizeSummaryString(summary.vs) || normalizeSummaryString(summary.variableSymbol);
+  const summaryResultNote = normalizeSummaryString(summary.resultNote);
+  const effectiveBankAccount = summaryBankAccount || building?.bankAccount;
+  const effectiveVariableSymbol = unit.variableSymbol || summaryVariableSymbol;
+  const fixedPayments = parseFixedPayments();
   
   // Filter services
   const fundServices = result.serviceCosts.filter(sc => 
@@ -281,7 +352,7 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
             </View>
             <View style={styles.addressRow}>
               <Text style={styles.label}>bankovní spojení:</Text>
-              <Text style={styles.value}>{building?.bankAccount || '-'}</Text>
+              <Text style={styles.value}>{effectiveBankAccount || '-'}</Text>
             </View>
             {email && (
               <View style={styles.addressRow}>
@@ -293,7 +364,7 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
           <View style={styles.headerRight}>
             {logoPath && <Image src={logoPath} style={styles.logo} />}
             <Text style={{ fontSize: 9, fontFamily: 'Roboto-Bold' }}>č. prostoru: {unit.name}</Text>
-            <Text style={{ fontSize: 7 }}>VS: {unit.variableSymbol || summary.variableSymbol || '-'}</Text>
+            <Text style={{ fontSize: 7 }}>VS: {effectiveVariableSymbol || '-'}</Text>
             <Text style={{ fontSize: 7 }}>období: 1.1.{result.billingPeriod.year} - 31.12.{result.billingPeriod.year}</Text>
           </View>
         </View>
@@ -416,6 +487,20 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
           </View>
         </View>
 
+        {fixedPayments.length > 0 && (
+          <View style={styles.fixedPaymentWrapper}>
+            <View style={styles.fixedPaymentHeader}>
+              <Text style={{ fontFamily: 'Roboto-Bold' }}>Pevné platby</Text>
+            </View>
+            {fixedPayments.map((payment, idx) => (
+              <View key={idx} style={[styles.fixedPaymentRow, idx === fixedPayments.length - 1 && { borderBottomWidth: 0 }]}>
+                <Text style={styles.fixedPaymentName}>{payment.name}</Text>
+                <Text style={styles.fixedPaymentAmount}>{formatCurrency(payment.amount)}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Summary */}
         <View style={{ alignItems: 'flex-end', marginBottom: 8 }}>
           <View style={{ flexDirection: 'row', marginTop: 3 }}>
@@ -431,6 +516,11 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
               <Text style={{ fontFamily: 'Roboto-Bold', fontSize: 7 }}>
                 Přeplatek bude vyplacen na účet: {summary.bankAccount}
               </Text>
+            </View>
+          )}
+          {summaryResultNote && (
+            <View style={{ backgroundColor: '#dbeafe', padding: 4, marginTop: 4, borderLeftWidth: 2, borderColor: '#1d4ed8' }}>
+              <Text style={{ fontFamily: 'Roboto-Bold', fontSize: 7 }}>{summaryResultNote}</Text>
             </View>
           )}
         </View>
