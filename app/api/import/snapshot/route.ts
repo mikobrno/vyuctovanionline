@@ -366,11 +366,21 @@ export async function POST(req: NextRequest) {
           }
           console.log(`[Snapshot] ADVANCE_MONTHLY pro ${unitName}: ${monthlyAdvances.join(', ')}`)
 
-          if (key) {
-            const normalizedService = normalizeServiceName(key)
-            const serviceData = unitData.services.get(normalizedService)
+          const normalizedKey = key ? normalizeServiceName(key) : null
+          const isUnitLevelAdvance =
+            !normalizedKey ||
+            normalizedKey === 'advance_monthly' ||
+            normalizedKey === 'advance' ||
+            normalizedKey === 'predpisy' ||
+            normalizedKey === 'total_advance'
+
+          if (!isUnitLevelAdvance && normalizedKey) {
+            const serviceData = unitData.services.get(normalizedKey)
             if (serviceData) {
               serviceData.monthlyAdvances = monthlyAdvances
+            } else {
+              // Pokud služba ještě není načtená (např. řádky jsou v jiném pořadí), uložíme měsíce na úroveň jednotky jako fallback
+              unitData.monthlyAdvances = monthlyAdvances
             }
           } else {
             unitData.monthlyAdvances = monthlyAdvances
