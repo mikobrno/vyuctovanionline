@@ -109,6 +109,7 @@ interface ServiceData {
   unitConsumption?: number
   unitPricePerUnit?: number
   distributionBase?: string
+  distributionShare?: string
   calculationType: string
   monthlyAdvances: number[]
   meterReadings: MeterReading[]
@@ -306,6 +307,7 @@ export async function POST(req: NextRequest) {
             buildingConsumption: values[6] ? parseMoney(values[6]) : undefined,  // Val7 = Počet jednotek dům
             unitConsumption: values[1] ? parseMoney(values[1]) : undefined,      // Val2 = Počet jednotek bytu
             unitPricePerUnit: values[7] ? parseMoney(values[7]) : undefined,     // Val8 = Cena za jednotku
+            distributionShare: values[0] ? String(values[0]) : undefined,        // Val1 = Podíl %
             distributionBase: values[8] ? String(values[8]) : undefined,         // Val9 = Metodika
             calculationType: 'COST',
             monthlyAdvances: new Array(12).fill(0),
@@ -774,6 +776,7 @@ export async function POST(req: NextRequest) {
               unitAdvance: serviceData.unitAdvance,
               unitBalance: serviceData.unitBalance,
               unitPricePerUnit: serviceData.unitPricePerUnit,
+              distributionShare: serviceData.distributionShare,
               distributionBase: serviceData.distributionBase,
               calculationType: serviceData.calculationType,
               // Nová pole V19 pro věrný tisk

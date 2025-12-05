@@ -28,7 +28,7 @@ interface BillingStatementProps {
     services: Array<{
       name: string;
       unit: string;
-      share: number;
+      share?: number | string | null;
       buildingCost: number;
       buildingUnits: number;
       pricePerUnit: number;
@@ -64,6 +64,24 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
 
   const formatNumber = (val: number, decimals = 2) => 
     new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(val);
+
+  const formatShare = (share: number | string | null | undefined) => {
+    if (share === null || share === undefined || share === '') {
+      return '-';
+    }
+
+    if (typeof share === 'number') {
+      const decimals = Number.isInteger(share) ? 0 : 2;
+      return `${formatNumber(share, decimals)}%`;
+    }
+
+    const trimmed = share.trim();
+    if (!trimmed) {
+      return '-';
+    }
+
+    return trimmed.includes('%') ? trimmed : `${trimmed}%`;
+  };
 
   const isBrnoReal = data.building.managerName?.toLowerCase().includes('brnoreal');
   const logoSrc = isBrnoReal ? '/brnoreal.png' : '/adminreal.png';
@@ -146,7 +164,7 @@ export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
               <tr key={idx} className={`border-b border-gray-200 hover:bg-blue-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                 <td className="p-2 font-medium text-gray-800">{service.name}</td>
                 <td className="p-2 text-center text-gray-600">{service.unit}</td>
-                <td className="p-2 text-center text-gray-600 border-r border-gray-200">{service.share}%</td>
+                <td className="p-2 text-center text-gray-600 border-r border-gray-200">{formatShare(service.share)}</td>
                 
                 <td className="p-2 text-right text-gray-600">{formatCurrency(service.buildingCost)}</td>
                 <td

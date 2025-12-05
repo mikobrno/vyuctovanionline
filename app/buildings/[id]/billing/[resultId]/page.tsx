@@ -122,6 +122,25 @@ export default async function BillingResultDetailPage({
     }
   };
 
+  const parseDistributionShare = (value?: string | null) => {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    const normalized = value
+      .toString()
+      .replace(/%/g, '')
+      .replace(',', '.')
+      .trim();
+
+    if (!normalized) {
+      return null;
+    }
+
+    const numericValue = Number(normalized);
+    return Number.isFinite(numericValue) ? numericValue : value.toString().trim();
+  };
+
   // 1. Příprava předpisů (Prescriptions)
   let prescriptions = (billingResult.monthlyPrescriptions as number[]) || [];
   
@@ -290,18 +309,21 @@ export default async function BillingResultDetailPage({
       startDate: `${year}-01-01`,
       endDate: `${year}-12-31`
     },
-    services: billingResult.serviceCosts.map(cost => ({
-      name: cost.service.name,
-      unit: cost.calculationBasis || getMethodologyLabel(cost.service),
-      share: activeOwner?.sharePercent ?? 100,
-      buildingCost: cost.buildingTotalCost,
-      buildingUnits: cost.buildingConsumption || 0,
-      pricePerUnit: cost.unitPricePerUnit || 0,
-      userUnits: cost.unitConsumption || 0,
-      userCost: cost.unitCost,
-      advance: cost.unitAdvance || advanceByService.get(cost.serviceId) || 0,
-      result: cost.unitBalance
-    })),
+    services: billingResult.serviceCosts.map(cost => {
+      const distributionShare = parseDistributionShare(cost.distributionShare);
+      return ({
+        name: cost.service.name,
+        unit: cost.distributionBase || cost.calculationBasis || getMethodologyLabel(cost.service),
+        share: distributionShare ?? (activeOwner?.sharePercent ?? 100),
+        buildingCost: cost.buildingTotalCost,
+        buildingUnits: cost.buildingConsumption || 0,
+        pricePerUnit: cost.unitPricePerUnit || 0,
+        userUnits: cost.unitConsumption || 0,
+        userCost: cost.unitCost,
+        advance: cost.unitAdvance || advanceByService.get(cost.serviceId) || 0,
+        result: cost.unitBalance
+      });
+    }),
     totals: {
       cost: billingResult.totalCost,
       advance: billingResult.totalAdvancePrescribed,

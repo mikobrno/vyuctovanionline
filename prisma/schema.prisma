@@ -591,6 +591,7 @@ model BillingServiceCost {
   calculationType       String?        // typ řádku: "COST", "METER", "INFO", "FUND"
   
   // NOVÁ POLE PRO VĚRNÝ TISK Z EXCELU (jako String pro zachování formátu)
+  distributionShare     String?        // Podíl % - Val1
   buildingUnits         String?        // Jednotek (dům) - Val6
   unitPrice             String?        // Kč/jedn - Val7
   unitUnits             String?        // Jednotek (byt) - Val8

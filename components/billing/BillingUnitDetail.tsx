@@ -127,8 +127,8 @@ export default function BillingUnitDetail({
                 ).map((serviceCost: any) => (
                   <tr key={serviceCost.id}>
                     <td className="px-2 py-2 border border-gray-200 dark:border-slate-700">{serviceCost.service.name}</td>
-                    <td className="px-2 py-2 text-center border border-gray-200 dark:border-slate-700">{serviceCost.calculationBasis || '-'}</td>
                     <td className="px-2 py-2 text-center border border-gray-200 dark:border-slate-700">{serviceCost.distributionBase || '-'}</td>
+                    <td className="px-2 py-2 text-center border border-gray-200 dark:border-slate-700">{serviceCost.distributionShare || '-'}</td>
                     
                     {/* Odběrné místo */}
                     <td className="px-2 py-2 text-right border border-gray-200 dark:border-slate-700">
@@ -221,7 +221,7 @@ export default function BillingUnitDetail({
                   <tbody>
                     {/* Úhrady */}
                     <tr>
-                      {(billingResult.monthlyPayments || billingResult.monthlyPrescriptions || Array(12).fill(0)).map((val: number, i: number) => (
+                      {(billingResult.monthlyPayments || Array(12).fill(0)).map((val: number, i: number) => (
                         <td key={i} className="px-1 py-1 text-center border border-gray-200 dark:border-slate-700">
                           {val.toLocaleString('cs-CZ', { minimumFractionDigits: 0 })}
                         </td>
@@ -244,9 +244,8 @@ export default function BillingUnitDetail({
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Přehled úhrad (Legacy) - skryto pokud máme měsíční tabulku */}
+        {/* Přehled úhrad (Legacy) - skryto pokud máme měsíční tabulka */}
         <div className="hidden">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Přehled úhrad záloh</h3>
           
