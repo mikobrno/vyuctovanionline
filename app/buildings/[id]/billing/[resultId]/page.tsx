@@ -292,12 +292,16 @@ export default async function BillingResultDetailPage({
     },
     services: billingResult.serviceCosts.map(cost => ({
       name: cost.service.name,
-      unit: cost.calculationBasis || getMethodologyLabel(cost.service),
+      // Použít distributionBase (metodika z Excelu) nebo fallback
+      unit: cost.distributionBase || cost.calculationBasis || getMethodologyLabel(cost.service),
       share: activeOwner?.sharePercent ?? 100,
       buildingCost: cost.buildingTotalCost,
-      buildingUnits: cost.buildingConsumption || 0,
-      pricePerUnit: cost.unitPricePerUnit || 0,
-      userUnits: cost.unitConsumption || 0,
+      // Použít buildingUnits string pokud existuje, jinak buildingConsumption
+      buildingUnits: cost.buildingUnits ? parseFloat(cost.buildingUnits.replace(/\s/g, '').replace(',', '.')) || 0 : (cost.buildingConsumption || 0),
+      // Použít unitPrice string pokud existuje, jinak unitPricePerUnit
+      pricePerUnit: cost.unitPrice ? parseFloat(cost.unitPrice.replace(/\s/g, '').replace(',', '.')) || 0 : (cost.unitPricePerUnit || 0),
+      // Použít unitUnits string pokud existuje, jinak unitConsumption
+      userUnits: cost.unitUnits ? parseFloat(cost.unitUnits.replace(/\s/g, '').replace(',', '.')) || 0 : (cost.unitConsumption || 0),
       userCost: cost.unitCost,
       advance: cost.unitAdvance || advanceByService.get(cost.serviceId) || 0,
       result: cost.unitBalance

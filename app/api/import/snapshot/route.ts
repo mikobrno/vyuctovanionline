@@ -112,10 +112,12 @@ interface ServiceData {
   calculationType: string
   monthlyAdvances: number[]
   meterReadings: MeterReading[]
-  // Nová pole pro věrný tisk z Excelu (V19+)
-  buildingUnits?: string   // Jednotek (dům)
-  unitPrice?: string       // Kč/jedn
-  unitUnits?: string       // Jednotek (byt)
+  // Nová pole pro věrný tisk z Excelu (V33+)
+  buildingUnits?: string   // Jednotek (dům) - string pro zachování formátu
+  unitPrice?: string       // Kč/jedn - string pro zachování formátu
+  unitUnits?: string       // Jednotek (byt) - string pro zachování formátu
+  methodology?: string     // Metodika/jednotka (počet osob, vlastnický podíl, atd.)
+  sharePercent?: string    // Podíl (100)
 }
 
 interface UnitData {
@@ -270,23 +272,35 @@ export async function POST(req: NextRequest) {
             break // Přeskočit
           }
           
-          // V19 FORMÁT SLOUPCŮ:
-          // Val1=Náklad Dům, Val2=Náklad Byt, Val3=Záloha, Val4=Přeplatek
-          // Val5=Spotřeba Dům, Val6=Jednotek Dům, Val7=Kč/jedn, Val8=Jednotek Byt
-          // Val9=Spotřeba Byt, Val10=Podíl/základ
+          // V33 FORMÁT SLOUPCŮ (z Office Script):
+          // Val1 = nakladDum (Náklad dům)
+          // Val2 = nakladUziv (Náklad byt)  
+          // Val3 = zaloha (Záloha)
+          // Val4 = preplatek (Přeplatek/nedoplatek)
+          // Val5 = jednotka (typ - "počet osob", "vlastnický podíl" atd.)
+          // Val6 = jednotekDum (Jednotek dům)
+          // Val7 = kcJedn (Kč/jedn)
+          // Val8 = jednotekUziv (Jednotek uživatel)
+          // Val9 = podil (Podíl - 100)
           
-          let unitCost = parseMoney(values[1])
-          const unitAdvance = parseMoney(values[2])
-          const unitBalance = parseMoney(values[3])
+          const buildingTotalCost = parseMoney(values[0])  // Val1 = Náklad dům
+          let unitCost = parseMoney(values[1])             // Val2 = Náklad byt
+          const unitAdvance = parseMoney(values[2])        // Val3 = Záloha
+          const unitBalance = parseMoney(values[3])        // Val4 = Přeplatek/nedoplatek
+          const methodology = values[4] ? String(values[4]).trim() : ''  // Val5 = Jednotka (metodika)
+          const buildingUnitsVal = parseMoney(values[5])   // Val6 = Jednotek dům
+          const pricePerUnit = parseMoney(values[6])       // Val7 = Kč/jedn
+          const unitUnitsVal = parseMoney(values[7])       // Val8 = Jednotek uživatel
+          const sharePercent = values[8] ? String(values[8]).trim() : '100'  // Val9 = Podíl
           
-          // Workaround pro služby kde je chyba #NAME? v nákladu (např. Vodné studená voda)
-          if (unitCost === 0 && unitAdvance > 0 && serviceName.toLowerCase().includes('studená')) {
+          // Workaround pro služby kde je chyba v nákladu
+          if (unitCost === 0 && unitAdvance > 0 && unitBalance !== 0) {
             unitCost = unitAdvance - unitBalance
             console.log(`[Snapshot] Oprava nákladu pro ${serviceName}: ${unitAdvance} - ${unitBalance} = ${unitCost}`)
           }
           
-          // Přeskočit služby s nulovým nákladem i zálohou
-          if (unitCost === 0 && unitAdvance === 0) {
+          // Přeskočit služby s nulovým nákladem i zálohou (kromě Fond oprav)
+          if (unitCost === 0 && unitAdvance === 0 && !serviceName.toLowerCase().includes('fond')) {
             break
           }
           
@@ -300,21 +314,23 @@ export async function POST(req: NextRequest) {
           
           const serviceData: ServiceData = {
             name: serviceName,
-            buildingTotalCost: parseMoney(values[0]),
+            buildingTotalCost: buildingTotalCost,
             unitCost: unitCost,
             unitAdvance: unitAdvance,
             unitBalance: unitBalance,
-            buildingConsumption: values[4] ? parseMoney(values[4]) : undefined,
-            unitConsumption: values[8] ? parseMoney(values[8]) : undefined,  // Val9 = spotřeba byt
-            unitPricePerUnit: values[6] ? parseMoney(values[6]) : undefined, // Val7 = Kč/jedn
-            distributionBase: values[9] ? String(values[9]) : undefined,     // Val10 = podíl/základ
+            buildingConsumption: buildingUnitsVal,           // Jednotek dům (číslo)
+            unitConsumption: unitUnitsVal,                   // Jednotek uživatel (číslo)
+            unitPricePerUnit: pricePerUnit,                  // Kč/jedn (číslo)
+            distributionBase: methodology,                   // Metodika (počet osob, vlastnický podíl, atd.)
             calculationType: 'COST',
             monthlyAdvances: new Array(12).fill(0),
             meterReadings: [],
             // Nová pole pro věrný tisk (zachováváme jako string)
-            buildingUnits: keepStr(values[5]),  // Val6 = Jednotek dům
-            unitPrice: keepStr(values[6]),      // Val7 = Kč/jedn
-            unitUnits: keepStr(values[7])       // Val8 = Jednotek byt
+            buildingUnits: keepStr(values[5]),   // Val6 = Jednotek dům (string)
+            unitPrice: keepStr(values[6]),       // Val7 = Kč/jedn (string)
+            unitUnits: keepStr(values[7]),       // Val8 = Jednotek byt (string)
+            methodology: methodology,            // Val5 = Metodika/jednotka
+            sharePercent: sharePercent           // Val9 = Podíl
           }
           unitData.services.set(normalizeServiceName(serviceName), serviceData)
           break
