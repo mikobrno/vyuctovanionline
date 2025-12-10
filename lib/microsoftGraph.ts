@@ -10,17 +10,25 @@ import path from 'path'
 import 'isomorphic-fetch'
 import { resolveBrandProfile } from './branding'
 
-const credential = new ClientSecretCredential(
-  process.env.GRAPH_TENANT_ID || process.env.AZURE_TENANT_ID!,
-  process.env.GRAPH_CLIENT_ID || process.env.AZURE_CLIENT_ID!,
-  process.env.GRAPH_CLIENT_SECRET || process.env.AZURE_CLIENT_SECRET!
-)
+let credential: ClientSecretCredential | null = null
+
+const getCredential = () => {
+  if (!credential) {
+    credential = new ClientSecretCredential(
+      process.env.GRAPH_TENANT_ID || process.env.AZURE_TENANT_ID!,
+      process.env.GRAPH_CLIENT_ID || process.env.AZURE_CLIENT_ID!,
+      process.env.GRAPH_CLIENT_SECRET || process.env.AZURE_CLIENT_SECRET!
+    )
+  }
+  return credential
+}
 
 const getGraphClient = () => {
   return Client.initWithMiddleware({
     authProvider: {
       getAccessToken: async () => {
-        const token = await credential.getToken('https://graph.microsoft.com/.default')
+        const cred = getCredential()
+        const token = await cred.getToken('https://graph.microsoft.com/.default')
         return token.token
       }
     }
