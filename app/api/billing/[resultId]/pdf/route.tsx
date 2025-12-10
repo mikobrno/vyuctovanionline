@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { BillingStatement } from '@/components/buildings/BillingStatement';
+import { BillingStatementServer } from '@/components/buildings/BillingStatementServer';
 import { renderToStaticMarkup } from 'react-dom/server';
 import puppeteer from 'puppeteer';
 import fs from 'fs/promises';
@@ -255,7 +255,7 @@ export async function GET(
     };
 
     // 3. Render HTML
-    const componentHtml = renderToStaticMarkup(<BillingStatement data={ statementData } />);
+    const componentHtml = renderToStaticMarkup(<BillingStatementServer data={ statementData } />);
 
     // Load Base64 Images
     const publicDir = path.join(process.cwd(), 'public');
