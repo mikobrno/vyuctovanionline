@@ -129,19 +129,31 @@ export async function POST(req: NextRequest) {
     const existingServices = await prisma.service.findMany({ where: { buildingId: building.id } })
     existingServices.forEach(s => serviceMap.set(normalizeServiceName(s.name), s.id))
 
-    // Vytvořit chybějící služby
+    // Vytvořit chybějící služby (použít upsert aby nedošlo ke kolizi)
     for (const sName of uniqueServiceNames) {
       const normalized = normalizeServiceName(sName)
       if (!serviceMap.has(normalized)) {
-        const newService = await prisma.service.create({
-          data: {
-            buildingId: building.id,
-            name: sName,
-            code: normalized.substring(0, 10).toUpperCase(), // Generování kódu
-            methodology: 'OWNERSHIP_SHARE' // Default
-          }
+        // Generovat unikátní kód - použít hash nebo timestamp
+        const baseCode = normalized.substring(0, 8).toUpperCase().replace(/[^A-Z0-9]/g, '')
+        const uniqueCode = `${baseCode}${Date.now().toString(36).slice(-4)}`.substring(0, 12)
+        
+        // Nejdřív zkus najít existující službu podle jména
+        let existingService = await prisma.service.findFirst({
+          where: { buildingId: building.id, name: sName }
         })
-        serviceMap.set(normalized, newService.id)
+        
+        if (!existingService) {
+          // Pokud neexistuje, vytvoř novou
+          existingService = await prisma.service.create({
+            data: {
+              buildingId: building.id,
+              name: sName,
+              code: uniqueCode,
+              methodology: 'OWNERSHIP_SHARE'
+            }
+          })
+        }
+        serviceMap.set(normalized, existingService.id)
       }
     }
 
