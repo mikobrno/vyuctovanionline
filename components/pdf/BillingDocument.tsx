@@ -275,7 +275,7 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
   // Parse summaryJson if available
   const summary = result.summaryJson ? JSON.parse(result.summaryJson) : {};
   const ownerName = summary.owner || summary.ownerName || (data.owner ? data.owner.firstName + ' ' + data.owner.lastName : 'Neznámý vlastník');
-  const address = summary.address || unit.address || building?.address;
+  const address = summary.address || building?.address || '';
   const email = summary.email || (data.owner ? data.owner.email : '');
   const normalizeSummaryString = (val: unknown): string | undefined => {
     if (typeof val !== 'string') return undefined;
@@ -363,7 +363,7 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
           </View>
           <View style={styles.headerRight}>
             {logoPath && <Image src={logoPath} style={styles.logo} />}
-            <Text style={{ fontSize: 9, fontFamily: 'Roboto-Bold' }}>č. prostoru: {unit.name}</Text>
+            <Text style={{ fontSize: 9, fontFamily: 'Roboto-Bold' }}>č. prostoru: {unit.unitNumber}</Text>
             <Text style={{ fontSize: 7 }}>VS: {effectiveVariableSymbol || '-'}</Text>
             <Text style={{ fontSize: 7 }}>období: 1.1.{result.billingPeriod.year} - 31.12.{result.billingPeriod.year}</Text>
           </View>
@@ -433,7 +433,7 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
                     </View>
                     {meters.map((m, mIdx) => (
                       <React.Fragment key={mIdx}>
-                        <View style={[styles.meterRow, mIdx === meters.length - 1 && { borderBottomWidth: 0 }]}>
+                        <View style={[styles.meterRow, mIdx === meters.length - 1 ? { borderBottomWidth: 0 } : {}]}>
                           <Text style={styles.meterCell}>{m.serial}</Text>
                           <Text style={styles.meterCell}>{formatInteger(m.start)}</Text>
                           <Text style={styles.meterCell}>{formatInteger(m.end)}</Text>
@@ -493,7 +493,7 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
               <Text style={{ fontFamily: 'Roboto-Bold' }}>Pevné platby</Text>
             </View>
             {fixedPayments.map((payment, idx) => (
-              <View key={idx} style={[styles.fixedPaymentRow, idx === fixedPayments.length - 1 && { borderBottomWidth: 0 }]}>
+              <View key={idx} style={[styles.fixedPaymentRow, idx === fixedPayments.length - 1 ? { borderBottomWidth: 0 } : {}]}>
                 <Text style={styles.fixedPaymentName}>{payment.name}</Text>
                 <Text style={styles.fixedPaymentAmount}>{formatCurrency(payment.amount)}</Text>
               </View>
@@ -536,7 +536,7 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
                 <Text style={styles.monthlyLabel}></Text>
                 {MONTHS.map((m, i) => (
                   <React.Fragment key={i}>
-                    <Text style={[styles.monthlyCell, i === 11 && styles.monthlyCellLast]}>
+                    <Text style={[styles.monthlyCell, i === 11 ? styles.monthlyCellLast : {}]}>
                       {m}
                     </Text>
                   </React.Fragment>
@@ -548,7 +548,7 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
                 <Text style={styles.monthlyLabel}>Předpis</Text>
                 {monthlyPrescriptions.map((val, i) => (
                   <React.Fragment key={i}>
-                    <Text style={[styles.monthlyCell, i === 11 && styles.monthlyCellLast]}>
+                    <Text style={[styles.monthlyCell, i === 11 ? styles.monthlyCellLast : {}]}>
                       {val > 0 ? formatInteger(val) : '-'}
                     </Text>
                   </React.Fragment>
@@ -560,7 +560,7 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
                 <Text style={styles.monthlyLabel}>Úhrada</Text>
                 {monthlyPayments.map((val, i) => (
                   <React.Fragment key={i}>
-                    <Text style={[styles.monthlyCell, i === 11 && styles.monthlyCellLast]}>
+                    <Text style={[styles.monthlyCell, i === 11 ? styles.monthlyCellLast : {}]}>
                       {val > 0 ? formatInteger(val) : '-'}
                     </Text>
                   </React.Fragment>
@@ -577,7 +577,7 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
                     <React.Fragment key={i}>
                       <Text style={[
                         styles.monthlyCell, 
-                        i === 11 && styles.monthlyCellLast,
+                        i === 11 ? styles.monthlyCellLast : {},
                         diff > 0 ? styles.resultNegative : (diff < 0 ? styles.resultPositive : {})
                       ]}>
                         {hasData ? formatInteger(diff) : '-'}

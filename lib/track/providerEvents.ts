@@ -70,7 +70,7 @@ export async function handleProviderEvents(
           communicationId: communication.id,
           type: event.status === 'opened' ? 'OPENED' : event.status === 'delivered' ? 'DELIVERED' : 'FAILED',
           source: 'WEBHOOK',
-          payload: event.payload ?? null,
+          payload: event.payload as Prisma.InputJsonValue | undefined,
         },
       }),
     ])

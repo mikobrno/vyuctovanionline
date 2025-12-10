@@ -1,6 +1,5 @@
 import fs from 'fs'
 import path from 'path'
-import React from 'react'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { BillingDocument } from '@/components/pdf/BillingDocument'
 import { getBillingPdfData } from '@/lib/billing-pdf-data'
@@ -27,22 +26,14 @@ async function main() {
   // Mock logo path for debug
   const logoPath = path.join(process.cwd(), 'public', 'adminreal-logo.png') // Ensure this exists or use placeholder
 
-  const buffer = await renderToBuffer(
-    <BillingDocument data={data} logoPath={logoPath} />
-  )
+  // Create the component element
+  const billingElement = BillingDocument({ data, logoPath }) as any
+
+  const buffer = await renderToBuffer(billingElement)
 
   const outFile = path.join(process.cwd(), 'debug-output.pdf')
   fs.writeFileSync(outFile, buffer)
   console.log(`PDF saved to ${outFile}`)
-}
-
-main()
-    owner: { firstName: 'Igor', lastName: 'Pelka', address: 'Zborovská 937/1', email: 'pelka@example.com', phone: '721716526' },
-    previousResult: { result: 0 },
-  }
-
-  const buffer = await renderToBuffer(<BillingDocument data={data} />)
-  console.log('PDF size', buffer.length)
 }
 
 main().catch((err) => {

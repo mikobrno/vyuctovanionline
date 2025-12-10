@@ -3,8 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { BillingStatementServer } from '@/components/buildings/BillingStatementServer';
-import { renderToStaticMarkup } from 'react-dom/server';
 import puppeteer from 'puppeteer';
 import fs from 'fs/promises';
 import path from 'path';
@@ -254,8 +252,209 @@ export async function GET(
         qrCodeUrl: undefined // QR code skipped in PDF for now to simplify
     };
 
-    // 3. Render HTML
-    const componentHtml = renderToStaticMarkup(<BillingStatementServer data={ statementData } />);
+    // 3. Generate HTML (bez React renderu - čistě stringový HTML)
+    const formatNumber = (val: number | string, decimals = 2) => {
+        if (typeof val === 'string') return val;
+        return new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(Number(val));
+    };
+
+    const formatShare = (share: number | string | null | undefined) => {
+        if (share === null || share === undefined || share === '') return '-';
+        if (typeof share === 'string') return share;
+        return `${formatNumber(share as number, 2)} %`;
+    };
+
+    const isBrnoReal = statementData.building.managerName?.toLowerCase().includes('brnoreal') || false;
+    const logoSrc = isBrnoReal ? '/brnoreal.png' : '/adminreal.png';
+
+    const displayedServices = statementData.services.filter(s => !(s.buildingCost === 0 && s.advance === 0));
+    const fixedPayments = [...(statementData.fixedPayments ?? [])];
+    if (statementData.totals.repairFund && statementData.totals.repairFund > 0) {
+        fixedPayments.push({ name: 'Fond oprav', amount: statementData.totals.repairFund });
+    }
+
+    const serviceRowsHtml = displayedServices
+        .map((service, idx) => `
+        <tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border-b border-gray-300">
+            <td class="p-1 px-2 text-left bg-gray-100 font-medium border-r border-gray-300">${service.name}</td>
+            <td class="p-1 text-center">${service.unit}</td>
+            <td class="p-1 text-center border-r border-black">${formatShare(service.share)}</td>
+            <td class="p-1 text-right">${formatNumber(service.buildingCost)}</td>
+            <td class="p-1 text-right">${formatNumber(service.buildingUnits)}</td>
+            <td class="p-1 text-right border-r border-black">${formatNumber(service.pricePerUnit)}</td>
+            <td class="p-1 text-right bg-white">${formatNumber(service.userUnits)}</td>
+            <td class="p-1 text-right font-semibold bg-white">${formatNumber(service.userCost)}</td>
+            <td class="p-1 text-right bg-white">${formatNumber(service.advance)}</td>
+            <td class="p-1 text-right font-bold bg-gray-100 border-l border-black">${formatNumber(service.result)}</td>
+        </tr>
+        `).join('');
+
+    const paymentsHtml = statementData.payments
+        .map(p => `<div class="border-r border-gray-400 p-0.5 text-right px-1">${formatNumber(p.paid, 0)}</div>`)
+        .join('');
+    
+    const prescriptionsHtml = statementData.payments
+        .map(p => `<div class="border-r border-gray-400 p-0.5 text-right px-1">${formatNumber(p.prescribed, 0)}</div>`)
+        .join('');
+
+    const readingsHtml = statementData.readings.length > 0 ? `
+        <div class="mt-4 border-t border-black pt-2">
+            <h3 class="font-bold mb-2">Stavy měřidel</h3>
+            <table class="w-full text-xs border-collapse">
+                <thead>
+                    <tr class="border-b border-black">
+                        <th class="text-left py-1">Služba</th>
+                        <th class="text-left py-1">Číslo měřidla</th>
+                        <th class="text-right py-1">Počáteční stav</th>
+                        <th class="text-right py-1">Konečný stav</th>
+                        <th class="text-right py-1">Spotřeba</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${statementData.readings.map(r => `
+                    <tr class="border-b border-gray-200">
+                        <td class="py-1">${r.service}</td>
+                        <td class="py-1">${r.meterId}</td>
+                        <td class="text-right py-1">${formatNumber(r.startValue)}</td>
+                        <td class="text-right py-1">${formatNumber(r.endValue)}</td>
+                        <td class="text-right py-1 font-bold">${formatNumber(r.consumption)}</td>
+                    </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    ` : '';
+
+    const componentHtml = `
+    <div class="max-w-[297mm] mx-auto bg-white p-6 text-[11px] font-sans leading-tight print:p-0 print:max-w-none text-black">
+        <div class="flex justify-between items-start mb-2 pb-2 border-b-2 border-black">
+            <div class="w-1/2">
+                <h1 class="text-xl font-bold mb-1">${statementData.unit.owner}</h1>
+                <div class="grid grid-cols-[120px_1fr] gap-x-2 gap-y-0.5">
+                    <span class="font-bold">adresa společenství:</span>
+                    <span>${statementData.building.name}, ${statementData.building.address}</span>
+                    <span class="font-bold">bankovní spojení společenství:</span>
+                    <span>${statementData.building.accountNumber}</span>
+                </div>
+            </div>
+            <div class="w-1/2 text-right flex flex-col items-end">
+                <img src="${logoSrc}" alt="logo" class="h-12 object-contain mb-2" />
+                <div class="text-[10px] text-gray-600 mb-1">
+                    ${isBrnoReal ? 'BrnoReal' : 'AdminReal s.r.o., Veveří 2581/102, 616 00 Brno, IČO 02827476'}
+                </div>
+                <div class="grid grid-cols-[auto_1fr] gap-x-4 text-left mt-2 w-full justify-end">
+                    <div class="text-right">
+                        <div class="mb-0.5"><span class="font-bold">bankovní spojení člena:</span> ${statementData.unit.bankAccount || '-'}</div>
+                        <div><span class="font-bold">variabilní symbol pro platbu nedoplatku:</span> ${statementData.building.variableSymbol}</div>
+                    </div>
+                    <div class="text-right border-l pl-2 border-gray-300">
+                        <div class="font-bold">č. prostoru: ${statementData.unit.name}</div>
+                        <div>zúčtovací období: ${new Date(statementData.period.startDate).toLocaleDateString('cs-CZ')} - ${new Date(statementData.period.endDate).toLocaleDateString('cs-CZ')}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h2 class="text-center text-lg font-bold mb-2 border-b-2 border-black pb-1">
+            Vyúčtování služeb: ${statementData.period.year}
+        </h2>
+
+        <div class="mb-4">
+            <table class="w-full border-collapse border-b-2 border-black">
+                <thead>
+                    <tr class="border-b border-black">
+                        <th colspan="3" class="p-1 border-r border-black font-normal text-right pr-4 bg-gray-100"></th>
+                        <th colspan="3" class="p-1 border-r border-black font-normal text-center bg-gray-100">Odběrné místo (dům)</th>
+                        <th colspan="4" class="p-1 font-normal text-center bg-gray-100">Uživatel</th>
+                    </tr>
+                    <tr class="bg-gray-200 border-b border-black font-semibold text-center">
+                        <th class="p-1 text-left w-[25%]">Položka</th>
+                        <th class="p-1 text-center w-[10%]">Jednotka</th>
+                        <th class="p-1 text-center w-[8%] border-r border-black">Podíl</th>
+                        <th class="p-1 text-right w-[10%]">Náklad</th>
+                        <th class="p-1 text-right w-[8%]">Jednotek</th>
+                        <th class="p-1 text-right w-[8%] border-r border-black">Kč/jedn</th>
+                        <th class="p-1 text-right w-[8%]">Jednotek</th>
+                        <th class="p-1 text-right w-[10%]">Náklad</th>
+                        <th class="p-1 text-right w-[10%]">Záloha</th>
+                        <th class="p-1 text-right w-[10%] bg-gray-300">Přeplatky|nedoplatky</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${serviceRowsHtml}
+                    <tr class="font-bold text-black text-[12px]">
+                        <td colspan="3" class="p-2 text-left">Celkem náklady na odběrné místa</td>
+                        <td class="p-2 text-right">${formatNumber(displayedServices.reduce((acc, s) => acc + s.buildingCost, 0))}</td>
+                        <td colspan="2" class="border-r border-black"></td>
+                        <td class="p-2 text-right" colspan="1">Celkem vyúčtování:</td>
+                        <td class="p-2 text-right">${formatNumber(statementData.totals.cost)}</td>
+                        <td class="p-2 text-right">${formatNumber(statementData.totals.advance)}</td>
+                        <td class="p-2 text-right border-l border-black">${formatNumber(statementData.totals.result)} Kč</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="flex justify-end mb-6">
+            <div class="w-[350px]">
+                <div class="flex justify-between items-center text-sm mb-1">
+                    <span>Nedoplatek v účtovaném období</span>
+                    <span class="font-bold">${statementData.totals.result < 0 ? formatNumber(statementData.totals.result) : '0,00'} Kč</span>
+                </div>
+                <div class="flex justify-between items-center text-lg font-bold border-t-2 border-black pt-1 mt-1">
+                    <span class="uppercase">${statementData.totals.result >= 0 ? 'PŘEPLATEK CELKEM' : 'NEDOPLATEK CELKEM'}</span>
+                    <span>${formatNumber(statementData.totals.result)} Kč</span>
+                </div>
+                ${statementData.totals.result < 0 ? `
+                <div class="bg-gray-200 text-center font-bold p-1 mt-2 border border-gray-400">
+                    Nedoplatek uhraďte na účet číslo: ${statementData.building.accountNumber}, variabilní symbol ${statementData.building.variableSymbol}
+                </div>
+                ` : ''}
+            </div>
+        </div>
+
+        <div class="grid grid-cols-[1fr_2fr] gap-8 mb-4">
+            <div>
+                <table class="w-full border-collapse border border-gray-400 text-xs">
+                    <thead>
+                        <tr class="bg-gray-200">
+                            <th class="border border-gray-400 p-1">Pevné platby</th>
+                            <th class="border border-gray-400 p-1 text-right">Celkem za rok</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${fixedPayments.map(p => `
+                        <tr>
+                            <td class="border border-gray-400 p-1">${p.name}</td>
+                            <td class="border border-gray-400 p-1 text-right font-bold">${formatNumber(p.amount)} Kč</td>
+                        </tr>
+                        `).join('')}
+                        ${fixedPayments.length === 0 ? '<tr><td colspan="2" class="p-1 text-center text-gray-400">-</td></tr>' : ''}
+                    </tbody>
+                </table>
+            </div>
+            <div>
+                <div class="mb-2">
+                    <div class="bg-gray-200 font-bold text-center border border-gray-400 p-0.5 text-xs">Přehled úhrad za rok ${statementData.period.year}</div>
+                    <div class="grid grid-cols-[80px_repeat(12,_1fr)] text-[10px] border-l border-b border-gray-400">
+                        <div class="border-r border-t border-gray-400 p-0.5 font-bold">Měsíc</div>
+                        ${Array.from({ length: 12 }).map((_, i) => `<div class="border-r border-t border-gray-400 p-0.5 text-center">${i + 1}/${statementData.period.year}</div>`).join('')}
+                        <div class="border-r border-gray-400 p-0.5 font-bold">Uhrazeno</div>
+                        ${paymentsHtml}
+                        <div class="border-r border-gray-400 p-0.5 font-bold">Předpis</div>
+                        ${prescriptionsHtml}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        ${readingsHtml}
+
+        <div class="mt-8 pt-2 border-t border-black text-[10px] text-gray-700 space-y-1">
+            <p>Jednotková cena za m3 vody činila v roce ${statementData.period.year} dle ceníku BVaK 105,53 Kč.</p>
+        </div>
+    </div>
+    `;
 
     // Load Base64 Images
     const publicDir = path.join(process.cwd(), 'public');
@@ -308,7 +507,7 @@ export async function GET(
     await browser.close();
 
     // 6. Return PDF Response
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(Buffer.from(pdfBuffer), {
         status: 200,
         headers: {
             'Content-Type': 'application/pdf',

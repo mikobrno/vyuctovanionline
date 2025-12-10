@@ -33,7 +33,7 @@ async function main() {
   }
 
   const result = period.results[0]
-  console.log(`Unit: ${result.unit.name}`)
+  console.log(`Unit: ${result.unit.unitNumber}`)
   console.log('Services:')
   result.serviceCosts.forEach(sc => {
     console.log(`\nService: ${sc.service.name}`)
