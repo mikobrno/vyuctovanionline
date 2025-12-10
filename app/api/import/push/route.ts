@@ -262,10 +262,10 @@ export async function POST(req: NextRequest) {
 
         await prisma.billingServiceCost.create({
           data: {
-            billingPeriod: { connect: { id: billingPeriod.id } },
-            billingResult: { connect: { id: billingResult.id } },
-            service: { connect: { id: serviceId } },
-            unit: { connect: { id: unit.id } },
+            billingPeriodId: billingPeriod.id,
+            billingResultId: billingResult.id,
+            serviceId: serviceId,
+            unitId: unit.id,
             
             buildingTotalCost: Number(cost.total) || 0,
             unitCost: Number(cost.userCost) || 0,
