@@ -48,6 +48,18 @@ interface PushImportBody {
   units: UnitData[]
 }
 
+// --- CORS Headers ---
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, ngrok-skip-browser-warning',
+}
+
+// --- OPTIONS handler pro CORS preflight ---
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders })
+}
+
 // --- Pomocné funkce ---
 
 function normalizeServiceName(name: string): string {
@@ -66,7 +78,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json() as PushImportBody
     
     if (!body.buildingName || !body.year || !Array.isArray(body.units)) {
-      return NextResponse.json({ error: 'Neplatný formát dat. Chybí buildingName, year nebo units.' }, { status: 400 })
+      return NextResponse.json({ error: 'Neplatný formát dat. Chybí buildingName, year nebo units.' }, { status: 400, headers: corsHeaders })
     }
 
     console.log(`[Push Import] Začínám import pro: ${body.buildingName}, rok: ${body.year}, jednotek: ${body.units.length}`)
@@ -262,13 +274,13 @@ export async function POST(req: NextRequest) {
         year: body.year,
         units: createdResults
       }
-    })
+    }, { headers: corsHeaders })
 
   } catch (error) {
     console.error('[Push Import Error]', error)
     return NextResponse.json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Neznámá chyba při importu' 
-    }, { status: 500 })
+    }, { status: 500, headers: corsHeaders })
   }
 }
