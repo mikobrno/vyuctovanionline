@@ -212,22 +212,30 @@ export async function POST(req: NextRequest) {
       }
 
       // C. Vytvoření BillingResult (Hlavička vyúčtování pro jednotku)
-      const totalCost = unitData.costs.reduce((sum, c) => sum + c.userCost, 0)
-      const totalAdvance = unitData.costs.reduce((sum, c) => sum + c.advance, 0)
+      const totalCost = unitData.costs.reduce((sum, c) => sum + (Number(c.userCost) || 0), 0)
+      const totalAdvance = unitData.costs.reduce((sum, c) => sum + (Number(c.advance) || 0), 0)
+      
+      // Zajistit že monthly data jsou pole čísel
+      const monthlyAdvances = Array.isArray(unitData.monthly?.advances) 
+        ? unitData.monthly.advances.map(v => Number(v) || 0)
+        : [0,0,0,0,0,0,0,0,0,0,0,0]
+      const monthlyPayments = Array.isArray(unitData.monthly?.payments)
+        ? unitData.monthly.payments.map(v => Number(v) || 0)
+        : [0,0,0,0,0,0,0,0,0,0,0,0]
       
       const billingResult = await prisma.billingResult.create({
         data: {
-          billingPeriodId: billingPeriod.id,
-          unitId: unit.id,
+          billingPeriod: { connect: { id: billingPeriod.id } },
+          unit: { connect: { id: unit.id } },
           totalCost: totalCost,
           totalAdvancePrescribed: totalAdvance,
           totalAdvancePaid: totalAdvance, // Předpokládáme, že co je v Excelu jako záloha, je zaplaceno
-          result: unitData.balance,
+          result: Number(unitData.balance) || 0,
           repairFund: 0, // Pokud by bylo v JSONu, přidat
           
           // Uložení měsíčních dat
-          monthlyPrescriptions: unitData.monthly.advances,
-          monthlyPayments: unitData.monthly.payments,
+          monthlyPrescriptions: monthlyAdvances,
+          monthlyPayments: monthlyPayments,
           
           // Uložení všech měřidel k výsledku
           meterReadingsJson: unitData.meters.length > 0 ? JSON.stringify(unitData.meters) : Prisma.JsonNull,
@@ -254,20 +262,20 @@ export async function POST(req: NextRequest) {
 
         await prisma.billingServiceCost.create({
           data: {
-            billingPeriodId: billingPeriod.id,
-            billingResultId: billingResult.id,
-            serviceId: serviceId,
-            unitId: unit.id,
+            billingPeriod: { connect: { id: billingPeriod.id } },
+            billingResult: { connect: { id: billingResult.id } },
+            service: { connect: { id: serviceId } },
+            unit: { connect: { id: unit.id } },
             
-            buildingTotalCost: cost.total,
-            unitCost: cost.userCost,
-            unitAdvance: cost.advance,
-            unitBalance: cost.userCost - cost.advance,
+            buildingTotalCost: Number(cost.total) || 0,
+            unitCost: Number(cost.userCost) || 0,
+            unitAdvance: Number(cost.advance) || 0,
+            unitBalance: (Number(cost.userCost) || 0) - (Number(cost.advance) || 0),
             
             // V19+ pole pro věrný tisk
-            buildingUnits: cost.unitDetails?.buildingUnits,
-            unitPrice: cost.unitDetails?.price,
-            unitUnits: cost.unitDetails?.userUnits,
+            buildingUnits: cost.unitDetails?.buildingUnits || null,
+            unitPrice: cost.unitDetails?.price || null,
+            unitUnits: cost.unitDetails?.userUnits || null,
             
             // Uložení odečtů jako JSON
             meterReadings: relevantMeters.length > 0 ? JSON.stringify(relevantMeters) : null
