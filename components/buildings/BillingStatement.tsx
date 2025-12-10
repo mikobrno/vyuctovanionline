@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 import { format } from 'date-fns';
 import { cs } from 'date-fns/locale';
@@ -15,7 +17,7 @@ interface BillingStatementProps {
       name: string;
       owner: string;
       share: string;
-      address?: string;
+      address?: string; // Adresa vlastníka (pokud se liší)
       email?: string;
       phone?: string;
       bankAccount?: string;  // bankovní účet vlastníka pro přeplatek
@@ -30,9 +32,9 @@ interface BillingStatementProps {
       unit: string;
       share?: number | string | null;
       buildingCost: number;
-      buildingUnits: number;
-      pricePerUnit: number;
-      userUnits: number;
+      buildingUnits: number | string; // Allow string for exact formatting
+      pricePerUnit: number | string; // Allow string for exact formatting
+      userUnits: number | string; // Allow string for exact formatting
       userCost: number;
       advance: number;
       result: number;
@@ -41,6 +43,7 @@ interface BillingStatementProps {
       cost: number;
       advance: number;
       result: number;
+      repairFund?: number; // Fond oprav (zobrazuje se v Pevné platby)
     };
     readings: Array<{
       service: string;
@@ -61,319 +64,265 @@ interface BillingStatementProps {
 }
 
 export const BillingStatement: React.FC<BillingStatementProps> = ({ data }) => {
-  const formatCurrency = (val: number) => 
-    new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(val);
+  // --- Formatters ---
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(val).replace('Kč', '').trim() + ' Kč';
 
-  const formatNumber = (val: number, decimals = 2) => 
-    new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(val);
-
-  const formatShare = (share: number | string | null | undefined) => {
-    if (share === null || share === undefined || share === '') {
-      return '-';
-    }
-
-    if (typeof share === 'number') {
-      const decimals = Number.isInteger(share) ? 0 : 2;
-      return `${formatNumber(share, decimals)}%`;
-    }
-
-    const trimmed = share.trim();
-    if (!trimmed) {
-      return '-';
-    }
-
-    return trimmed.includes('%') ? trimmed : `${trimmed}%`;
+  const formatNumber = (val: number | string, decimals = 2) => {
+    if (typeof val === 'string') return val;
+    return new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(val);
   };
 
+  const formatShare = (share: number | string | null | undefined) => {
+    if (share === null || share === undefined || share === '') return '-';
+    if (typeof share === 'string') return share;
+    return `${formatNumber(share, 2)} %`;
+  };
+
+  // --- Logic ---
   const instructionNote = data.note?.trim();
-  const fixedPayments = data.fixedPayments ?? [];
+  const fixedPayments = [...(data.fixedPayments ?? [])];
+  if (data.totals.repairFund && data.totals.repairFund > 0) {
+    fixedPayments.push({ name: 'Fond oprav', amount: data.totals.repairFund });
+  }
 
   const isBrnoReal = data.building.managerName?.toLowerCase().includes('brnoreal');
+  // Use adminreal.png as default, simple fallback in img tag
   const logoSrc = isBrnoReal ? '/brnoreal.png' : '/adminreal.png';
 
   const displayedServices = data.services;
 
+  // Landscape check logic: Using a hardcoded style class for width
   return (
-    <div className="max-w-[297mm] mx-auto bg-white p-8 text-sm font-sans print:p-0 print:max-w-none">
+    <div className="max-w-[297mm] mx-auto bg-white p-6 text-[11px] font-sans leading-tight print:p-0 print:max-w-none text-black">
       {/* Header */}
-      <div className="flex justify-between items-start mb-4 border-b pb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">{data.unit.owner}</h1>
-          <div className="grid grid-cols-[120px_1fr] gap-1 text-gray-600">
-            <span>Adresa:</span>
-            <span className="font-medium">{data.unit.address || data.building.address}</span>
-            {data.unit.email && (
-              <>
-                <span>Email:</span>
-                <span className="font-medium">{data.unit.email}</span>
-              </>
-            )}
-            {data.unit.phone && (
-              <>
-                <span>Telefon:</span>
-                <span className="font-medium">{data.unit.phone}</span>
-              </>
-            )}
-            <span>Bankovní spojení číslo:</span>
-            <span className="font-medium">{data.unit.bankAccount || '-'}</span>
-            <span>Variabilní symbol pro platbu nedoplatku:</span>
-            <span className="font-medium">{data.building.variableSymbol}</span>
+      <div className="flex justify-between items-start mb-2 pb-2 border-b-2 border-black">
+        <div className="w-1/2">
+          <h1 className="text-xl font-bold mb-1">{data.unit.owner}</h1>
+          <div className="grid grid-cols-[120px_1fr] gap-x-2 gap-y-0.5">
+            <span className="font-bold">adresa společenství:</span>
+            <span>{data.building.name}, {data.building.address}</span>
+
+            <span className="font-bold">bankovní spojení společenství:</span>
+            <span>{data.building.accountNumber}</span>
           </div>
         </div>
-        <div className="text-right">
-          <div className="mb-2 flex justify-end">
-            <img src={logoSrc} alt={isBrnoReal ? "BrnoReal" : "AdminReal"} className="h-16 object-contain" />
+        <div className="w-1/2 text-right flex flex-col items-end">
+          {/* Logo with error handling to hide if missing */}
+          <img
+            src={logoSrc}
+            alt="logo"
+            className="h-12 object-contain mb-2"
+            onError={(e) => e.currentTarget.style.display = 'none'}
+          />
+          <div className="text-[10px] text-gray-600 mb-1">
+            {isBrnoReal ? 'BrnoReal' : 'AdminReal s.r.o., Veveří 2581/102, 616 00 Brno, IČO 02827476'}
           </div>
-          <div className="text-xs text-gray-500">
-            č. prostoru: {data.unit.name}<br/>
-            zúčtovací období: {format(new Date(data.period.startDate), 'd.M.yyyy')} - {format(new Date(data.period.endDate), 'd.M.yyyy')}
+
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 text-left mt-2 w-full justify-end">
+            <div className="text-right">
+              <div className="mb-0.5"><span className="font-bold">bankovní spojení člena:</span> {data.unit.bankAccount || '-'}</div>
+              <div><span className="font-bold">variabilní symbol pro platbu nedoplatku:</span> {data.building.variableSymbol}</div>
+            </div>
+            <div className="text-right border-l pl-2 border-gray-300">
+              <div className="font-bold">č. prostoru: {data.unit.name}</div>
+              <div>zúčtovací období: {format(new Date(data.period.startDate), 'd.1.yyyy')} - {format(new Date(data.period.endDate), 'd.12.yyyy')}</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <h2 className="text-center text-lg font-bold mb-6 bg-gray-100 py-1 border-y border-gray-300 text-gray-800">
+      <h2 className="text-center text-lg font-bold mb-2 border-b-2 border-black pb-1">
         Vyúčtování služeb: {data.period.year}
       </h2>
 
       {/* Main Table */}
-      <div className="mb-8 overflow-x-auto">
-        <table className="w-full text-xs border-collapse border border-gray-300">
+      <div className="mb-4">
+        <table className="w-full border-collapse border-b-2 border-black">
           <thead>
-            <tr className="bg-slate-800 text-white">
-              <th colSpan={3} className="p-2 text-center border-r border-slate-600">Parametry služby</th>
-              <th colSpan={3} className="p-2 text-center border-r border-slate-600">Celkové náklady domu</th>
-              <th colSpan={2} className="p-2 text-center border-r border-slate-600">Náklady jednotky</th>
-              <th colSpan={2} className="p-2 text-center">Vyúčtování</th>
+            <tr className="border-b border-black">
+              <th colSpan={3} className="p-1 border-r border-black font-normal text-right pr-4 bg-gray-100"></th>
+              <th colSpan={3} className="p-1 border-r border-black font-normal text-center bg-gray-100">Odběrné místo (dům)</th>
+              <th colSpan={4} className="p-1 font-normal text-center bg-gray-100">Uživatel</th>
             </tr>
-            <tr className="bg-gray-100 border-b-2 border-gray-300 text-gray-700">
-              <th className="p-2 text-left font-semibold">Položka</th>
-              <th className="p-2 text-center font-semibold">Jednotka</th>
-              <th className="p-2 text-center font-semibold border-r border-gray-300">Podíl</th>
-              
-              <th className="p-2 text-right font-semibold">Náklad (dům)</th>
-              <th className="p-2 text-right font-semibold">Jednotek</th>
-              <th className="p-2 text-right font-semibold border-r border-gray-300">Kč/jedn</th>
-              
-              <th className="p-2 text-right font-semibold">Jednotek</th>
-              <th className="p-2 text-right font-semibold border-r border-gray-300">Náklad</th>
-              
-              <th className="p-2 text-right font-semibold">Záloha</th>
-              <th className="p-2 text-right font-semibold">Přeplatek/nedoplatek</th>
+            <tr className="bg-gray-200 border-b border-black font-semibold text-center">
+              <th className="p-1 text-left w-[25%]">Položka</th>
+              <th className="p-1 text-center w-[10%]">Jednotka</th>
+              <th className="p-1 text-center w-[8%] border-r border-black">Podíl</th>
+
+              <th className="p-1 text-right w-[10%]">Náklad</th>
+              <th className="p-1 text-right w-[8%]">Jednotek</th>
+              <th className="p-1 text-right w-[8%] border-r border-black">Kč/jedn</th>
+
+              <th className="p-1 text-right w-[8%]">Jednotek</th>
+              <th className="p-1 text-right w-[10%]">Náklad</th>
+              <th className="p-1 text-right w-[10%]">Záloha</th>
+              <th className="p-1 text-right w-[10%] bg-gray-300">Přeplatky|nedoplatky</th>
             </tr>
           </thead>
           <tbody>
             {displayedServices
               .filter(service => !(service.buildingCost === 0 && service.advance === 0))
-              .filter(service => service.name !== 'Celková záloha' && service.name !== 'TOTAL_ADVANCE')
               .map((service, idx) => (
-              <tr key={idx} className={`border-b border-gray-200 hover:bg-blue-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                <td className="p-2 font-medium text-gray-800">{service.name}</td>
-                <td className="p-2 text-center text-gray-600">{service.unit}</td>
-                <td className="p-2 text-center text-gray-600 border-r border-gray-200">{formatShare(service.share)}</td>
-                
-                <td className="p-2 text-right text-gray-600">{formatCurrency(service.buildingCost)}</td>
-                <td
-                  className={`p-2 text-gray-600 ${service.buildingUnits > 0 ? 'text-right' : 'text-center text-gray-400'}`}
-                >
-                  {service.buildingUnits > 0 ? formatNumber(service.buildingUnits) : '-'}
-                </td>
-                <td className="p-2 text-right text-gray-600 border-r border-gray-200">{service.pricePerUnit > 0 ? formatNumber(service.pricePerUnit) : ''}</td>
-                
-                <td
-                  className={`p-2 font-medium ${service.userUnits > 0 ? 'text-right text-gray-800' : 'text-center text-gray-400'}`}
-                >
-                  {service.userUnits > 0 ? formatNumber(service.userUnits) : '-'}
-                </td>
-                <td className="p-2 text-right font-bold text-gray-800 bg-yellow-50 border-r border-gray-200">{formatCurrency(service.userCost)}</td>
-                
-                <td className="p-2 text-right text-gray-600">{formatCurrency(service.advance)}</td>
-                <td className={`p-2 text-right font-bold ${service.result < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {formatCurrency(service.result)}
-                </td>
-              </tr>
-            ))}
-            <tr className="bg-slate-100 font-bold border-t-2 border-slate-800 text-slate-900">
-              <td colSpan={3} className="p-3 text-left border-r border-slate-300">CELKEM NÁKLADY NA ODBĚRNÉ MÍSTO</td>
-              
-              <td className="p-3 text-right">{formatCurrency(displayedServices.reduce((acc, s) => acc + s.buildingCost, 0))}</td>
-              <td colSpan={2} className="border-r border-slate-300"></td>
-              
-              <td className="p-3 text-right"></td>
-              <td className="p-3 text-right bg-yellow-100 border-r border-slate-300">{formatCurrency(data.totals.cost)}</td>
-              
-              <td className="p-3 text-right">{formatCurrency(data.totals.advance)}</td>
-              <td className={`p-3 text-right text-lg ${data.totals.result < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                {formatCurrency(data.totals.result)}
-              </td>
+                <tr key={idx} className={`border-b border-gray-300 last:border-black ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                  <td className="p-1 px-2 text-left bg-gray-100 font-medium border-r border-gray-300">{service.name}</td>
+                  <td className="p-1 text-center">{service.unit}</td>
+                  <td className="p-1 text-center border-r border-black">{formatShare(service.share)}</td>
+
+                  <td className="p-1 text-right">{formatNumber(service.buildingCost)}</td>
+                  <td className="p-1 text-right">{formatNumber(service.buildingUnits)}</td>
+                  <td className="p-1 text-right border-r border-black">{formatNumber(service.pricePerUnit)}</td>
+
+                  <td className="p-1 text-right bg-white">{formatNumber(service.userUnits)}</td>
+                  <td className="p-1 text-right font-semibold bg-white">{formatNumber(service.userCost)}</td>
+                  <td className="p-1 text-right bg-white">{formatNumber(service.advance)}</td>
+                  <td className="p-1 text-right font-bold bg-gray-100 border-l border-black">
+                    {formatNumber(service.result)}
+                  </td>
+                </tr>
+              ))}
+            {/* Totals Row */}
+            <tr className="font-bold text-black text-[12px]">
+              <td colSpan={3} className="p-2 text-left">Celkem náklady na odběrné místa</td>
+              <td className="p-2 text-right">{formatNumber(displayedServices.reduce((acc, s) => acc + s.buildingCost, 0))}</td>
+              <td colSpan={2} className="border-r border-black"></td>
+              <td className="p-2 text-right" colSpan={1}>Celkem vyúčtování:</td>
+              <td className="p-2 text-right">{formatNumber(data.totals.cost)}</td>
+              <td className="p-2 text-right">{formatNumber(data.totals.advance)}</td>
+              <td className="p-2 text-right border-l border-black">{formatNumber(data.totals.result)} Kč</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      {/* Fixed Payments */}
-      {fixedPayments.length > 0 && (
-        <div className="mb-8 max-w-sm">
-          <h3 className="font-bold text-gray-800 mb-2 border-b pb-1">Pevné platby</h3>
-          <table className="w-full text-xs border border-gray-300">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left py-1 px-2 border-b">Položka</th>
-                <th className="text-right py-1 px-2 border-b">Celkem za rok</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fixedPayments.map((payment, idx) => (
-                <tr key={`${payment.name}-${idx}`} className="border-b last:border-b-0">
-                  <td className="py-1 px-2">{payment.name}</td>
-                  <td className="py-1 px-2 text-right font-semibold">{formatCurrency(payment.amount)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Results Summary Box */}
+      <div className="flex justify-end mb-6">
+        <div className="w-[350px]">
+          <div className="flex justify-between items-center text-sm mb-1">
+            <span>Nedoplatek v účtovaném období</span>
+            <span className="font-bold">{data.totals.result < 0 ? formatNumber(data.totals.result) : "0,00"} Kč</span>
+          </div>
+          <div className="flex justify-between items-center text-sm mb-1">
+            <span>Není evidován v minulém období přeplatek ani nedoplatek</span>
+            <span className="font-bold">0,00 Kč</span>
+          </div>
 
-      {/* Payment Schedule */}
-      <div className="grid grid-cols-2 gap-8 mb-8">
-        {/* Payments Table */}
-        <div>
-          <h3 className="font-bold text-gray-800 mb-2 border-b pb-1">Přehled úhrad za rok {data.period.year}</h3>
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-1">Měsíc</th>
-                <th className="text-right py-1">Uhrazeno</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.payments.map((payment) => (
-                <tr key={payment.month} className="border-b border-gray-100">
-                  <td className="py-1">{payment.month}</td>
-                  <td className="text-right py-1">{formatCurrency(payment.paid)}</td>
-                </tr>
-              ))}
-              <tr className="font-bold bg-gray-50">
-                <td className="py-2">Celkem</td>
-                <td className="text-right py-2">
-                  {formatCurrency(data.payments.reduce((sum, p) => sum + p.paid, 0))}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+          <div className="flex justify-between items-center text-lg font-bold border-t-2 border-black pt-1 mt-1">
+            <span className="uppercase">{data.totals.result >= 0 ? "PŘEPLATEK CELKEM" : "NEDOPLATEK CELKEM"}</span>
+            <span>{formatNumber(data.totals.result).replace(/\s/g, ' ')} Kč</span>
+          </div>
 
-        {/* Prescriptions Table */}
-        <div>
-          <h3 className="font-bold text-gray-800 mb-2 border-b pb-1">Přehled předpisů za rok {data.period.year}</h3>
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-1">Měsíc</th>
-                <th className="text-right py-1">Předpis</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.payments.map((payment) => (
-                <tr key={payment.month} className="border-b border-gray-100">
-                  <td className="py-1">{payment.month}</td>
-                  <td className="text-right py-1">{formatCurrency(payment.prescribed)}</td>
-                </tr>
-              ))}
-              <tr className="font-bold bg-gray-50">
-                <td className="py-2">Celkem</td>
-                <td className="text-right py-2">
-                  {formatCurrency(data.payments.reduce((sum, p) => sum + p.prescribed, 0))}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          {data.totals.result < 0 && (
+            <div className="bg-gray-200 text-center font-bold p-1 mt-2 border border-gray-400">
+              Nedoplatek uhraďte na účet číslo: {data.building.accountNumber}, variabilní symbol {data.building.variableSymbol}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Meter Readings */}
-      {data.readings.length > 0 && (
+      {/* Pevné platby & Payment Grid Header */}
+      <div className="grid grid-cols-[1fr_2fr] gap-8 mb-4">
+        {/* Pevné platby */}
         <div>
-          <h3 className="font-bold bg-gray-200 p-2 text-sm mb-2">Měřené služby</h3>
-          <table className="w-full text-xs border border-gray-300">
+          <table className="w-full border-collapse border border-gray-400 text-xs">
             <thead>
-              <tr className="bg-gray-50 border-b">
-                <th className="p-2 text-left">Služba</th>
-                <th className="p-2 text-left">Měřidlo</th>
-                <th className="p-2 text-right">Poč. stav</th>
-                <th className="p-2 text-right">Kon. stav</th>
-                <th className="p-2 text-right">Spotřeba</th>
+              <tr className="bg-gray-200">
+                <th className="border border-gray-400 p-1">Pevné platby</th>
+                <th className="border border-gray-400 p-1 text-right">Celkem za rok</th>
               </tr>
             </thead>
             <tbody>
-              {data.readings.map((reading, idx) => (
-                <tr key={idx} className="border-b last:border-b-0">
-                  <td className="p-2">{reading.service}</td>
-                  <td className="p-2">{reading.meterId}</td>
-                  <td className="p-2 text-right">{formatNumber(reading.startValue)}</td>
-                  <td className="p-2 text-right">{formatNumber(reading.endValue)}</td>
-                  <td className="p-2 text-right font-bold">{formatNumber(reading.consumption)}</td>
+              {fixedPayments.map((p, i) => (
+                <tr key={i}>
+                  <td className="border border-gray-400 p-1">{p.name}</td>
+                  <td className="border border-gray-400 p-1 text-right font-bold">{formatNumber(p.amount)} Kč</td>
+                </tr>
+              ))}
+              {fixedPayments.length === 0 && (
+                <tr><td colSpan={2} className="p-1 text-center text-gray-400">-</td></tr>
+              )}
+            </tbody>
+          </table>
+
+          {/* QR Code if needed */}
+          {data.qrCodeUrl && data.totals.result < 0 && (
+            <div className="mt-4">
+              <img src={data.qrCodeUrl} className="w-24 h-24 border" alt="QR Code" />
+            </div>
+          )}
+        </div>
+
+        {/* Payment Schedule Tables */}
+        <div>
+          {/* Payments Grid (Horizontal 12 months) */}
+          <div className="mb-2">
+            <div className="bg-gray-200 font-bold text-center border border-gray-400 p-0.5 text-xs">Přehled úhrad za rok {data.period.year}</div>
+            <div className="grid grid-cols-[80px_repeat(12,_1fr)] text-[10px] border-l border-b border-gray-400">
+              <div className="border-r border-t border-gray-400 p-0.5 font-bold">Měsíc</div>
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="border-r border-t border-gray-400 p-0.5 text-center">{i + 1}/{data.period.year}</div>
+              ))}
+
+              <div className="border-r border-gray-400 p-0.5 font-bold">Uhrazeno</div>
+              {data.payments.map((p, i) => (
+                <div key={i} className="border-r border-gray-400 p-0.5 text-right px-1">{formatNumber(p.paid, 0)}</div>
+              ))}
+
+              <div className="border-r border-gray-400 p-0.5 font-bold">Předpis</div>
+              {data.payments.map((p, i) => (
+                <div key={i} className="border-r border-gray-400 p-0.5 text-right px-1">{formatNumber(p.prescribed, 0)}</div>
+              ))}
+            </div>
+            <div className="flex border-b border-r border-l border-gray-400 text-xs">
+              <div className="w-[80px] p-1 font-bold">Celkem</div>
+              <div className="flex-1 text-right p-1 font-bold">
+                Nedoplatek za rok celkem: {formatNumber(data.totals.result)} Kč
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Meter Readings - Zobrazit pokud jsou */}
+      {data.readings.length > 0 && (
+        <div className="mt-4 border-t border-black pt-2">
+          <h3 className="font-bold mb-2">Stavy měřidel</h3>
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-black">
+                <th className="text-left py-1">Služba</th>
+                <th className="text-left py-1">Číslo měřidla</th>
+                <th className="text-right py-1">Počáteční stav</th>
+                <th className="text-right py-1">Konečný stav</th>
+                <th className="text-right py-1">Spotřeba</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.readings.map((r, i) => (
+                <tr key={i} className="border-b border-gray-200">
+                  <td className="py-1">{r.service}</td>
+                  <td className="py-1">{r.meterId}</td>
+                  <td className="text-right py-1">{formatNumber(r.startValue)}</td>
+                  <td className="text-right py-1">{formatNumber(r.endValue)}</td>
+                  <td className="text-right py-1 font-bold">{formatNumber(r.consumption)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      
-      <div className="mt-8 border-t-2 border-gray-800 pt-4">
-        <div className="flex justify-between items-center mb-6">
-          <div className="text-lg">
-            Výsledek vyúčtování: <span className={data.totals.result >= 0 ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
-              {data.totals.result >= 0 ? "PŘEPLATEK" : "NEDOPLATEK"}
-            </span>
-          </div>
-          <div className={`text-3xl font-bold ${data.totals.result < 0 ? 'text-red-600' : 'text-green-600'}`}>
-            {formatCurrency(data.totals.result)}
-          </div>
-        </div>
 
-        <div className="grid grid-cols-[2fr_1fr] gap-8">
-          <div className="text-sm text-gray-600 space-y-2">
-            {instructionNote ? (
-               <p className="bg-gray-100 p-2 font-bold text-gray-800 border-l-4 border-blue-500 whitespace-pre-line">
-                 {instructionNote}
-               </p>
-            ) : data.totals.result < 0 ? (
-               <p className="bg-gray-100 p-2 font-bold text-gray-800 border-l-4 border-red-500">
-                 Nedoplatek uhraďte na účet číslo: {data.building.accountNumber} pod variabilním symbolem {data.building.variableSymbol}
-               </p>
-            ) : (
-               <p className="bg-gray-100 p-2 font-bold text-gray-800 border-l-4 border-green-500">
-                 Přeplatek Vám bude vyplacen na číslo účtu {data.building.accountNumber}
-               </p>
-            )}
+      {/* Footer Text */}
+      <div className="mt-8 pt-2 border-t border-black text-[10px] text-gray-700 space-y-1">
+        <p>Jednotková cena za m3 vody činila v roce {data.period.year} dle ceníku BVaK 105,53 Kč. Hodnota uvedená ve vyúčtování již zahrnuje rozdíl mezi náměrem hlavního a součtem náměrů poměrových vodoměrů.</p>
+        <p>Případné reklamace uplatněte výhradně písemnou (elektronickou) formou na adrese správce (viz záhlaví) nejpozději do 30 dnů od doručení vyúčtování včetně případné změny Vašeho osobního účtu pro vyplacení přeplatku.</p>
+        <p>Přeplatky a nedoplatky z vyúčtování jsou splatné nejpozději do 7 (sedmi) měsíců od skončení zúčtovacího období.</p>
+      </div>
 
-            <div className="mt-4 space-y-1 text-xs">
-              <p>Jednotková cena za m3 vody činila v roce {data.period.year} dle ceníku BVaK 105,53 Kč. Hodnota uvedená ve vyúčtování již zahrnuje rozdíl mezi náměrem hlavního a součtem náměrů poměrových vodoměrů.</p>
-              <p>Případné reklamace uplatněte výhradně písemnou (elektronickou) formou na adrese správce (viz. záhlaví) nejpozději do 30 dnů od doručení vyúčtování včetně případné změny Vašeho osobního účtu pro vyplacení přeplatku.</p>
-              <p>Přeplatky a nedoplatky z vyúčtování jsou splatné nejpozději do 7 (sedmi) měsíců od skončení zúčtovacího období.</p>
-            </div>
-          </div>
-          
-          {data.qrCodeUrl && data.totals.result < 0 ? (
-            <div className="flex flex-col items-center justify-center border p-4 rounded bg-gray-50">
-              <div className="font-bold mb-2 text-center">QR Platba</div>
-              <img src={data.qrCodeUrl} alt="QR Platba" className="w-32 h-32" />
-              <div className="text-xs text-center mt-1 text-gray-500">Naskenujte pro platbu</div>
-            </div>
-          ) : data.totals.result < 0 ? (
-            <div className="flex flex-col items-center justify-center border p-4 rounded bg-gray-50 text-gray-400 text-xs text-center">
-              <div className="font-bold mb-1">QR Platba nedostupná</div>
-              {!data.building.accountNumber && <div>Chybí číslo účtu domu</div>}
-              {!data.building.variableSymbol && <div>Chybí variabilní symbol</div>}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="mt-8 pt-4 border-t border-gray-200 flex justify-between text-xs text-gray-500">
-          <div>Datum: {format(new Date(), 'd.M.yyyy')}</div>
-          <div>info@adminreal.cz | mobil: 607 959 876</div>
-          <div>www.adminreal.cz | www.onlinesprava.cz</div>
-        </div>
+      <div className="mt-4 flex justify-between text-[10px] text-gray-500">
+        <div>Datum: {format(new Date(), 'd.M.yyyy')}</div>
+        <div>info@adminreal.cz | mobil: 607 959 876</div>
+        <div className="text-right">www.adminreal.cz | www.onlinesprava.cz</div>
       </div>
     </div>
   );

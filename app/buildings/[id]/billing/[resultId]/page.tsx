@@ -8,9 +8,9 @@ import { BillingDetailActions } from '@/components/billing/BillingDetailActions'
 import { prisma } from '@/lib/prisma'
 import { generateBillingQRCode } from '@/lib/qrGenerator'
 
-export default async function BillingResultDetailPage({ 
-  params 
-}: { 
+export default async function BillingResultDetailPage({
+  params
+}: {
   params: Promise<{ id: string; resultId: string }>
 }) {
   const session = await getServerSession(authOptions)
@@ -137,7 +137,7 @@ export default async function BillingResultDetailPage({
   // Find the relevant owner for the billing year
   const yearStart = new Date(year, 0, 1);
   const yearEnd = new Date(year, 11, 31);
-  
+
   const activeOwner = billingResult.unit.ownerships.find(o => {
     const start = o.validFrom;
     const end = o.validTo || new Date(9999, 11, 31);
@@ -148,7 +148,7 @@ export default async function BillingResultDetailPage({
   // Načíst další data pro zobrazení (měřidla, platby)
   // Poznámka: V "Black Box" režimu zatím tato data nemusí být v DB kompletní,
   // ale připravíme strukturu pro BillingStatement.
-  
+
   const meters = await prisma.meter.findMany({
     where: { unitId: billingResult.unitId },
     include: {
@@ -215,49 +215,49 @@ export default async function BillingResultDetailPage({
 
   // 1. Příprava předpisů (Prescriptions)
   let prescriptions = (billingResult.monthlyPrescriptions as number[]) || [];
-  
+
   // Fallback: Pokud je prescriptions prázdné, zkusíme monthlyPayments
   if (prescriptions.length === 0 || prescriptions.every(v => v === 0)) {
-     if (billingResult.monthlyPayments && Array.isArray(billingResult.monthlyPayments)) {
-        const payments = billingResult.monthlyPayments as number[];
-        if (payments.some(v => v > 0)) {
-           prescriptions = payments;
-        }
-     }
+    if (billingResult.monthlyPayments && Array.isArray(billingResult.monthlyPayments)) {
+      const payments = billingResult.monthlyPayments as number[];
+      if (payments.some(v => v > 0)) {
+        prescriptions = payments;
+      }
+    }
   }
 
   // Pokud stále nejsou předpisy, zkusíme je spočítat z DB
   if (prescriptions.length === 0 || prescriptions.every(v => v === 0)) {
-      const calculatedPrescriptions = Array(12).fill(0);
-      
-      // Zkusíme najít "Celková záloha" nebo "TOTAL_ADVANCE"
-      const totalAdvanceRecords = advanceMonthlies.filter(a => 
-        a.service.code === 'TOTAL_ADVANCE' || a.service.name === 'Celková záloha'
-      );
-      
-      if (totalAdvanceRecords.length > 0) {
-        totalAdvanceRecords.forEach(rec => {
-          if (rec.month >= 1 && rec.month <= 12) {
-            calculatedPrescriptions[rec.month - 1] = rec.amount;
-          }
-        });
-      } else {
-        // Pokud není celková záloha, sečteme všechny zálohy
-        advanceMonthlies.forEach(rec => {
-          if (rec.month >= 1 && rec.month <= 12) {
-            calculatedPrescriptions[rec.month - 1] += rec.amount;
-          }
-        });
-      }
-      
-      if (calculatedPrescriptions.some(v => v > 0)) {
-          prescriptions = calculatedPrescriptions;
-      }
+    const calculatedPrescriptions = Array(12).fill(0);
+
+    // Zkusíme najít "Celková záloha" nebo "TOTAL_ADVANCE"
+    const totalAdvanceRecords = advanceMonthlies.filter(a =>
+      a.service.code === 'TOTAL_ADVANCE' || a.service.name === 'Celková záloha'
+    );
+
+    if (totalAdvanceRecords.length > 0) {
+      totalAdvanceRecords.forEach(rec => {
+        if (rec.month >= 1 && rec.month <= 12) {
+          calculatedPrescriptions[rec.month - 1] = rec.amount;
+        }
+      });
+    } else {
+      // Pokud není celková záloha, sečteme všechny zálohy
+      advanceMonthlies.forEach(rec => {
+        if (rec.month >= 1 && rec.month <= 12) {
+          calculatedPrescriptions[rec.month - 1] += rec.amount;
+        }
+      });
+    }
+
+    if (calculatedPrescriptions.some(v => v > 0)) {
+      prescriptions = calculatedPrescriptions;
+    }
   }
-  
+
   // Zajistit délku 12
   if (prescriptions.length < 12) {
-      prescriptions = [...prescriptions, ...Array(12 - prescriptions.length).fill(0)];
+    prescriptions = [...prescriptions, ...Array(12 - prescriptions.length).fill(0)];
   }
 
   // 2. Příprava plateb (Payments)
@@ -265,32 +265,32 @@ export default async function BillingResultDetailPage({
 
   // Fallback: Pokud je paid prázdné, zkusíme monthlyPrescriptions
   if (paid.length === 0 || paid.every(v => v === 0)) {
-     if (billingResult.monthlyPrescriptions && Array.isArray(billingResult.monthlyPrescriptions)) {
-        const presc = billingResult.monthlyPrescriptions as number[];
-        if (presc.some(v => v > 0)) {
-           paid = presc;
-        }
-     }
+    if (billingResult.monthlyPrescriptions && Array.isArray(billingResult.monthlyPrescriptions)) {
+      const presc = billingResult.monthlyPrescriptions as number[];
+      if (presc.some(v => v > 0)) {
+        paid = presc;
+      }
+    }
   }
 
   // Pokud stále nejsou platby, zkusíme je spočítat z DB
   if (paid.length === 0 || paid.every(v => v === 0)) {
-      const calculatedPaid = Array(12).fill(0);
-      payments.forEach(p => {
-          const m = p.paymentDate.getMonth(); // 0-11
-          if (m >= 0 && m < 12) {
-              calculatedPaid[m] += p.amount;
-          }
-      });
-      
-      if (calculatedPaid.some(v => v > 0)) {
-          paid = calculatedPaid;
+    const calculatedPaid = Array(12).fill(0);
+    payments.forEach(p => {
+      const m = p.paymentDate.getMonth(); // 0-11
+      if (m >= 0 && m < 12) {
+        calculatedPaid[m] += p.amount;
       }
+    });
+
+    if (calculatedPaid.some(v => v > 0)) {
+      paid = calculatedPaid;
+    }
   }
-  
+
   // Zajistit délku 12
   if (paid.length < 12) {
-      paid = [...paid, ...Array(12 - paid.length).fill(0)];
+    paid = [...paid, ...Array(12 - paid.length).fill(0)];
   }
 
   // 3. Kombinace do výsledného pole
@@ -312,7 +312,7 @@ export default async function BillingResultDetailPage({
   // Transformace dat pro komponentu BillingStatement
   // Pokud jsou data z EXPORT_FULL (meterReadings v serviceCosts), použijeme je
   // jinak fallback na stará data z meters
-  
+
   // Extrahujeme měřidla z BillingServiceCost.meterReadings (JSON string)
   const readingsFromSnapshot: Array<{
     service: string;
@@ -321,7 +321,7 @@ export default async function BillingResultDetailPage({
     endValue: number;
     consumption: number;
   }> = [];
-  
+
   billingResult.serviceCosts.forEach(cost => {
     if (cost.meterReadings) {
       try {
@@ -345,17 +345,17 @@ export default async function BillingResultDetailPage({
       }
     }
   });
-  
+
   // Použijeme data ze snapshot pokud existují, jinak fallback na meters z DB
-  const finalReadings = readingsFromSnapshot.length > 0 
-    ? readingsFromSnapshot 
+  const finalReadings = readingsFromSnapshot.length > 0
+    ? readingsFromSnapshot
     : meters.flatMap(m => m.readings.map(r => ({
-        service: m.service?.name || m.type,
-        meterId: m.serialNumber,
-        startValue: r.startValue || 0,
-        endValue: r.endValue || r.value,
-        consumption: r.consumption || (r.value - (r.startValue || 0))
-      })));
+      service: m.service?.name || m.type,
+      meterId: m.serialNumber,
+      startValue: r.startValue || 0,
+      endValue: r.endValue || r.value,
+      consumption: r.consumption || (r.value - (r.startValue || 0))
+    })));
 
   const statementData = {
     building: {
@@ -367,7 +367,7 @@ export default async function BillingResultDetailPage({
     },
     unit: {
       name: billingResult.unit.unitNumber,
-      owner: activeOwner 
+      owner: activeOwner
         ? `${activeOwner.owner.firstName} ${activeOwner.owner.lastName}`.trim()
         : 'Neznámý vlastník',
       share: `${billingResult.unit.shareNumerator}/${billingResult.unit.shareDenominator}`,
@@ -387,10 +387,11 @@ export default async function BillingResultDetailPage({
         name: cost.service.name,
         unit: cost.distributionBase || cost.calculationBasis || getMethodologyLabel(cost.service),
         share: distributionShare ?? (activeOwner?.sharePercent ?? 100),
+        // Use string fields if available for exact formatting, fallback to numbers
         buildingCost: cost.buildingTotalCost,
-        buildingUnits: cost.buildingConsumption || 0,
-        pricePerUnit: cost.unitPricePerUnit || 0,
-        userUnits: cost.unitConsumption || 0,
+        buildingUnits: cost.buildingUnits || cost.buildingConsumption || 0,
+        pricePerUnit: cost.unitPrice || cost.unitPricePerUnit || 0,
+        userUnits: cost.unitUnits || cost.unitConsumption || 0,
         userCost: cost.unitCost,
         advance: cost.unitAdvance || advanceByService.get(cost.serviceId) || 0,
         result: cost.unitBalance
@@ -401,7 +402,8 @@ export default async function BillingResultDetailPage({
     totals: {
       cost: billingResult.totalCost,
       advance: billingResult.totalAdvancePrescribed,
-      result: billingResult.result
+      result: billingResult.result,
+      repairFund: billingResult.repairFund // Add repair fund
     },
     readings: finalReadings,
     payments: paymentsData,
@@ -411,11 +413,11 @@ export default async function BillingResultDetailPage({
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardNav session={session} />
-      
+
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <div className="flex items-center gap-4 mb-4">
-            <Link 
+            <Link
               href={`/buildings/${buildingId}?tab=results`}
               className="text-gray-400 hover:text-gray-900"
             >

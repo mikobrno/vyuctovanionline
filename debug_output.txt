@@ -1,0 +1,30 @@
+Checking file existence: C:\Users\milan\OneDrive - OnlineSprava s.r.o\Portaly\vyuctovanionline\JSON\vyuctovani2024 (7).xlsx
+Sheet Names: Zborovská 2 - s vodoměry, Zborovská 2 - bez vodoměrů, export send mail, Zálohy byt - měsíčně, Seznam, Vyúčtování byt - 1.část, vstupní data, Výpočet, Předpisy - navýšení o částku, Předpisy - navýšení o procento, Tisk, Tisk příjmu SVJ, Faktury, Evidence, faktury za služby, Parametry, Počet osob, Předpis po mesici, Výtahy, Vodoměry TUV, Vodoměry SV, Teplo, Elektroměry, Přeplatky nedoplatky, uhrady, Bytové domy, Rozpočet domu, prijem SVJ, prijem SVJ bez vydaju, ExcelMacroData, Náklady na dům, Sheet1, EXPORT_FULL, Odečty formular
+
+--- Faktury Scanning Rows 0-15 ---
+Row 1: [13] [] [Způsob rozúčtování] [Podíl] [Náklad za rok] [Jednotek (dům)] [Kč/jedn (dům)] [Jednotek (uživatel)] [Náklad (uživatel)] [Záloha (uživatel)] [Přeplatky/nedoplatky] [Faktura součet bez zohlednění měsíců] [Předpis sloupec] [] [] 
+Row 2: [Fond oprav] [] [nevyúčtovává se] [] [0] [] [] [] [] [] [] [] [] [] [] 
+Row 3: [Studená voda] [] [externí] [100] [94551] [0] [] [-] [42] [42] [42] [] [42] [] [] 
+Row 4: [Elektrická energie (společné prostory)] [] [počet osob] [100] [20552.81] [320] [64.23] [42] [42] [42] [42] [] [42] [] [] 
+Row 5: [Úklid bytového domu] [] [počet osob] [100] [21420] [320] [66.94] [42] [42] [42] [42] [] [42] [] [] 
+Row 6: [Komíny] [] [0] [0] [0] [0] [0] [0] [0] [0] [0] [] [] [] [] 
+Row 7: [Pravidelná údržba výtah] [] [0] [0] [0] [0] [0] [0] [0] [0] [0] [] [] [] [] 
+Row 8: [Teplo] [] [externí] [100] [92704.52] [-] [-] [-] [42] [42] [42] [] [42] [] [] 
+Row 9: [Ohřev teplé vody (TUV)] [] [externí] [100] [61803.01] [0] [] [-] [42] [42] [42] [] [42] [] [] 
+Row 10: [] [] [0] [0] [0] [0] [0] [0] [0] [0] [0] [] [] [] [] 
+Row 11: [Správa domu] [] [na byt] [100] [40031] [11] [3639.18] [42] [42] [42] [42] [] [42] [] [] 
+Row 12: [Pojištění domu] [] [vlastnický podíl] [100] [24197] [100] [241.97] [42] [42] [42] [42] [] [42] [] [] 
+Row 13: [Ostatní nájemné] [] [0] [0] [0] [0] [0] [0] [0] [0] [0] [] [] [] [] 
+Row 14: [Ostatní služby] [] [0] [0] [0] [0] [0] [0] [0] [0] [0] [] [] [] [] 
+Row 15: [Mzdové náklady] [] [0] [0] [0] [0] [0] [0] [0] [0] [0] [] [] [] [] 
+Row 16: [Tvorba na splátku úvěru] [] [na byt] [100] [8867] [-] [-] [-] [0] [42] [42] [] [42] [] [] 
+Row 17: [Fond oprav nebytových prostor] [] [0] [0] [0] [0] [0] [0] [0] [0] [0] [] [] [] [] 
+Row 18: [Ostatní náklady (garáž a sklepy)] [] [0] [0] [0] [0] [0] [0] [0] [0] [0] [] [] [] [] 
+Row 19: [Ostatní náklady - UPC] [] [0] [0] [0] [0] [0] [0] [0] [0] [0] [] [] [] [] 
+Row 20: [Společné náklady] [] [0] [0] [0] [0] [0] [0] [0] [0] [0] [] [] [] [] 
+
+--- vstupní data Scanning ---
+Found 'Variabilní symbol' at [Row 6, Col 0]: => Value next: 42
+Found 'bankovní spojení (účet) vlastníka bytu' at [Row 7, Col 0]: => Value next: 42
+Found 'Přeplatek/nedoplatek z minulého období' at [Row 10, Col 0]: => Value next: 42
+Found 'Kód banky' at [Row 38, Col 0]: => Value next: 2010

@@ -22,6 +22,20 @@ function parseMoney(value: unknown): number {
   return isNaN(num) ? 0 : num
 }
 
+const extractCellString = (value: unknown): string | undefined => {
+  if (value === null || value === undefined) return undefined
+  const str = String(value).trim()
+  return str.length > 0 ? str : undefined
+}
+
+const hasCellValue = (value: unknown): boolean => {
+  if (value === null || value === undefined) return false
+  if (typeof value === 'string') {
+    return value.trim().length > 0
+  }
+  return true
+}
+
 /**
  * Normalizuje název jednotky pro porovnání
  */
@@ -255,12 +269,34 @@ export async function POST(req: NextRequest) {
       switch (dataType) {
         case 'INFO': {
           // NOVÝ FORMÁT: Val1: Jméno vlastníka, Val2: VS, Val3: Email, Val4: Výsledek, Val5: Bankovní účet, Val6: Poznámka k výsledku
-          unitData.ownerName = values[0] ? String(values[0]) : undefined
-          unitData.variableSymbol = values[1] ? String(values[1]) : undefined
-          unitData.email = values[2] ? String(values[2]) : undefined
-          unitData.totalResult = parseMoney(values[3])
-          unitData.bankAccount = values[4] ? String(values[4]) : undefined
-          unitData.resultNote = values[5] ? String(values[5]).trim() : undefined
+          const ownerName = extractCellString(values[0])
+          if (ownerName) {
+            unitData.ownerName = ownerName
+          }
+
+          const variableSymbol = extractCellString(values[1])
+          if (variableSymbol) {
+            unitData.variableSymbol = variableSymbol
+          }
+
+          const email = extractCellString(values[2])
+          if (email) {
+            unitData.email = email
+          }
+
+          if (hasCellValue(values[3])) {
+            unitData.totalResult = parseMoney(values[3])
+          }
+
+          const bankAccount = extractCellString(values[4])
+          if (bankAccount) {
+            unitData.bankAccount = bankAccount
+          }
+
+          const resultNote = extractCellString(values[5])
+          if (resultNote) {
+            unitData.resultNote = resultNote
+          }
           
           // Tyto hodnoty nejsou v novém formátu - dopočítáme z COST řádků později
           // unitData.totalCost = parseMoney(values[4])

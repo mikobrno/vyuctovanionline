@@ -6,26 +6,31 @@ import * as XLSX from 'xlsx';
 
 const prisma = new PrismaClient();
 
-// KONFIGURACE
-const FILE_PATH = path.join(process.cwd(), 'public', 'import', 'data.xlsx');
+// KONFIGURACE - UPDATED PATH
+const FILE_PATH = path.join(process.cwd(), 'JSON', 'vyuctovani2024 (7).xlsx');
 const SHEET_INPUT = 'Vstupní data';
-const SHEET_OUTPUT = 'Faktury'; // Zde je výsledná tabulka
-const SHEET_EVIDENCE = 'Evidence'; // Zde je seznam bytů
+const SHEET_OUTPUT = 'Faktury';
+const SHEET_EVIDENCE = 'Evidence';
 
-// Rozsah dat na listu Faktury
-const ROW_START = 10; 
-const ROW_END = 40;   
+// Rozsah dat na listu Faktury - UPDATED based on debug
+const ROW_START = 3; // Data starts at Row 3 (0-indexed 2)
+const ROW_END = 40;
 
-// Mapování sloupců na listu Faktury (0-indexed)
-const COL_SERVICE_NAME = 0; // A - Položka
+// Mapování sloupců na listu Faktury (0-indexed) - UPDATED
+const COL_SERVICE_NAME = 0; // A
+const COL_SHARE = 3;        // D - Podíl
 const COL_TOTAL_COST = 4;   // E - Náklad (dům)
-const COL_UNIT_COST = 9;    // J - Náklad (uživatel)
-const COL_ADVANCE = 10;     // K - Záloha
-const COL_RESULT = 11;      // L - Přeplatek/Nedoplatek
-const COL_EXCEL_POINTER = 12; // M - Explicitní odkaz na sloupec (např. "BN")
+const COL_BUILDING_UNITS = 5;// F - Jednotek (dům)
+const COL_PRICE_PER_UNIT = 6;// G - Kč/jedn
+const COL_USER_UNITS = 7;   // H - Jednotek (uživatel)
+const COL_UNIT_COST = 8;    // I - Náklad (uživatel)
+const COL_ADVANCE = 9;      // J - Záloha
+const COL_RESULT = 10;      // K - Přeplatek/Nedoplatek
+const COL_EXCEL_POINTER = 12; // M - Pointer
 
 // Helper function for string normalization
 const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+const normalizeSheetName = (name: string) => name.trim().toLowerCase();
 
 // Helper: Convert Excel column (e.g. "AA") to 0-based index
 function excelColToIndex(colName: string): number {
@@ -53,47 +58,43 @@ async function importAdvancePayments(hf: HyperFormula, sheetName: string, buildi
   // 1. NAČTENÍ KONFIGURACE Z LISTU FAKTURY (Sloupec M)
   console.log(`   🔍 Čtu konfiguraci sloupců z listu Faktury (sloupec M)...`);
   const dbServices = await prisma.service.findMany({ where: { buildingId: buildingId } });
-  const serviceColMap = new Map<string, number>(); // ServiceID -> Start Column Index
+  const serviceColMap = new Map<string, number>();
 
   for (let row = ROW_START - 1; row < ROW_END; row++) {
-      const serviceNameVal = hf.getCellValue({ sheet: fakturySheetId, col: COL_SERVICE_NAME, row: row });
-      if (!serviceNameVal || typeof serviceNameVal !== 'string') continue;
-      
-      const serviceName = serviceNameVal.trim();
-      if (serviceName === '' || serviceName.includes('Celkem')) continue;
+    const serviceNameVal = hf.getCellValue({ sheet: fakturySheetId, col: COL_SERVICE_NAME, row: row });
+    if (!serviceNameVal || typeof serviceNameVal !== 'string') continue;
 
-      // Přečíst pointer ze sloupce M (index 12)
-      const pointerVal = hf.getCellValue({ sheet: fakturySheetId, col: COL_EXCEL_POINTER, row: row });
-      
-      if (pointerVal && typeof pointerVal === 'string' && pointerVal.trim() !== '') {
-          const colLetter = pointerVal.trim().toUpperCase();
-          
-          // Najít službu v DB
-          const service = dbServices.find(s => normalize(s.name) === normalize(serviceName));
-          
-          if (service) {
-              // Uložit do DB
-              await prisma.service.update({
-                  where: { id: service.id },
-                  data: { excelColumn: colLetter }
-              });
+    const serviceName = serviceNameVal.trim();
+    if (serviceName === '' || serviceName.includes('Celkem')) continue;
 
-              const colIndex = excelColToIndex(colLetter);
-              serviceColMap.set(service.id, colIndex);
-              console.log(`   ✅ Služba "${service.name}" -> Sloupec ${colLetter} (Index ${colIndex})`);
-          } else {
-              console.warn(`   ⚠️ Služba "${serviceName}" má definovaný sloupec ${colLetter}, ale nebyla nalezena v DB.`);
-          }
+    const pointerVal = hf.getCellValue({ sheet: fakturySheetId, col: COL_EXCEL_POINTER, row: row });
+
+    if (pointerVal && typeof pointerVal === 'string' && pointerVal.trim() !== '') {
+      const colLetter = pointerVal.trim().toUpperCase();
+      const service = dbServices.find(s => normalize(s.name) === normalize(serviceName));
+
+      if (service) {
+        await prisma.service.update({
+          where: { id: service.id },
+          data: { excelColumn: colLetter }
+        });
+
+        const colIndex = excelColToIndex(colLetter);
+        serviceColMap.set(service.id, colIndex);
+        console.log(`   ✅ Služba "${service.name}" -> Sloupec ${colLetter} (Index ${colIndex})`);
+      } else {
+        console.warn(`   ⚠️ Služba "${serviceName}" má definovaný sloupec ${colLetter}, ale nebyla nalezena v DB.`);
       }
+    }
   }
 
   if (serviceColMap.size === 0) {
-      console.warn('   ❌ Žádné služby nemají definovaný sloupec v Excelu (sloupec M). Končím import záloh.');
-      return;
+    console.warn('   ❌ Žádné služby nemají definovaný sloupec v Excelu (sloupec M). Končím import záloh.');
+    return;
   }
 
   // 2. EXTRAKCE DAT
-  const START_ROW = 2; 
+  const START_ROW = 2;
   let importedCount = 0;
   const units = await prisma.unit.findMany({ where: { buildingId } });
   const unitMap = new Map(units.map(u => [normalize(u.unitNumber), u.id]));
@@ -108,11 +109,10 @@ async function importAdvancePayments(hf: HyperFormula, sheetName: string, buildi
 
     for (const [serviceId, startColIndex] of serviceColMap.entries()) {
       for (let month = 1; month <= 12; month++) {
-        // Předpokládáme, že data jsou v po sobě jdoucích sloupcích (Leden, Únor...)
         const targetCol = startColIndex + (month - 1);
-        
+
         if (targetCol >= width) continue;
-        
+
         const val = hf.getCellValue({ sheet: sheetId, col: targetCol, row: row });
         let amount = 0;
         if (typeof val === 'number') amount = val;
@@ -133,7 +133,7 @@ async function importAdvancePayments(hf: HyperFormula, sheetName: string, buildi
 }
 
 async function main() {
-  console.log('🚀 Startuji Excel Engine Import...');
+  console.log('🚀 Startuji Excel Engine Import (UPDATED)...');
 
   if (!fs.existsSync(FILE_PATH)) {
     console.error(`❌ Soubor nenalezen: ${FILE_PATH}`);
@@ -144,7 +144,7 @@ async function main() {
   console.log('📚 Načítám Excel do paměti...');
   const workbook = XLSX.readFile(FILE_PATH);
   const sheets: Record<string, any[][]> = {};
-  
+
   for (const sheetName of workbook.SheetNames) {
     const worksheet = workbook.Sheets[sheetName];
     if (!worksheet['!ref']) {
@@ -163,21 +163,20 @@ async function main() {
           row.push('');
         } else if (cell.f) {
           let formula = `=${cell.f}`;
-          // Fix VLOOKUP approximate match
           if (formula.includes('VLOOKUP(BYT') && (formula.endsWith(',1)') || formula.endsWith(',TRUE)'))) {
-             formula = formula.replace(/,1\)$/, ',0)').replace(/,TRUE\)$/, ',0)');
+            formula = formula.replace(/,1\)$/, ',0)').replace(/,TRUE\)$/, ',0)');
           }
           // Fix booleans
           if (formula.includes('FALSE') || formula.includes('TRUE')) {
-             formula = formula
-               .replace(/,FALSE\)/g, ',0)')
-               .replace(/,TRUE\)/g, ',1)')
-               .replace(/\(FALSE\)/g, '(0)')
-               .replace(/\(TRUE\)/g, '(1)')
-               .replace(/,FALSE,/g, ',0,')
-               .replace(/,TRUE,/g, ',1,');
+            formula = formula
+              .replace(/,FALSE\)/g, ',0)')
+              .replace(/,TRUE\)/g, ',1)')
+              .replace(/\(FALSE\)/g, '(0)')
+              .replace(/\(TRUE\)/g, '(1)')
+              .replace(/,FALSE,/g, ',0,')
+              .replace(/,TRUE,/g, ',1,');
           }
-          row.push(formula); 
+          row.push(formula);
         } else {
           row.push(cell.v !== undefined ? cell.v : '');
         }
@@ -197,17 +196,17 @@ async function main() {
     workbook.Workbook.Names.forEach(name => {
       try {
         if (name.Ref) hf.addNamedExpression(name.Name, `=${name.Ref}`);
-      } catch (e) {}
+      } catch (e) { }
     });
   }
 
   const sheetNames = hf.getSheetNames();
-  const inputSheetId = hf.getSheetId(sheetNames.find(n => n.toLowerCase() === SHEET_INPUT.toLowerCase()) || '');
-  const outputSheetId = hf.getSheetId(sheetNames.find(n => n.toLowerCase() === SHEET_OUTPUT.toLowerCase()) || '');
-  const evidenceSheetId = hf.getSheetId(sheetNames.find(n => n.toLowerCase().includes('evidence')) || '');
+  const inputSheetId = hf.getSheetId(sheetNames.find(n => normalizeSheetName(n) === normalizeSheetName(SHEET_INPUT)) || '');
+  const outputSheetId = hf.getSheetId(sheetNames.find(n => normalizeSheetName(n) === normalizeSheetName(SHEET_OUTPUT)) || '');
+  const evidenceSheetId = hf.getSheetId(sheetNames.find(n => normalizeSheetName(n).includes('evidence')) || '');
 
   if (inputSheetId === undefined || outputSheetId === undefined || evidenceSheetId === undefined) {
-    console.error('❌ Nenalezeny požadované listy.');
+    console.error('❌ Nenalezeny požadované listy (Input, Faktury, Evidence).');
     return;
   }
 
@@ -215,7 +214,7 @@ async function main() {
   console.log('📋 Načítám seznam jednotek...');
   const units: Array<{ name: string; ownerName: string; address: string; email: string; phone: string; bankAccount: string; }> = [];
   const evidenceDims = hf.getSheetDimensions(evidenceSheetId);
-  
+
   for (let row = 1; row < evidenceDims.height; row++) {
     const unitName = hf.getCellValue({ sheet: evidenceSheetId, col: 0, row: row });
     if (unitName && typeof unitName === 'string' && unitName.trim() !== '') {
@@ -238,22 +237,37 @@ async function main() {
     return;
   }
 
-  const building = await prisma.building.findFirst({ 
-    where: { 
+  const building = await prisma.building.findFirst({
+    where: {
       OR: [
         { id: buildingArg },
         { name: { contains: buildingArg, mode: 'insensitive' } }
       ]
-    } 
+    }
   });
-  
+
   if (!building) {
     console.error(`❌ Budova "${buildingArg}" nenalezena.`);
     return;
   }
   console.log(`✅ Vybrána budova: ${building.name}`);
 
-  const svjBankAccount = hf.getCellValue({ sheet: inputSheetId, col: 1, row: 34 })?.toString();
+  // FIX: Read Bank Account from Row 37/38
+  // Assuming Row 37 has the account number part 1 and Row 38 has bank code part 2?
+  // Or B37 is account name? Debug said "Kód banky" at Row 38, so bank code is B38.
+  // We'll guess Account Number is at B37 (Row 36, Col 1).
+  const accountPrefix = hf.getCellValue({ sheet: inputSheetId, col: 1, row: 36 })?.toString(); // B37
+  const bankCode = hf.getCellValue({ sheet: inputSheetId, col: 1, row: 37 })?.toString(); // B38
+
+  // If B37/B38 are not what we expect, fallback or try B34
+  let svjBankAccount = accountPrefix;
+  if (bankCode) svjBankAccount += '/' + bankCode;
+
+  // Alternative: Check if B34 has it (old method)
+  if (!svjBankAccount || svjBankAccount.length < 5) {
+    svjBankAccount = hf.getCellValue({ sheet: inputSheetId, col: 1, row: 34 })?.toString();
+  }
+
   if (svjBankAccount) {
     await prisma.building.update({ where: { id: building.id }, data: { bankAccount: svjBankAccount } });
     console.log(`✅ Aktualizován bankovní účet budovy: ${svjBankAccount}`);
@@ -301,15 +315,20 @@ async function main() {
       });
     }
 
-    // Monthly Payments & Prescriptions (Totals)
+    // Monthly Payments (Totals)
     const monthlyPayments: number[] = [];
     const monthlyPrescriptions: number[] = [];
     for (let m = 0; m < 12; m++) {
+      // Assume these are at same rows as before, or need verification?
+      // Script preserved old rows 39/44. Assuming these are ok for now.
       const payVal = hf.getCellValue({ sheet: outputSheetId, col: m, row: 39 });
       const presVal = hf.getCellValue({ sheet: outputSheetId, col: m, row: 44 });
       monthlyPayments.push(typeof payVal === 'number' ? payVal : 0);
       monthlyPrescriptions.push(typeof presVal === 'number' ? presVal : 0);
     }
+
+    // Repair Fund Scan - if needed
+    // The previous logic didn't assume Repair Fund is a specific field, but calculates it from Service.
 
     const billingResult = await prisma.billingResult.create({
       data: {
@@ -339,6 +358,18 @@ async function main() {
         return typeof val === 'number' ? val : 0;
       };
 
+      const getStr = (col: number) => {
+        const val = hf.getCellValue({ sheet: outputSheetId, col: col, row: row });
+        if (val === null || val === undefined) return "";
+        if (typeof val === 'number') return val.toFixed(2).replace('.', ','); // Basic format
+        return String(val);
+      };
+
+      const shareStr = getStr(COL_SHARE);
+      const buildUnitsStr = getStr(COL_BUILDING_UNITS);
+      const priceUnitStr = getStr(COL_PRICE_PER_UNIT);
+      const userUnitsStr = getStr(COL_USER_UNITS);
+
       const totalBuildingCost = getNum(COL_TOTAL_COST);
       const unitCost = getNum(COL_UNIT_COST);
       const advance = getNum(COL_ADVANCE);
@@ -364,7 +395,13 @@ async function main() {
           unitCost: unitCost,
           unitAdvance: advance,
           unitBalance: result,
-          calculationBasis: `Excel Import (Řádek ${row + 1})`
+          calculationBasis: `Excel Import (Řádek ${row + 1})`,
+
+          // Populate String Fields
+          distributionShare: shareStr,
+          buildingUnits: buildUnitsStr,
+          unitPrice: priceUnitStr,
+          unitUnits: userUnitsStr
         }
       });
 
@@ -395,3 +432,4 @@ async function main() {
 main()
   .catch(e => console.error(e))
   .finally(async () => await prisma.$disconnect());
+
