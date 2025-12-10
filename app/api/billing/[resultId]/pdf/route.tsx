@@ -267,5 +267,52 @@ export async function GET(
         adminRealBase64 = `data:image/png;base64,${adminRealBuff.toString('base64')}`;
     } catch (e) { console.error('Failed to load adminreal.png', e); }
 
-});
+    try {
+        const brnoRealBuff = await fs.readFile(path.join(publicDir, 'brnoreal.png'));
+        brnoRealBase64 = `data:image/png;base64,${brnoRealBuff.toString('base64')}`;
+    } catch (e) { console.error('Failed to load brnoreal.png', e); }
+
+    // 4. Build Full HTML Document
+    const fullHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          @page { size: A4; margin: 0; }
+          body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+          * { box-sizing: border-box; }
+        </style>
+      </head>
+      <body>
+        ${componentHtml}
+      </body>
+    </html>
+    `;
+
+    // 5. Generate PDF with Puppeteer
+    const browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    const page = await browser.newPage();
+
+    await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
+
+    const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' }
+    });
+
+    await browser.close();
+
+    // 6. Return PDF Response
+    return new NextResponse(pdfBuffer, {
+        status: 200,
+        headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `inline; filename="vyuctovani-${billingResult.unit.unitNumber}-${year}.pdf"`
+        }
+    });
 }
