@@ -250,7 +250,7 @@ export async function POST(req: NextRequest) {
         }
       })
 
-      // D. Vytvoření BillingServiceCost (Položky vyúčtování)
+      // D. Vytvoření/aktualizace BillingServiceCost (Položky vyúčtování)
       for (const cost of unitData.costs) {
         const serviceId = serviceMap.get(normalizeServiceName(cost.serviceName))
         if (!serviceId) continue // Should not happen
@@ -260,26 +260,35 @@ export async function POST(req: NextRequest) {
           normalizeServiceName(m.service) === normalizeServiceName(cost.serviceName)
         )
 
-        await prisma.billingServiceCost.create({
-          data: {
-            billingPeriodId: billingPeriod.id,
-            billingResultId: billingResult.id,
-            serviceId: serviceId,
-            unitId: unit.id,
-            
-            buildingTotalCost: Number(cost.total) || 0,
-            unitCost: Number(cost.userCost) || 0,
-            unitAdvance: Number(cost.advance) || 0,
-            unitBalance: (Number(cost.userCost) || 0) - (Number(cost.advance) || 0),
-            
-            // V19+ pole pro věrný tisk
-            buildingUnits: cost.unitDetails?.buildingUnits || null,
-            unitPrice: cost.unitDetails?.price || null,
-            unitUnits: cost.unitDetails?.userUnits || null,
-            
-            // Uložení odečtů jako JSON
-            meterReadings: relevantMeters.length > 0 ? JSON.stringify(relevantMeters) : null
-          }
+        const costData = {
+          billingPeriodId: billingPeriod.id,
+          billingResultId: billingResult.id,
+          serviceId: serviceId,
+          unitId: unit.id,
+          
+          buildingTotalCost: Number(cost.total) || 0,
+          unitCost: Number(cost.userCost) || 0,
+          unitAdvance: Number(cost.advance) || 0,
+          unitBalance: (Number(cost.userCost) || 0) - (Number(cost.advance) || 0),
+          
+          // V19+ pole pro věrný tisk
+          buildingUnits: cost.unitDetails?.buildingUnits || null,
+          unitPrice: cost.unitDetails?.price || null,
+          unitUnits: cost.unitDetails?.userUnits || null,
+          
+          // Uložení odečtů jako JSON
+          meterReadings: relevantMeters.length > 0 ? JSON.stringify(relevantMeters) : null
+        }
+
+        await prisma.billingServiceCost.upsert({
+          where: {
+            billingResultId_serviceId: {
+              billingResultId: billingResult.id,
+              serviceId: serviceId
+            }
+          },
+          create: costData,
+          update: costData
         })
       }
       
