@@ -17,7 +17,7 @@ import * as fs from 'fs';
 
 interface CsvRow {
   UnitName: string;
-  DataType: 'INFO' | 'COST' | 'METER' | 'PAYMENT_MONTHLY' | 'ADVANCE_MONTHLY' | 'FIXED_PAYMENT';
+  DataType: 'INFO' | 'COST' | 'METER' | 'PAYMENT_MONTHLY' | 'ADVANCE_MONTHLY' | 'FIXED_PAYMENT' | 'BUILDING_INFO';
   Key: string;
   Val1: string;
   Val2: string;
@@ -145,6 +145,7 @@ function aggregateUnitData(rows: CsvRow[]): Map<string, UnitBillingData> {
   const unitsMap = new Map<string, UnitBillingData>();
   
   for (const row of rows) {
+    if (row.DataType === 'BUILDING_INFO') continue;
     const unitName = row.UnitName;
     if (!unitName || unitName === '0') continue;
     

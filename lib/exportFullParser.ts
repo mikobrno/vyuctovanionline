@@ -3,7 +3,8 @@ import {
   BillingService,
   MeterReading,
   UnitBillingData,
-  ExportFullDataType
+  ExportFullDataType,
+  ExportFullBuildingInfo
 } from '../types/export-full';
 
 export type ExportFullWarningType =
@@ -26,15 +27,18 @@ export interface ExportFullPreviewStats {
   serviceCount: number;
   meterCount: number;
   fixedPaymentCount: number;
+  hasBuildingInfo: boolean;
 }
 
 export interface ExportFullPreviewResult {
   units: UnitBillingData[];
   warnings: ExportFullWarning[];
   stats: ExportFullPreviewStats;
+  buildingInfo?: ExportFullBuildingInfo;
 }
 
 const normalizeHeader = (h: unknown) => String(h || '').trim().toLowerCase();
+const BUILDING_INFO_UNIT_NAME = '__BUILDING__';
 
 export function parseCzechNumber(value: string | null | undefined): number {
   if (!value) return 0;
@@ -128,13 +132,13 @@ export function parseExportFullSheet(buffer: Buffer): ExportFullPreviewResult {
   const sheet = workbook.Sheets['EXPORT_FULL'];
   if (!sheet) {
     warnings.push({ row: 0, type: 'missing-sheet', message: 'Sheet EXPORT_FULL nenalezen.' });
-    return { units: [], warnings, stats: { rowCount: 0, unitCount: 0, serviceCount: 0, meterCount: 0, fixedPaymentCount: 0 } };
+    return { units: [], warnings, stats: { rowCount: 0, unitCount: 0, serviceCount: 0, meterCount: 0, fixedPaymentCount: 0, hasBuildingInfo: false } };
   }
 
   const data = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, raw: false, defval: '' });
   if (data.length === 0) {
     warnings.push({ row: 0, type: 'missing-header', message: 'Prázdný list EXPORT_FULL.' });
-    return { units: [], warnings, stats: { rowCount: 0, unitCount: 0, serviceCount: 0, meterCount: 0, fixedPaymentCount: 0 } };
+    return { units: [], warnings, stats: { rowCount: 0, unitCount: 0, serviceCount: 0, meterCount: 0, fixedPaymentCount: 0, hasBuildingInfo: false } };
   }
 
   const headerRow = data[0];
@@ -145,7 +149,7 @@ export function parseExportFullSheet(buffer: Buffer): ExportFullPreviewResult {
 
   if (idxUnit === -1 || idxType === -1) {
     warnings.push({ row: 0, type: 'missing-header', message: 'Chybí sloupce UnitName nebo DataType.' });
-    return { units: [], warnings, stats: { rowCount: 0, unitCount: 0, serviceCount: 0, meterCount: 0, fixedPaymentCount: 0 } };
+    return { units: [], warnings, stats: { rowCount: 0, unitCount: 0, serviceCount: 0, meterCount: 0, fixedPaymentCount: 0, hasBuildingInfo: false } };
   }
 
   const idxVal = (n: number) => headerIndex(`val${n}`);
@@ -193,12 +197,31 @@ export function parseExportFullSheet(buffer: Buffer): ExportFullPreviewResult {
   }
 
   const unitsMap = new Map<string, UnitBillingData>();
+  let buildingInfo: ExportFullBuildingInfo | undefined;
   let serviceCount = 0;
   let meterCount = 0;
   let fixedPaymentCount = 0;
 
   for (const row of rows) {
     const type = (row.DataType || '').toUpperCase() as ExportFullDataType;
+
+    if (type === 'BUILDING_INFO') {
+      const bankAccount = cleanTextValue(row.Val1);
+      const address = cleanTextValue(row.Val2);
+      const name = cleanTextValue(row.Val3);
+
+      if (bankAccount || address || name) {
+        buildingInfo = {
+          unitName: row.UnitName || BUILDING_INFO_UNIT_NAME,
+          bankAccount,
+          address: address || undefined,
+          name: name || undefined,
+          sourceRow: cleanTextValue(row.SourceRow) || undefined
+        };
+      }
+      continue;
+    }
+
     const unit = ensureUnit(unitsMap, row.UnitName);
     switch (type) {
       case 'INFO':
@@ -312,7 +335,9 @@ export function parseExportFullSheet(buffer: Buffer): ExportFullPreviewResult {
       unitCount: units.length,
       serviceCount,
       meterCount,
-      fixedPaymentCount
-    }
+      fixedPaymentCount,
+      hasBuildingInfo: Boolean(buildingInfo)
+    },
+    buildingInfo
   };
 }

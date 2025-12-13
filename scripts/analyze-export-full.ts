@@ -2,7 +2,7 @@ import { read, utils } from 'xlsx'
 import * as fs from 'fs'
 
 // Načíst Excel a analyzovat strukturu EXPORT_FULL
-const filePath = 'public/import/vyuctovani2024.xlsx'
+const filePath = process.argv[2] || 'public/import/vyuctovani2024.xlsx'
 
 if (!fs.existsSync(filePath)) {
   console.log('Soubor nenalezen, zkouším alternativy...')

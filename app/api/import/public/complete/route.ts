@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import { read } from 'xlsx'
 
 export const runtime = 'nodejs'
 
@@ -22,6 +23,9 @@ export async function POST(req: NextRequest) {
     await fs.access(absPath)
     const buffer = await fs.readFile(absPath)
 
+    const workbook = read(buffer, { type: 'buffer' })
+    const hasExportFull = workbook.SheetNames?.includes('EXPORT_FULL')
+
     // Build multipart form-data compatible with /api/import/complete
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const fileObj = new File([blob], path.basename(absPath), { type: blob.type })
@@ -34,7 +38,7 @@ export async function POST(req: NextRequest) {
     const proto = req.headers.get('x-forwarded-proto') ?? 'http'
     const host = req.headers.get('host')
     if (!host) return NextResponse.json({ error: 'Cannot resolve host' }, { status: 500 })
-    const url = `${proto}://${host}/api/import/complete`
+    const url = `${proto}://${host}${hasExportFull ? '/api/import/snapshot' : '/api/import/complete'}`
 
     const res = await fetch(url, { method: 'POST', body: form })
     const data = await res.json()

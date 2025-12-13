@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
+const BUILDING_INFO_UNIT_NAME = '__BUILDING__'
 
 /**
  * API endpoint pro export dat ve formátu EXPORT_FULL
@@ -65,10 +66,22 @@ export async function GET(req: NextRequest) {
       buildingId = building.id
     }
 
+    const building = await prisma.building.findUnique({
+      where: { id: buildingId! },
+      select: { id: true, name: true, address: true, bankAccount: true }
+    })
+
+    if (!building) {
+      return NextResponse.json({
+        success: false,
+        error: 'Budova nebyla nalezena'
+      }, { status: 404 })
+    }
+
     // Najít billing period
     const billingPeriod = await prisma.billingPeriod.findFirst({
       where: { 
-        buildingId: buildingId!,
+        buildingId: building.id,
         year 
       },
       select: { id: true }
@@ -118,6 +131,28 @@ export async function GET(req: NextRequest) {
 
     // Převést na EXPORT_FULL formát
     const exportRows: ExportFullRow[] = []
+
+    if (building.bankAccount || building.address || building.name) {
+      exportRows.push({
+        UnitName: BUILDING_INFO_UNIT_NAME,
+        DataType: 'BUILDING_INFO',
+        Key: 'BuildingBankAccount',
+        Val1: building.bankAccount || '',
+        Val2: building.address || '',
+        Val3: building.name || '',
+        Val4: '',
+        Val5: '',
+        Val6: '',
+        Val7: '',
+        Val8: '',
+        Val9: '',
+        Val10: '',
+        Val11: '',
+        Val12: '',
+        Val13: '',
+        SourceRow: ''
+      })
+    }
 
     for (const result of results) {
       const unit = result.unit
@@ -340,7 +375,7 @@ export async function GET(req: NextRequest) {
 // Typy
 interface ExportFullRow {
   UnitName: string
-  DataType: 'INFO' | 'COST' | 'METER' | 'PAYMENT_MONTHLY' | 'ADVANCE_MONTHLY' | 'FIXED_PAYMENT'
+  DataType: 'INFO' | 'COST' | 'METER' | 'PAYMENT_MONTHLY' | 'ADVANCE_MONTHLY' | 'FIXED_PAYMENT' | 'BUILDING_INFO'
   Key: string
   Val1: string
   Val2: string

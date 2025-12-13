@@ -10,7 +10,13 @@ import * as path from 'path'
 import * as http from 'http'
 
 async function testSnapshotHTTP() {
-  const filePath = path.join(__dirname, '../JSON/vyuctovani2024.xlsx')
+  const cliFile = process.argv[2]
+  const preferredDefault = path.join(__dirname, '../public/import/vyuctovani2024.xlsx')
+  const legacyDefault = path.join(__dirname, '../JSON/vyuctovani2024.xlsx')
+
+  const filePath = cliFile
+    ? path.resolve(process.cwd(), cliFile)
+    : (fs.existsSync(preferredDefault) ? preferredDefault : legacyDefault)
   
   if (!fs.existsSync(filePath)) {
     console.error('❌ Soubor neexistuje:', filePath)
@@ -27,10 +33,12 @@ async function testSnapshotHTTP() {
   
   const parts: Buffer[] = []
   
+  const filename = path.basename(filePath)
+
   // File part
   parts.push(Buffer.from(
     `--${boundary}\r\n` +
-    `Content-Disposition: form-data; name="file"; filename="vyuctovani2024.xlsx"\r\n` +
+    `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
     `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n`
   ))
   parts.push(fileBuffer)
@@ -69,7 +77,19 @@ async function testSnapshotHTTP() {
         
         try {
           const result = JSON.parse(data)
-          console.log(JSON.stringify(result, null, 2))
+          const verbose = process.env.VERBOSE_SNAPSHOT === '1'
+          if (verbose) {
+            console.log(JSON.stringify(result, null, 2))
+          } else {
+            console.log(JSON.stringify({
+              success: result.success,
+              year: result.year,
+              building: result.building,
+              summary: result.summary,
+              warnings: Array.isArray(result.warnings) ? result.warnings.slice(0, 10) : result.warnings,
+              errors: Array.isArray(result.errors) ? result.errors.slice(0, 10) : result.errors,
+            }, null, 2))
+          }
           
           if (result.success) {
             console.log('')

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
+const SNAPSHOT_PAYMENT_DESCRIPTION_PREFIX = 'Snapshot import'
 
 /**
  * Parsuje peněžní hodnotu z Excelu
@@ -82,6 +83,38 @@ function isInvalidServiceName(name: string): boolean {
   )
 }
 
+async function ensureTotalAdvanceService(buildingId: string) {
+  let service = await prisma.service.findFirst({
+    where: { buildingId, code: 'TOTAL_ADVANCE' }
+  })
+
+  if (service) return service
+
+  service = await prisma.service.findFirst({
+    where: {
+      buildingId,
+      name: { equals: 'Celková záloha', mode: 'insensitive' }
+    }
+  })
+
+  if (service && service.code !== 'TOTAL_ADVANCE') {
+    service = await prisma.service.update({
+      where: { id: service.id },
+      data: { code: 'TOTAL_ADVANCE' }
+    })
+    return service
+  }
+
+  return prisma.service.create({
+    data: {
+      buildingId,
+      code: 'TOTAL_ADVANCE',
+      name: 'Celková záloha',
+      methodology: 'FIXED_PER_UNIT'
+    }
+  })
+}
+
 /**
  * Extrahuje číslo domu z názvu bytu 
  * Vzory: "Byt-č.-20801" -> "2080", "Byt-č.-31801" -> "318"
@@ -141,6 +174,15 @@ interface UnitData {
   address?: string
   bankAccount?: string  // číslo účtu pro přeplatek
   resultNote?: string
+  periodBalance?: number
+  previousPeriodBalance?: number
+  grandTotal?: number
+  sourceSheetMeta?: {
+    sheetName?: string
+    rows?: number
+    cols?: number
+    hash?: string
+  }
   totalResult: number
   totalCost: number
   totalAdvance: number
@@ -151,9 +193,66 @@ interface UnitData {
   fixedPayments: FixedPayment[]
 }
 
+function parseSourceSheetMeta(value: unknown): UnitData['sourceSheetMeta'] | undefined {
+  const raw = extractCellString(value)
+  if (!raw) return undefined
+
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
+
+  // Preferujeme JSON z Office Scriptu
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown
+      if (!parsed || typeof parsed !== 'object') return undefined
+      const meta = parsed as Record<string, unknown>
+      return {
+        sheetName: typeof meta.sheetName === 'string' ? meta.sheetName : undefined,
+        rows: typeof meta.rows === 'number' ? meta.rows : undefined,
+        cols: typeof meta.cols === 'number' ? meta.cols : undefined,
+        hash: typeof meta.hash === 'string' ? meta.hash : undefined,
+      }
+    } catch {
+      return undefined
+    }
+  }
+
+  // Backward/alternate formats (best-effort)
+  const sheetNameMatch = trimmed.match(/sheet(Name)?\s*[:=]\s*([^|,;]+)/i)
+  const rowsMatch = trimmed.match(/rows\s*[:=]\s*(\d+)/i)
+  const colsMatch = trimmed.match(/cols\s*[:=]\s*(\d+)/i)
+  const hashMatch = trimmed.match(/hash\s*[:=]\s*([a-f0-9]{8,})/i)
+
+  if (!sheetNameMatch && !rowsMatch && !colsMatch && !hashMatch) return undefined
+
+  return {
+    sheetName: sheetNameMatch ? sheetNameMatch[2].trim() : undefined,
+    rows: rowsMatch ? Number(rowsMatch[1]) : undefined,
+    cols: colsMatch ? Number(colsMatch[1]) : undefined,
+    hash: hashMatch ? hashMatch[1].toLowerCase() : undefined,
+  }
+}
+
 interface FixedPayment {
   name: string
   amount: number
+}
+
+interface AdvanceMonthlyInsert {
+  unitId: string
+  serviceId: string
+  year: number
+  month: number
+  amount: number
+}
+
+interface PaymentInsert {
+  unitId: string
+  amount: number
+  paymentDate: Date
+  variableSymbol: string
+  period: number
+  description: string
 }
 /**
  * Zpracuje Excel soubor s listem EXPORT_FULL
@@ -164,6 +263,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData()
     const file = formData.get('file')
     const buildingIdParam = formData.get('buildingId') as string | null
+    const buildingNameParam = formData.get('buildingName') as string | null
     const yearParam = formData.get('year') as string | null
 
     if (!file || !(file instanceof File)) {
@@ -227,6 +327,9 @@ export async function POST(req: NextRequest) {
     let currentUnitName = ''
     let firstAddress = ''
     let buildingNumberFromUnits = ''
+    let buildingBankAccount = ''
+    const advanceMonthlyBatch: AdvanceMonthlyInsert[] = []
+    const paymentBatch: PaymentInsert[] = []
 
     for (let i = 1; i < rawData.length; i++) {
       const row = rawData[i] as unknown[]
@@ -243,6 +346,19 @@ export async function POST(req: NextRequest) {
       }
 
       if (!unitName || !dataType) continue
+
+      if (dataType === 'BUILDING_INFO') {
+        const bankAccountValue = extractCellString(values[0])
+        const addressValue = extractCellString(values[1])
+        if (bankAccountValue) {
+          buildingBankAccount = bankAccountValue
+        }
+        if (!firstAddress && addressValue) {
+          firstAddress = addressValue
+        }
+        continue
+      }
+
       currentUnitName = unitName
 
       // Extrahovat číslo domu z prvního bytu
@@ -268,7 +384,9 @@ export async function POST(req: NextRequest) {
 
       switch (dataType) {
         case 'INFO': {
-          // NOVÝ FORMÁT: Val1: Jméno vlastníka, Val2: VS, Val3: Email, Val4: Výsledek, Val5: Bankovní účet, Val6: Poznámka k výsledku
+          // EXPORT_FULL V91: Val1: Jméno vlastníka, Val2: VS, Val3: Email, Val4: Výsledek, Val5: Bankovní účet,
+          // Val6: Poznámka k výsledku, Val7: Celkem náklady, Val8: Celkem zálohy, Val9: Fond oprav,
+          // Val10: Nedoplatek/Přeplatek v účtovaném období, Val11: Minulé období, Val12: Celkem (grand total), Val13: sourceSheetMeta(JSON)
           const ownerName = extractCellString(values[0])
           if (ownerName) {
             unitData.ownerName = ownerName
@@ -297,6 +415,32 @@ export async function POST(req: NextRequest) {
           if (resultNote) {
             unitData.resultNote = resultNote
           }
+
+          // V91+: hodnoty přímo z Excelu pro věrné zobrazení (bez dopočtů)
+          if (hasCellValue(values[6])) {
+            unitData.totalCost = parseMoney(values[6])
+          }
+          if (hasCellValue(values[7])) {
+            unitData.totalAdvance = parseMoney(values[7])
+          }
+          if (hasCellValue(values[8])) {
+            unitData.repairFund = parseMoney(values[8])
+          }
+
+          if (hasCellValue(values[9])) {
+            unitData.periodBalance = parseMoney(values[9])
+          }
+          if (hasCellValue(values[10])) {
+            unitData.previousPeriodBalance = parseMoney(values[10])
+          }
+          if (hasCellValue(values[11])) {
+            unitData.grandTotal = parseMoney(values[11])
+          }
+
+          const sourceSheetMeta = parseSourceSheetMeta(values[12])
+          if (sourceSheetMeta) {
+            unitData.sourceSheetMeta = sourceSheetMeta
+          }
           
           // Tyto hodnoty nejsou v novém formátu - dopočítáme z COST řádků později
           // unitData.totalCost = parseMoney(values[4])
@@ -315,19 +459,12 @@ export async function POST(req: NextRequest) {
             break // Přeskočit
           }
           
-          // EXPORT_FULL FORMÁT SLOUPCŮ:
-          // Val1=Podíl %, Val2=Počet jednotek, Val3=Náklad Byt, Val4=Záloha Byt
-          // Val6=Náklad Dům, Val7=Počet jednotek Dům, Val8=Cena/jedn, Val9=Metodika
-          
-          let unitCost = parseMoney(values[2])        // Val3 = Náklad bytu
+          // EXPORT_FULL FORMÁT SLOUPCŮ (V91):
+          // Val1=Podíl %, Val2=Jednotek byt (text), Val3=Náklad Byt, Val4=Záloha Byt
+          // Val6=Náklad Dům, Val7=Jednotek dům (text), Val8=Kč/jedn (text), Val9=Metodika, Val10=Výsledek (balance)
+          const unitCost = parseMoney(values[2])      // Val3 = Náklad bytu
           const unitAdvance = parseMoney(values[3])   // Val4 = Záloha bytu
-          const unitBalance = unitCost - unitAdvance  // Výsledek = Náklad - Záloha
-          
-          // Workaround pro služby kde je chyba #NAME? v nákladu (např. Vodné studená voda)
-          if (unitCost === 0 && unitAdvance > 0 && serviceName.toLowerCase().includes('studená')) {
-            unitCost = unitAdvance - unitBalance
-            console.log(`[Snapshot] Oprava nákladu pro ${serviceName}: ${unitAdvance} - ${unitBalance} = ${unitCost}`)
-          }
+          const unitBalance = hasCellValue(values[9]) ? parseMoney(values[9]) : 0 // Val10 = Výsledek (z Excelu)
           
           // Přeskočit služby s nulovým nákladem i zálohou
           if (unitCost === 0 && unitAdvance === 0) {
@@ -357,9 +494,9 @@ export async function POST(req: NextRequest) {
             monthlyAdvances: new Array(12).fill(0),
             meterReadings: [],
             // Nová pole pro věrný tisk (zachováváme jako string)
-            buildingUnits: keepStr(values[5]),  // Val6 = Jednotek dům
-            unitPrice: keepStr(values[6]),      // Val7 = Kč/jedn
-            unitUnits: keepStr(values[7])       // Val8 = Jednotek byt
+            buildingUnits: keepStr(values[6]),  // Val7 = Jednotek dům (text)
+            unitPrice: keepStr(values[7]),      // Val8 = Kč/jedn (text)
+            unitUnits: keepStr(values[1])       // Val2 = Jednotek byt (text)
           }
           unitData.services.set(normalizeServiceName(serviceName), serviceData)
           break
@@ -494,6 +631,21 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // 1b. Pokud je zadáno buildingName, zkusíme ho použít pro nalezení budovy
+    if (!building && buildingNameParam) {
+      building = await prisma.building.findFirst({
+        where: {
+          OR: [
+            { name: { contains: buildingNameParam, mode: 'insensitive' } },
+            { address: { contains: buildingNameParam, mode: 'insensitive' } }
+          ]
+        }
+      })
+      if (building) {
+        console.log(`[Snapshot] Budova nalezena podle buildingName "${buildingNameParam}": ${building.name}`)
+      }
+    }
+
     // 2. Zkusit najít budovu podle čísla popisného z bytů
     if (!building && buildingNumberFromUnits) {
       building = await prisma.building.findFirst({
@@ -532,9 +684,9 @@ export async function POST(req: NextRequest) {
 
     // 4. Pokud budova stále neexistuje, vytvoříme ji
     if (!building) {
-      const buildingName = firstAddress 
-        ? firstAddress.split(',')[0].trim()
-        : `Budova ${buildingNumberFromUnits || 'Nová'}`
+      const buildingName =
+        buildingNameParam?.trim() ||
+        (firstAddress ? firstAddress.split(',')[0].trim() : `Budova ${buildingNumberFromUnits || 'Nová'}`)
       
       // Extrahovat město a PSČ z adresy
       let city = 'Brno'
@@ -557,6 +709,14 @@ export async function POST(req: NextRequest) {
       })
       buildingCreated = true
       console.log(`[Snapshot] Vytvořena nová budova: ${building.name}`)
+    }
+
+    if (buildingBankAccount && building.bankAccount !== buildingBankAccount) {
+      building = await prisma.building.update({
+        where: { id: building.id },
+        data: { bankAccount: buildingBankAccount }
+      })
+      console.log(`[Snapshot] Aktualizováno bankovní spojení budovy: ${buildingBankAccount}`)
     }
 
     // === FÁZE 3: Určit rok vyúčtování ===
@@ -582,6 +742,14 @@ export async function POST(req: NextRequest) {
     console.log('[Snapshot] Mažu staré výsledky vyúčtování...')
     await prisma.billingServiceCost.deleteMany({ where: { billingPeriodId: billingPeriod.id } })
     await prisma.billingResult.deleteMany({ where: { billingPeriodId: billingPeriod.id } })
+    await prisma.advanceMonthly.deleteMany({ where: { unit: { buildingId: building.id }, year } })
+    await prisma.payment.deleteMany({
+      where: {
+        unit: { buildingId: building.id },
+        period: year,
+        description: { startsWith: SNAPSHOT_PAYMENT_DESCRIPTION_PREFIX }
+      }
+    })
 
     // === FÁZE 6: Vytvořit/aktualizovat jednotky ===
     const units = await prisma.unit.findMany({ where: { buildingId: building.id } })
@@ -670,6 +838,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const totalAdvanceService = await ensureTotalAdvanceService(building.id)
+    serviceMap.set(normalizeServiceName(totalAdvanceService.name), totalAdvanceService)
+    serviceMap.set('total_advance', totalAdvanceService)
+
     // === FÁZE 8: Uložit výsledky vyúčtování ===
     let createdResults = 0
     let createdServiceCosts = 0
@@ -687,6 +859,8 @@ export async function POST(req: NextRequest) {
         continue
       }
 
+      let hasServiceMonthlyAdvances = false
+
       // Aktualizovat jednotku (VS)
       try {
         if (unitData.variableSymbol) {
@@ -702,30 +876,10 @@ export async function POST(req: NextRequest) {
         errors.push(`Chyba při aktualizaci jednotky ${unitName}: ${e}`)
       }
 
-      // Vytvořit BillingResult
-      // Pokud totalCost je 0 nebo nevalidní, spočítáme ze služeb
-      let calculatedTotalCost = unitData.totalCost
-      if (!calculatedTotalCost || calculatedTotalCost === 0) {
-        calculatedTotalCost = 0
-        for (const [, serviceData] of unitData.services) {
-          calculatedTotalCost += serviceData.unitCost || 0
-        }
-      }
-      
-      // Pokud totalAdvance je 0 nebo nevalidní, spočítáme ze služeb
-      let calculatedTotalAdvance = unitData.totalAdvance
-      if (!calculatedTotalAdvance || calculatedTotalAdvance === 0) {
-        calculatedTotalAdvance = 0
-        for (const [, serviceData] of unitData.services) {
-          calculatedTotalAdvance += serviceData.unitAdvance || 0
-        }
-      }
-      
-      // Pokud result je 0, spočítáme jako zálohy - náklady
-      let calculatedResult = unitData.totalResult
-      if (calculatedResult === 0 && (calculatedTotalAdvance > 0 || calculatedTotalCost > 0)) {
-        calculatedResult = calculatedTotalAdvance - calculatedTotalCost
-      }
+      // Vytvořit BillingResult (viewer-only): nic nedopočítávat, jen uložit hodnoty ze snapshotu
+      const calculatedTotalCost = unitData.totalCost
+      const calculatedTotalAdvance = unitData.totalAdvance
+      const calculatedResult = unitData.totalResult
       
       try {
         // Vytvořit nebo najít vlastníka
@@ -806,7 +960,11 @@ export async function POST(req: NextRequest) {
               vs: unitData.variableSymbol,
               bankAccount: unitData.bankAccount,
               resultNote: unitData.resultNote,
-              fixedPayments: unitData.fixedPayments
+              fixedPayments: unitData.fixedPayments,
+              periodBalance: unitData.periodBalance,
+              previousPeriodBalance: unitData.previousPeriodBalance,
+              grandTotal: unitData.grandTotal,
+              sourceSheet: unitData.sourceSheetMeta
             })
           }
         })
@@ -830,6 +988,20 @@ export async function POST(req: NextRequest) {
           if (!service) {
             warnings.push(`Služba nenalezena: ${serviceData.name} (jednotka: ${unitName})`)
             continue
+          }
+
+          if (serviceData.monthlyAdvances.some(a => a !== 0)) {
+            hasServiceMonthlyAdvances = true
+            serviceData.monthlyAdvances.forEach((amount, index) => {
+              if (!amount) return
+              advanceMonthlyBatch.push({
+                unitId: unit.id,
+                serviceId: service.id,
+                year,
+                month: index + 1,
+                amount
+              })
+            })
           }
 
           await prisma.billingServiceCost.create({
@@ -862,9 +1034,47 @@ export async function POST(req: NextRequest) {
           })
           createdServiceCosts++
         }
+
+        if (!hasServiceMonthlyAdvances && unitData.monthlyAdvances.some(a => a !== 0)) {
+          unitData.monthlyAdvances.forEach((amount, index) => {
+            if (!amount) return
+            advanceMonthlyBatch.push({
+              unitId: unit.id,
+              serviceId: totalAdvanceService.id,
+              year,
+              month: index + 1,
+              amount
+            })
+          })
+        }
+
+        if (unitData.monthlyPayments.some(p => p !== 0)) {
+          const fallbackVs = unitData.variableSymbol || unit.variableSymbol || `SNAPSHOT-${unit.unitNumber}`
+          unitData.monthlyPayments.forEach((amount, index) => {
+            if (!amount) return
+            paymentBatch.push({
+              unitId: unit.id,
+              amount,
+              paymentDate: new Date(Date.UTC(year, index, 15)),
+              variableSymbol: fallbackVs,
+              period: year,
+              description: `${SNAPSHOT_PAYMENT_DESCRIPTION_PREFIX} ${year}-${String(index + 1).padStart(2, '0')}`
+            })
+          })
+        }
       } catch (e) {
         errors.push(`Chyba při vytváření výsledku pro ${unitName}: ${e}`)
       }
+    }
+
+    if (advanceMonthlyBatch.length > 0) {
+      await prisma.advanceMonthly.createMany({ data: advanceMonthlyBatch })
+      console.log(`[Snapshot] Uloženo ${advanceMonthlyBatch.length} měsíčních předpisů`)
+    }
+
+    if (paymentBatch.length > 0) {
+      await prisma.payment.createMany({ data: paymentBatch })
+      console.log(`[Snapshot] Uloženo ${paymentBatch.length} měsíčních plateb`)
     }
 
     return NextResponse.json({
@@ -880,7 +1090,9 @@ export async function POST(req: NextRequest) {
         unitsInExcel: unitDataMap.size,
         unitsUpdated: updatedUnits,
         billingResultsCreated: createdResults,
-        serviceCostsCreated: createdServiceCosts
+        serviceCostsCreated: createdServiceCosts,
+        monthlyAdvancesCreated: advanceMonthlyBatch.length,
+        paymentsCreated: paymentBatch.length
       },
       warnings: warnings.slice(0, 20),
       errors: errors.slice(0, 20)

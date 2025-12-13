@@ -37,7 +37,24 @@ export type ExportFullDataType =
   | 'METER'             // Odečty měřidel
   | 'PAYMENT_MONTHLY'   // Měsíční úhrady
   | 'ADVANCE_MONTHLY'   // Měsíční předpisy
-  | 'FIXED_PAYMENT';    // Pevné platby (fond oprav)
+  | 'FIXED_PAYMENT'     // Pevné platby (fond oprav)
+  | 'BUILDING_INFO';    // Řádek s údaji o celé budově (číslo účtu, adresa)
+
+/**
+ * Údaje o budově z řádku BUILDING_INFO
+ */
+export interface ExportFullBuildingInfo {
+  /** Speciální UnitName (typicky "__BUILDING__") */
+  unitName: string;
+  /** Číslo účtu budovy / SVJ */
+  bankAccount: string;
+  /** Adresa budovy */
+  address?: string;
+  /** Název / popis budovy */
+  name?: string;
+  /** Původní číslo řádku (SourceRow) pro debug */
+  sourceRow?: string;
+}
 
 /**
  * Základní informace o jednotce (z řádku INFO)

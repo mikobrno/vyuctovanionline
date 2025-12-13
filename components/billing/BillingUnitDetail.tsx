@@ -74,7 +74,9 @@ export default function BillingUnitDetail({
   const summaryBankAccount = normalizeValue(summary?.bankAccount)
   const summaryVariableSymbol = normalizeValue(summary?.vs || summary?.variableSymbol)
   const summaryFixedPayments = parseFixedPayments(summary?.fixedPayments)
-  const effectiveBankAccount = summaryBankAccount || normalizeValue(billingPeriod.building.bankAccount)
+  // Účet pro úhradu nedoplatku = účet společenství/SVJ (budova).
+  // summary.bankAccount je účet člena (pro přeplatek) a nesmí se použít jako účet SVJ.
+  const effectiveBankAccount = normalizeValue(billingPeriod.building.bankAccount)
   const effectiveVariableSymbol = normalizeValue(billingResult.unit.variableSymbol) || summaryVariableSymbol || billingResult.unit.variableSymbol
   const displayBankAccount = effectiveBankAccount || billingPeriod.building.bankAccount || '[číslo účtu]'
   const displayVariableSymbol = effectiveVariableSymbol || '[variabilní symbol]'

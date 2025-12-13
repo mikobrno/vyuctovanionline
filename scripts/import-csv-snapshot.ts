@@ -74,7 +74,7 @@ function normalizeServiceCode(name: string): string {
 
 interface CsvRow {
   UNIT_NAME: string;
-  ROW_TYPE: 'INFO' | 'COST' | 'METER' | 'ADVANCE_MONTHLY' | 'FUND';
+  ROW_TYPE: 'INFO' | 'COST' | 'METER' | 'ADVANCE_MONTHLY' | 'FUND' | 'BUILDING_INFO';
   SERVICE_NAME: string;
   [key: string]: string; // dynamická pole
 }
@@ -147,6 +147,10 @@ function parseCsvFile(filePath: string): ParsedUnit[] {
     const unit = unitMap.get(unitName)!;
     const rowType = row.ROW_TYPE?.trim().toUpperCase() || 'COST';
     
+    if (rowType === 'BUILDING_INFO') {
+      continue;
+    }
+
     // INFO řádky - údaje o vlastníkovi
     if (rowType === 'INFO') {
       unit.ownerName = row.OWNER_NAME || row.SERVICE_NAME || unit.ownerName;

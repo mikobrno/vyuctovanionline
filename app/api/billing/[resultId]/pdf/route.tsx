@@ -86,7 +86,10 @@ export async function GET(
         })).filter((p: any) => p.name && p.amount !== null)
         : [];
 
-    const effectiveBankAccount = normalizeString(summary?.bankAccount) || normalizeString(building.bankAccount);
+    // Účet společenství je VŽDY účet budovy/SVJ.
+    // summary.bankAccount je účet člena (pro přeplatek) a nesmí se použít jako účet SVJ.
+    const buildingBankAccount = normalizeString(building.bankAccount);
+    const memberBankAccount = normalizeString(summary?.bankAccount);
     const effectiveVariableSymbol = normalizeString(billingResult.unit.variableSymbol) || normalizeString(summary?.vs || summary?.variableSymbol);
 
     // Owner Logic
@@ -206,7 +209,7 @@ export async function GET(
         building: {
             name: building.name,
             address: `${building.address}, ${building.city}`,
-            accountNumber: effectiveBankAccount || '',
+            accountNumber: buildingBankAccount || '',
             variableSymbol: effectiveVariableSymbol || '',
             managerName: building.managerName || undefined
         },
@@ -217,7 +220,7 @@ export async function GET(
             address: activeOwner?.owner?.address || '',
             email: activeOwner?.owner?.email || '',
             phone: activeOwner?.owner?.phone || '',
-            bankAccount: activeOwner?.owner?.bankAccount || ''
+            bankAccount: memberBankAccount || activeOwner?.owner?.bankAccount || ''
         },
         period: {
             year: year,

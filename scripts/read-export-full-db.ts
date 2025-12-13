@@ -22,7 +22,7 @@ const prisma = new PrismaClient()
 
 interface ExportFullRow {
   UnitName: string
-  DataType: 'INFO' | 'COST' | 'METER' | 'PAYMENT_MONTHLY' | 'ADVANCE_MONTHLY' | 'FIXED_PAYMENT'
+  DataType: 'INFO' | 'COST' | 'METER' | 'PAYMENT_MONTHLY' | 'ADVANCE_MONTHLY' | 'FIXED_PAYMENT' | 'BUILDING_INFO'
   Key: string
   Val1: string
   Val2: string
@@ -96,7 +96,7 @@ async function getExportFullData(buildingName: string, year: number, unitFilter?
     where: { 
       name: { contains: buildingName, mode: 'insensitive' }
     },
-    select: { id: true, name: true }
+    select: { id: true, name: true, address: true, bankAccount: true }
   })
 
   if (!building) {
@@ -166,6 +166,28 @@ async function getExportFullData(buildingName: string, year: number, unitFilter?
 
   // Převést na EXPORT_FULL formát
   const exportRows: ExportFullRow[] = []
+
+  if (building.bankAccount || building.address || building.name) {
+    exportRows.push({
+      UnitName: '__BUILDING__',
+      DataType: 'BUILDING_INFO',
+      Key: 'BuildingBankAccount',
+      Val1: building.bankAccount || '',
+      Val2: building.address || '',
+      Val3: building.name || '',
+      Val4: '',
+      Val5: '',
+      Val6: '',
+      Val7: '',
+      Val8: '',
+      Val9: '',
+      Val10: '',
+      Val11: '',
+      Val12: '',
+      Val13: '',
+      SourceRow: ''
+    })
+  }
 
   for (const result of results) {
     const unit = result.unit

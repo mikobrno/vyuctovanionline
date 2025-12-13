@@ -73,6 +73,9 @@ export default async function BillingResultDetailPage({
     variableSymbol?: string
     resultNote?: string
     fixedPayments?: BillingSummaryPayment[]
+    periodBalance?: number | string
+    previousPeriodBalance?: number | string
+    grandTotal?: number | string
   }
 
   const parseSummary = (): BillingSummary | null => {
@@ -131,8 +134,14 @@ export default async function BillingResultDetailPage({
   const summaryResultNote = normalizeString(summary?.resultNote)
   const summaryFixedPayments = parseFixedPayments(summary?.fixedPayments)
 
+  const summaryPeriodBalance = parseAmountValue(summary?.periodBalance)
+  const summaryPreviousPeriodBalance = parseAmountValue(summary?.previousPeriodBalance)
+  const summaryGrandTotal = parseAmountValue(summary?.grandTotal)
+
   const effectiveVariableSymbol = normalizeString(billingResult.unit.variableSymbol) || summaryVariableSymbol
-  const effectiveBankAccount = summaryBankAccount || normalizeString(building.bankAccount)
+  // Účet společenství je vždy účet budovy/SVJ.
+  // summary.bankAccount je účet člena (pro přeplatek).
+  const buildingBankAccount = normalizeString(building.bankAccount)
 
   // Find the relevant owner for the billing year
   const yearStart = new Date(year, 0, 1);
@@ -181,7 +190,7 @@ export default async function BillingResultDetailPage({
   });
 
   // Helper pro popis metodiky (sloupec Jednotka)
-  const getMethodologyLabel = (service: any) => {
+  const getMethodologyLabel = (service: { methodology?: string | null; measurementUnit?: string | null }) => {
     switch (service.methodology) {
       case 'OWNERSHIP_SHARE': return 'vlastnický podíl';
       case 'AREA': return 'm2 plochy';
@@ -302,11 +311,11 @@ export default async function BillingResultDetailPage({
 
   // Generování QR kódu pro nedoplatek
   const qrCodeUrl = await generateBillingQRCode({
-    balance: billingResult.result,
+    balance: (summaryGrandTotal ?? billingResult.result),
     year: year,
     unitNumber: billingResult.unit.unitNumber,
     variableSymbol: effectiveVariableSymbol,
-    bankAccount: effectiveBankAccount || null
+    bankAccount: buildingBankAccount || null
   });
 
   // Transformace dat pro komponentu BillingStatement
@@ -361,7 +370,7 @@ export default async function BillingResultDetailPage({
     building: {
       name: building.name,
       address: `${building.address}, ${building.city}`,
-      accountNumber: effectiveBankAccount || '',
+      accountNumber: buildingBankAccount || '',
       variableSymbol: effectiveVariableSymbol || '',
       managerName: building.managerName || undefined
     },
@@ -374,7 +383,7 @@ export default async function BillingResultDetailPage({
       address: activeOwner?.owner?.address || '',
       email: activeOwner?.owner?.email || '',
       phone: activeOwner?.owner?.phone || '',
-      bankAccount: activeOwner?.owner?.bankAccount || ''
+      bankAccount: summaryBankAccount || activeOwner?.owner?.bankAccount || ''
     },
     period: {
       year: year,
@@ -403,7 +412,10 @@ export default async function BillingResultDetailPage({
       cost: billingResult.totalCost,
       advance: billingResult.totalAdvancePrescribed,
       result: billingResult.result,
-      repairFund: billingResult.repairFund // Add repair fund
+      repairFund: billingResult.repairFund,
+      periodBalance: summaryPeriodBalance ?? undefined,
+      previousPeriodBalance: summaryPreviousPeriodBalance ?? undefined,
+      grandTotal: summaryGrandTotal ?? undefined,
     },
     readings: finalReadings,
     payments: paymentsData,

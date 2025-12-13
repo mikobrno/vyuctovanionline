@@ -71,11 +71,12 @@ const styles = StyleSheet.create({
   },
   // Title
   titleContainer: {
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#000000',
-    paddingVertical: 4,
-    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    marginBottom: 10,
     alignItems: 'center',
   },
   title: {
@@ -86,13 +87,13 @@ const styles = StyleSheet.create({
   table: {
     width: '100%',
     borderWidth: 1,
-    borderColor: '#000000',
+    borderColor: '#cbd5e1',
     marginBottom: 8,
   },
   tableRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderColor: '#000000',
+    borderColor: '#e2e8f0',
     minHeight: 12,
     alignItems: 'center',
   },
@@ -102,7 +103,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tableHeader: {
-    backgroundColor: '#e5e7eb',
+    backgroundColor: '#f1f5f9',
     fontFamily: 'Roboto-Bold',
   },
   // Sloupce hlavní tabulky - přizpůsobené pro EXPORT_FULL
@@ -119,12 +120,12 @@ const styles = StyleSheet.create({
     marginLeft: 20,
     marginBottom: 3,
     borderWidth: 0.5,
-    borderColor: '#999999',
+    borderColor: '#cbd5e1',
   },
   meterRow: {
     flexDirection: 'row',
     borderBottomWidth: 0.5,
-    borderColor: '#999999',
+    borderColor: '#cbd5e1',
     minHeight: 10,
     alignItems: 'center',
   },
@@ -135,26 +136,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   meterHeader: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#f8fafc',
     fontFamily: 'Roboto-Bold',
   },
   // Pevné platby
   fixedPaymentWrapper: {
     borderWidth: 1,
-    borderColor: '#000000',
+    borderColor: '#cbd5e1',
     marginBottom: 8,
   },
   fixedPaymentHeader: {
-    backgroundColor: '#e5e7eb',
+    backgroundColor: '#f1f5f9',
     paddingHorizontal: 4,
     paddingVertical: 2,
     borderBottomWidth: 1,
-    borderColor: '#000000',
+    borderColor: '#cbd5e1',
   },
   fixedPaymentRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderColor: '#000000',
+    borderColor: '#e2e8f0',
     minHeight: 14,
     alignItems: 'center',
     paddingHorizontal: 4,
@@ -180,12 +181,12 @@ const styles = StyleSheet.create({
   },
   monthlyTable: {
     borderWidth: 1,
-    borderColor: '#000000',
+    borderColor: '#cbd5e1',
   },
   monthlyRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderColor: '#000000',
+    borderColor: '#e2e8f0',
     minHeight: 14,
     alignItems: 'center',
   },
@@ -196,14 +197,14 @@ const styles = StyleSheet.create({
     width: 55,
     padding: 2,
     fontFamily: 'Roboto-Bold',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#f8fafc',
     fontSize: 7,
   },
   monthlyCell: {
     flex: 1,
     padding: 2,
     borderRightWidth: 1,
-    borderColor: '#000000',
+    borderColor: '#e2e8f0',
     textAlign: 'center',
     fontSize: 6,
   },
@@ -214,10 +215,10 @@ const styles = StyleSheet.create({
   monthlyHeader: { backgroundColor: '#f3f4f6', fontFamily: 'Roboto-Bold', borderBottomWidth: 1, borderColor: '#000' },
   // Výsledky
   resultPositive: {
-    color: '#228B22',
+    color: '#16a34a',
   },
   resultNegative: {
-    color: '#DC143C',
+    color: '#dc2626',
   },
   noData: {
     textAlign: 'center',
@@ -230,7 +231,7 @@ const styles = StyleSheet.create({
   footer: {
     marginTop: 15,
     borderTopWidth: 1,
-    borderColor: '#000000',
+    borderColor: '#cbd5e1',
     paddingTop: 4,
     fontSize: 6,
   },
@@ -273,15 +274,24 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
   const { result, unit, building } = data;
   
   // Parse summaryJson if available
-  const summary = result.summaryJson ? JSON.parse(result.summaryJson) : {};
-  const ownerName = summary.owner || summary.ownerName || (data.owner ? data.owner.firstName + ' ' + data.owner.lastName : 'Neznámý vlastník');
-  const address = summary.address || building?.address || '';
-  const email = summary.email || (data.owner ? data.owner.email : '');
+  let summary: Record<string, unknown> = {};
+  if (result.summaryJson) {
+    try {
+      summary = JSON.parse(result.summaryJson) as Record<string, unknown>;
+    } catch {
+      summary = {};
+    }
+  }
   const normalizeSummaryString = (val: unknown): string | undefined => {
     if (typeof val !== 'string') return undefined;
     const trimmed = val.trim();
     return trimmed.length > 0 ? trimmed : undefined;
   };
+  const ownerName =
+    normalizeSummaryString(summary.owner) ||
+    normalizeSummaryString(summary.ownerName) ||
+    (data.owner ? `${data.owner.firstName} ${data.owner.lastName}`.trim() : 'Neznámý vlastník');
+  const email = normalizeSummaryString(summary.email) || data.owner?.email || '';
   const parseSummaryAmount = (val: unknown): number | null => {
     if (typeof val === 'number' && Number.isFinite(val)) {
       return val;
@@ -314,9 +324,22 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
   const summaryBankAccount = normalizeSummaryString(summary.bankAccount);
   const summaryVariableSymbol = normalizeSummaryString(summary.vs) || normalizeSummaryString(summary.variableSymbol);
   const summaryResultNote = normalizeSummaryString(summary.resultNote);
-  const effectiveBankAccount = summaryBankAccount || building?.bankAccount;
-  const effectiveVariableSymbol = unit.variableSymbol || summaryVariableSymbol;
-  const fixedPayments = parseFixedPayments();
+  const summaryGrandTotal = parseSummaryAmount((summary as Record<string, unknown>)['grandTotal']);
+  const summaryPeriodBalance = parseSummaryAmount((summary as Record<string, unknown>)['periodBalance']);
+  const summaryPreviousPeriodBalance = parseSummaryAmount((summary as Record<string, unknown>)['previousPeriodBalance']);
+  // Účet společenství bereme vždy z budovy (summary.bankAccount je typicky účet člena pro přeplatek)
+  const buildingBankAccount = building?.bankAccount;
+  const memberBankAccount = summaryBankAccount || unit.bankAccount || data.owner?.bankAccount || undefined;
+  // VS pro platbu nedoplatku preferujeme ze summaryJson (pokud existuje), jinak z jednotky
+  const effectiveVariableSymbol = summaryVariableSymbol || unit.variableSymbol;
+  const fixedPayments = (() => {
+    const payments = parseFixedPayments();
+    const repairFund = typeof result.repairFund === 'number' && Number.isFinite(result.repairFund) ? result.repairFund : 0;
+    if (repairFund !== 0 && !payments.some(p => p.name.toLowerCase().includes('fond oprav'))) {
+      payments.push({ name: 'Fond oprav', amount: repairFund });
+    }
+    return payments;
+  })();
   
   // Filter services
   const fundServices = result.serviceCosts.filter(sc => 
@@ -333,6 +356,7 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
   const totalUnitCost = result.totalCost;
   const totalAdvance = result.totalAdvancePrescribed;
   const totalBalance = result.result;
+  const effectiveGrandTotal = summaryGrandTotal ?? totalBalance;
 
   // Monthly data - z databáze
   const monthlyPrescriptions = (result.monthlyPrescriptions as number[]) || Array(12).fill(0);
@@ -351,8 +375,12 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
               <Text style={styles.value}>{building?.address}, {building?.zip} {building?.city}</Text>
             </View>
             <View style={styles.addressRow}>
-              <Text style={styles.label}>bankovní spojení:</Text>
-              <Text style={styles.value}>{effectiveBankAccount || '-'}</Text>
+              <Text style={styles.label}>bankovní spojení společenství:</Text>
+              <Text style={styles.value}>{buildingBankAccount || '-'}</Text>
+            </View>
+            <View style={styles.addressRow}>
+              <Text style={styles.label}>bankovní spojení člena:</Text>
+              <Text style={styles.value}>{memberBankAccount || '-'}</Text>
             </View>
             {email && (
               <View style={styles.addressRow}>
@@ -503,24 +531,44 @@ export const BillingDocument: React.FC<BillingDocumentProps> = ({ data, logoPath
 
         {/* Summary */}
         <View style={{ alignItems: 'flex-end', marginBottom: 8 }}>
+          {typeof summaryPeriodBalance === 'number' && Number.isFinite(summaryPeriodBalance) && summaryPeriodBalance !== 0 && (
+            <View style={{ flexDirection: 'row', marginTop: 2 }}>
+              <Text style={{ fontFamily: 'Roboto', fontSize: 8, marginRight: 10 }}>
+                {summaryPeriodBalance >= 0 ? 'Přeplatek v účtovaném období:' : 'Nedoplatek v účtovaném období:'}
+              </Text>
+              <Text style={[{ fontFamily: 'Roboto-Bold', fontSize: 8 }, summaryPeriodBalance >= 0 ? styles.resultPositive : styles.resultNegative]}>
+                {formatCurrency(Math.abs(summaryPeriodBalance))} Kč
+              </Text>
+            </View>
+          )}
+          {typeof summaryPreviousPeriodBalance === 'number' && Number.isFinite(summaryPreviousPeriodBalance) && summaryPreviousPeriodBalance !== 0 && (
+            <View style={{ flexDirection: 'row', marginTop: 2 }}>
+              <Text style={{ fontFamily: 'Roboto', fontSize: 8, marginRight: 10 }}>
+                {summaryPreviousPeriodBalance >= 0 ? 'Přeplatek z minulého období:' : 'Nedoplatek z minulého období:'}
+              </Text>
+              <Text style={[{ fontFamily: 'Roboto-Bold', fontSize: 8 }, summaryPreviousPeriodBalance >= 0 ? styles.resultPositive : styles.resultNegative]}>
+                {formatCurrency(Math.abs(summaryPreviousPeriodBalance))} Kč
+              </Text>
+            </View>
+          )}
           <View style={{ flexDirection: 'row', marginTop: 3 }}>
             <Text style={{ fontFamily: 'Roboto-Bold', fontSize: 11, marginRight: 10 }}>
-              {totalBalance >= 0 ? 'PŘEPLATEK CELKEM:' : 'NEDOPLATEK CELKEM:'}
+              {effectiveGrandTotal >= 0 ? 'PŘEPLATEK CELKEM:' : 'NEDOPLATEK CELKEM:'}
             </Text>
-            <Text style={[{ fontFamily: 'Roboto-Bold', fontSize: 11 }, totalBalance >= 0 ? styles.resultPositive : styles.resultNegative]}>
-              {formatCurrency(Math.abs(totalBalance))} Kč
+            <Text style={[{ fontFamily: 'Roboto-Bold', fontSize: 11 }, effectiveGrandTotal >= 0 ? styles.resultPositive : styles.resultNegative]}>
+              {formatCurrency(Math.abs(effectiveGrandTotal))} Kč
             </Text>
           </View>
-          {summary.bankAccount && totalBalance > 0 && (
-            <View style={{ backgroundColor: '#e5e7eb', padding: 3, marginTop: 2 }}>
+          {memberBankAccount && effectiveGrandTotal > 0 && (
+            <View style={{ backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1', padding: 4, marginTop: 4 }}>
               <Text style={{ fontFamily: 'Roboto-Bold', fontSize: 7 }}>
-                Přeplatek bude vyplacen na účet: {summary.bankAccount}
+                Přeplatek bude vyplacen na účet: {memberBankAccount}
               </Text>
             </View>
           )}
           {summaryResultNote && (
-            <View style={{ backgroundColor: '#dbeafe', padding: 4, marginTop: 4, borderLeftWidth: 2, borderColor: '#1d4ed8' }}>
-              <Text style={{ fontFamily: 'Roboto-Bold', fontSize: 7 }}>{summaryResultNote}</Text>
+            <View style={{ backgroundColor: '#eff6ff', padding: 5, marginTop: 5, borderWidth: 1, borderColor: '#bfdbfe' }}>
+              <Text style={{ fontFamily: 'Roboto-Bold', fontSize: 7, color: '#1e3a8a' }}>{summaryResultNote}</Text>
             </View>
           )}
         </View>

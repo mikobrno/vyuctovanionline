@@ -4,12 +4,7 @@
 		{
 			"label": "Trigger Public Full Import",
 			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-Command",
-				"Invoke-RestMethod -Method Post -Uri \"http://localhost:3000/api/import/public/complete?file=vyuctovani2024%20(20).xlsx&buildingName=Kníničky%20318\" | ConvertTo-Json -Depth 6"
-			],
+			"command": "$uri = 'http://localhost:3000/api/import/public/complete?file=vyuctovani2024%20(20).xlsx&buildingName=Spole%C4%8Denstv%C3%AD%20vlastn%C3%ADk%C5%AF%20Mik%C5%A1%C3%AD%C4%8Dkova%2020'; Invoke-RestMethod -Method Post -Uri $uri | ConvertTo-Json -Depth 6",
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "none"
@@ -35,6 +30,14 @@
 				"scripts/test-snapshot-http.ts"
 			],
 			"isBackground": false
+		},
+		{
+			"label": "Trigger Public Full Import (vyuctovani2024.xlsx)",
+			"type": "shell",
+			"command": "$uri = 'http://localhost:3000/api/import/public/complete?file=import%2Fvyuctovani2024.xlsx&buildingName=Spole%C4%8Denstv%C3%AD%20vlastn%C3%ADk%C5%AF%20Mik%C5%A1%C3%AD%C4%8Dkova%2020'; Invoke-RestMethod -Method Post -Uri $uri | ConvertTo-Json -Depth 8",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "none"
 		}
 	]
 }

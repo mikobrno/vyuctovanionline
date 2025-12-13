@@ -11,12 +11,24 @@ Tento systém importuje data z "Master Export" souboru `EXPORT_FULL.csv` generov
 | Sloupec | Popis | Příklad |
 |---------|-------|---------|
 | `UnitName` | Název jednotky | "Byt 1513/01" |
-| `DataType` | Typ řádku | INFO, COST, METER, PAYMENT_MONTHLY, ADVANCE_MONTHLY, FIXED_PAYMENT |
+| `DataType` | Typ řádku | BUILDING_INFO, INFO, COST, METER, PAYMENT_MONTHLY, ADVANCE_MONTHLY, FIXED_PAYMENT |
 | `Key` | Název položky | "Studená voda", "Teplo" |
 | `Val1-Val13` | Hodnoty (závislé na DataType) | "1 250,50", "64,23" |
 | `SourceRow` | Odkaz na Excel řádek (debug) | "Row39" |
 
 ### Typy řádků (DataType)
+
+#### 0. BUILDING_INFO - Údaje o budově (SVJ)
+```csv
+UnitName,DataType,Key,Val1,Val2,Val3,...
+"__BUILDING__",BUILDING_INFO,BuildingBankAccount,"224623004/0300","Kníničky 318, Brno","SVJ Kníničky 318",...
+```
+
+**Mapování:**
+- `Val1` → Bankovní účet budovy / SVJ
+- `Val2` → Adresa budovy
+- `Val3` → Název / popis budovy
+- Řádek se vyskytuje nejvýše jednou a slouží k aktualizaci bankovního spojení a adresy v DB
 
 #### 1. INFO - Základní údaje jednotky
 ```csv

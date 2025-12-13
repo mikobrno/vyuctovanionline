@@ -14,11 +14,13 @@
  *   --summary - pouze souhrn bez detailů
  */
 
+export {}
+
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
 
 interface ExportFullRow {
   UnitName: string
-  DataType: 'INFO' | 'COST' | 'METER' | 'PAYMENT_MONTHLY' | 'ADVANCE_MONTHLY' | 'FIXED_PAYMENT'
+  DataType: 'INFO' | 'COST' | 'METER' | 'PAYMENT_MONTHLY' | 'ADVANCE_MONTHLY' | 'FIXED_PAYMENT' | 'BUILDING_INFO'
   Key: string
   Val1: string
   Val2: string
@@ -144,6 +146,7 @@ async function main() {
         const paymentRows = result.data.filter(r => r.DataType === 'PAYMENT_MONTHLY')
         const advanceRows = result.data.filter(r => r.DataType === 'ADVANCE_MONTHLY')
         const fixedRows = result.data.filter(r => r.DataType === 'FIXED_PAYMENT')
+        const buildingRows = result.data.filter(r => r.DataType === 'BUILDING_INFO')
         
         console.log(`\n📈 Rozložení dat:`)
         console.log(`   INFO:            ${infoRows.length}`)
@@ -152,6 +155,7 @@ async function main() {
         console.log(`   PAYMENT_MONTHLY: ${paymentRows.length}`)
         console.log(`   ADVANCE_MONTHLY: ${advanceRows.length}`)
         console.log(`   FIXED_PAYMENT:   ${fixedRows.length}`)
+        console.log(`   BUILDING_INFO:   ${buildingRows.length}`)
         
         // Unikátní jednotky
         const units = [...new Set(infoRows.map(r => r.UnitName))]
